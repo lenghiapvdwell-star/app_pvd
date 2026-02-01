@@ -6,7 +6,7 @@ from datetime import datetime, date
 # 1. Cấu hình trang
 st.set_page_config(page_title="PVD Pro Cloud 2026", layout="wide", initial_sidebar_state="collapsed")
 
-# 2. Kết nối Google Sheets (Sử dụng Service Account từ Secrets)
+# 2. Kết nối Google Sheets
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def get_col_name(day):
@@ -16,23 +16,26 @@ def get_col_name(day):
 
 NAMES = ["Bùi Anh Phương", "Lê Thái Việt", "Lê Tùng Phong", "Nguyễn Tiến Dũng", "Nguyễn Văn Quang", "Phạm Hồng Minh", "Nguyễn Gia Khánh", "Nguyễn Hữu Lộc", "Nguyễn Tấn Đạt", "Chu Văn Trường", "Hồ Sỹ Đức", "Hoàng Thái Sơn", "Phạm Thái Bảo", "Cao Trung Nam", "Lê Trọng Nghĩa", "Nguyễn Văn Mạnh", "Nguyễn Văn Sơn", "Dương Mạnh Quyết", "Trần Quốc Huy", "Rusliy Saifuddin", "Đào Tiến Thành", "Đoàn Minh Quân", "Rawing Empanit", "Bùi Sỹ Xuân", "Cao Văn Thắng", "Cao Xuân Vinh", "Đàm Quang Trung", "Đào Văn Tám", "Đinh Duy Long", "Đinh Ngọc Hiếu", "Đỗ Đức Ngọc", "Đỗ Văn Tường", "Đồng Văn Trung", "Hà Viết Hùng", "Hồ Trọng Đông", "Hoàng Tùng", "Lê Hoài Nam", "Lê Hoài Phước", "Lê Minh Hoàng", "Lê Quang Minh", "Lê Quốc Duy", "Mai Nhân Dương", "Ngô Quỳnh Hải", "Ngô Xuân Điền", "Nguyễn Hoàng Quy", "Nguyễn Hữu Toàn", "Nguyễn Mạnh Cường", "Nguyễn Quốc Huy", "Nguyễn Tuấn Anh", "Nguyễn Tuấn Minh", "Nguyễn Văn Bảo Ngọc", "Nguyễn Văn Duẩn", "Nguyễn Văn Hưng", "Nguyễn Văn Võ", "Phan Tây Bắc", "Trần Văn Hoàn", "Trần Văn Hùng", "Trần Xuân Nhật", "Võ Hồng Thịnh", "Vũ Tuấn Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Trần Tuấn Dũng"]
 
-# 3. Khởi tạo dữ liệu
+# 3. Khởi tạo dữ liệu (Sửa lỗi thụt lề tại đây)
 if 'db' not in st.session_state:
-    # Thay đổi đoạn kết nối ở đầu file app_pvd.py
-try:
-    conn = st.connection("gsheets", type=GSheetsConnection)
-except Exception as e:
-    st.error("Chưa kết nối được Cloud. Vui lòng kiểm tra lại Secrets!")
-    st.stop()
-        # Nếu chưa có, tạo mới
+    try:
+        # Thử đọc từ Cloud trước
+        df_cloud = conn.read(worksheet="PVD_Data", ttl=0)
+        if df_cloud is not None and not df_cloud.empty:
+            st.session_state.db = df_cloud
+        else:
+            raise ValueError("Sheet trống")
+    except Exception as e:
+        # Nếu lỗi hoặc trống, tạo mới bảng 64 người
         df = pd.DataFrame({'Họ và Tên': NAMES, 'Chức danh': 'Kỹ sư', 'Công ty': 'PVD'})
-        for d in range(1, 29): df[get_col_name(d)] = ""
+        for d in range(1, 29):
+            df[get_col_name(d)] = ""
         st.session_state.db = df
 
 if 'list_gian' not in st.session_state:
     st.session_state.list_gian = ["PVD I", "PVD II", "PVD III", "PVD VI", "PVD 11"]
 
-# 4. Giao diện CSS Xanh Blue
+# 4. Giao diện CSS
 st.markdown(
     """
     <style>
@@ -69,11 +72,11 @@ with tab3:
     if st.button("🌐 LƯU LÊN GOOGLE SHEETS", use_container_width=True):
         try:
             conn.update(worksheet="PVD_Data", data=st.session_state.db)
-            st.success("✅ Đã lưu thành công! Đồng nghiệp của bạn có thể thấy ngay.")
+            st.success("✅ Đã lưu thành công lên Cloud!")
         except Exception as e:
-            st.error(f"Lỗi: {e}")
+            st.error(f"Lỗi lưu Cloud: {e}. Hãy kiểm tra lại Secrets và quyền Editor của Sheet.")
 
-# 6. Hiển thị bảng (Làm nổi chữ CA)
+# 6. Hiển thị bảng
 def style_cells(v):
     if v == "CA": return 'color: #FFFFFF; font-weight: bold; background-color: #1B2631;'
     if v in st.session_state.list_gian: return 'color: #64FFDA; font-weight: bold; background-color: #112240;'
@@ -81,4 +84,5 @@ def style_cells(v):
     return styles.get(v, 'background-color: #0A192F;')
 
 st.subheader("BẢNG TỔNG HỢP CHI TIẾT")
+# Subset từ cột thứ 3 trở đi để tô màu (bỏ qua Tên, Chức danh, Công ty)
 st.dataframe(st.session_state.db.style.map(style_cells, subset=st.session_state.db.columns[3:]), use_container_width=True, height=600)

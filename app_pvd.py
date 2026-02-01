@@ -12,8 +12,9 @@ if 'list_gian' not in st.session_state:
     st.session_state.list_gian = ["PVD I", "PVD II", "PVD III", "PVD VI", "PVD 11"]
 
 if 'rig_colors' not in st.session_state:
+    # Sử dụng các màu rực rỡ để nổi bật trên nền tối
     st.session_state.rig_colors = {
-        "PVD I": "#1A5276", "PVD II": "#196F3D", "PVD III": "#7D3C98", "PVD VI": "#A04000", "PVD 11": "#212F3D"
+        "PVD I": "#3498DB", "PVD II": "#2ECC71", "PVD III": "#F1C40F", "PVD VI": "#E67E22", "PVD 11": "#ECF0F1"
     }
 
 def get_col_name(day):
@@ -32,60 +33,71 @@ if 'db' not in st.session_state:
         df[get_col_name(d)] = "CA"
     st.session_state.db = df
 
-# 3. CSS TỐI ƯU TƯƠNG PHẢN & PHÔNG CHỮ
+# 3. CSS: NỀN XANH BLUE VÀ PHÔNG CHỮ TRẮNG NỔI BẬT
 st.markdown(
     """
     <style>
-    /* Nền màu Cream dịu mắt */
+    /* Nền Xanh Blue đậm */
     .stApp {
-        background-color: #FDF5E6 !important;
-        font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        background-color: #1B2631 !important;
+        color: #ECF0F1 !important;
     }
     
     [data-testid="collapsedControl"] { display: none; }
     
-    /* Logo to 225px ghim trái */
+    /* Logo 225px ghim bên trái */
     .pvd-logo-fixed {
         position: fixed;
         top: 30px;
         left: 20px;
         z-index: 10000;
         width: 225px;
+        background: rgba(255,255,255,0.1);
+        padding: 10px;
+        border-radius: 10px;
     }
     
-    /* Nội dung chính */
+    /* Nội dung chính dịch sang phải */
     .main .block-container {
-        padding-left: 285px; 
+        padding-left: 290px; 
         padding-right: 30px;
-        color: #2C3E50; /* Màu chữ chính Charcoal */
     }
     
-    /* Tiêu đề thanh lịch */
+    /* Tiêu đề trắng sáng */
     .main-header {
-        color: #004A99;
+        color: #3498DB;
         font-size: 32px;
         font-weight: 800;
-        margin-bottom: 20px;
-        text-shadow: 1px 1px 2px rgba(0,0,0,0.05);
+        margin-bottom: 25px;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        border-bottom: 2px solid #3498DB;
     }
 
-    /* Định dạng bảng: Chữ đậm, dễ đọc */
-    thead tr th {
-        white-space: pre-wrap !important;
-        text-align: center !important;
-        background-color: #EAECEE !important;
-        color: #1B2631 !important;
-        font-weight: bold !important;
-        border: 1px solid #D5DBDB !important;
+    /* Các Tab màu tối đồng nhất */
+    .stTabs [data-baseweb="tab-list"] {
+        background-color: transparent;
     }
-    
-    /* Tab Menu */
     .stTabs [data-baseweb="tab"] {
-        font-weight: 600;
-        color: #566573;
+        color: #BDC3C7 !important;
     }
     .stTabs [aria-selected="true"] {
-        color: #004A99 !important;
+        color: #3498DB !important;
+        border-bottom-color: #3498DB !important;
+    }
+
+    /* Bảng dữ liệu: Nền sáng để chữ màu nổi bật */
+    thead tr th {
+        background-color: #2C3E50 !important;
+        color: #ECF0F1 !important;
+        font-size: 13px !important;
+        white-space: pre-wrap !important;
+        border: 1px solid #34495E !important;
+    }
+    
+    /* Input text màu trắng trên nền tối */
+    input {
+        color: white !important;
     }
     </style>
     """,
@@ -97,79 +109,79 @@ try:
     st.image("logo_pvd.png", width=225)
     st.markdown('<div class="pvd-logo-fixed"></div>', unsafe_allow_html=True)
 except:
-    st.sidebar.error("Vui lòng kiểm tra file logo_pvd.png")
+    st.sidebar.error("Thiếu file logo_pvd.png")
 
-st.markdown("<div class='main-header'>PVD PERSONNEL DISPATCHING SYSTEM</div>", unsafe_allow_html=True)
+st.markdown("<div class='main-header'>PV DRILLING PERSONNEL SYSTEM 2026</div>", unsafe_allow_html=True)
 
 # 4. TABS CHỨC NĂNG
-tab_rig, tab_info, tab_manage = st.tabs(["📅 ĐIỀU ĐỘNG NHÂN SỰ", "👤 HỒ SƠ CHI TIẾT", "⚙️ CẤU HÌNH GIÀN"])
+tab_rig, tab_info, tab_manage = st.tabs(["📊 QUẢN LÝ ĐIỀU ĐỘNG", "📁 HỒ SƠ NHÂN VIÊN", "⚙️ CÀI ĐẶT HỆ THỐNG"])
 
 with tab_rig:
     with st.container():
         c1, c2, c3 = st.columns([2, 1.5, 1.5])
         with c1:
-            sel_staff = st.multiselect("BƯỚC 1: CHỌN NHÂN VIÊN", NAMES)
+            sel_staff = st.multiselect("CHỌN NHÂN VIÊN", NAMES)
         with c2:
-            status_opt = st.selectbox("BƯỚC 2: TRẠNG THÁI", ["Đi Biển", "Nghỉ CA (CA)", "Làm Việc (WS)", "Nghỉ Phép (P)", "Nghỉ Ốm (S)"])
+            status_opt = st.selectbox("TRẠNG THÁI", ["Đi Biển", "Nghỉ CA (CA)", "Làm Việc (WS)", "Nghỉ Phép (P)", "Nghỉ Ốm (S)"])
             if status_opt == "Đi Biển":
                 final_val = st.selectbox("CHỌN GIÀN", st.session_state.list_gian)
             else:
                 final_val = {"Nghỉ CA (CA)": "CA", "Làm Việc (WS)": "WS", "Nghỉ Phép (P)": "P", "Nghỉ Ốm (S)": "S"}[status_opt]
         with c3:
-            sel_dates = st.date_input("BƯỚC 3: CHỌN KHOẢNG NGÀY", 
+            sel_dates = st.date_input("KHOẢNG NGÀY ĐIỀU ĐỘNG", 
                                       value=(date(2026, 2, 1), date(2026, 2, 7)),
                                       min_value=date(2026, 2, 1), 
                                       max_value=date(2026, 2, 28))
 
-        if st.button("🔥 XÁC NHẬN CẬP NHẬT", type="primary", use_container_width=True):
+        if st.button("🚀 CẬP NHẬT HỆ THỐNG", type="primary", use_container_width=True):
             if isinstance(sel_dates, tuple) and len(sel_dates) == 2:
                 start_d, end_d = sel_dates[0].day, sel_dates[1].day
                 for d in range(start_d, end_d + 1):
                     col_name = get_col_name(d)
                     st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(sel_staff), col_name] = final_val
-                st.success("Cập nhật dữ liệu thành công!")
+                st.success("Dữ liệu đã được đồng bộ!")
                 st.rerun()
 
 with tab_info:
+    # (Phần này giữ nguyên logic như cũ)
     c_s, c_r, c_c = st.columns([2, 1, 1])
-    with c_s: i_staff = st.multiselect("Chọn nhân sự:", NAMES, key="info_s")
-    with c_r: n_role = st.text_input("Chức danh mới:")
-    with c_c: n_corp = st.text_input("Đơn vị mới:")
-    if st.button("💾 LƯU THÔNG TIN"):
+    with c_s: i_staff = st.multiselect("Nhân sự:", NAMES, key="i_s")
+    with c_r: n_role = st.text_input("Chức danh:")
+    with c_corp: n_corp = st.text_input("Đơn vị:")
+    if st.button("💾 CẬP NHẬT HỒ SƠ"):
         if n_role: st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(i_staff), 'Chức danh'] = n_role
         if n_corp: st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(i_staff), 'Công ty'] = n_corp
-        st.success("Hồ sơ đã được cập nhật!")
+        st.rerun()
 
 with tab_manage:
     ca, cb = st.columns(2)
     with ca:
-        new_rig = st.text_input("Tên Giàn mới:")
-        if st.button("THÊM VÀO DANH SÁCH"):
+        new_rig = st.text_input("Thêm Giàn:")
+        if st.button("THÊM MỚI"):
             st.session_state.list_gian.append(new_rig)
             st.session_state.rig_colors[new_rig] = "#%06x" % random.randint(0, 0xFFFFFF)
             st.rerun()
     with cb:
         rig_del = st.selectbox("Xóa Giàn:", st.session_state.list_gian)
-        if st.button("XÓA KHỎI DANH SÁCH"):
+        if st.button("XÓA BỎ"):
             st.session_state.list_gian.remove(rig_del)
             st.rerun()
 
-# 5. HIỂN THỊ BẢNG VỚI STYLE TƯƠNG THÍCH
-st.subheader("BẢNG TỔNG HỢP ĐIỀU ĐỘNG THÁNG 02/2026")
+# 5. HIỂN THỊ BẢNG VỚI STYLE BLUE
+st.subheader("BẢNG TỔNG HỢP CHI TIẾT 2026")
 
 def style_cells(val):
     if val in st.session_state.list_gian:
-        color = st.session_state.rig_colors.get(val, "#00558F")
-        return f'color: {color}; font-weight: 800; background-color: #FFFFFF; border: 0.5px solid #BDC3C7;'
+        color = st.session_state.rig_colors.get(val, "#3498DB")
+        return f'color: {color}; font-weight: 900; background-color: #FBFCFC; border: 1px solid #D5DBDB;'
     
     styles = {
-        "P": 'background-color: #FADBD8; color: #943126; font-weight: bold; border: 0.5px solid #BDC3C7;',
-        "S": 'background-color: #EBDEF0; color: #633974; font-weight: bold; border: 0.5px solid #BDC3C7;',
-        "WS": 'background-color: #FEF9E7; color: #7D6608; font-weight: bold; border: 0.5px solid #BDC3C7;'
+        "P": 'background-color: #E74C3C; color: white; font-weight: bold;', # Đỏ cho phép
+        "S": 'background-color: #9B59B6; color: white; font-weight: bold;', # Tím cho ốm
+        "WS": 'background-color: #F1C40F; color: #1B2631; font-weight: bold;' # Vàng cho làm bờ
     }
-    return styles.get(val, 'color: #7F8C8D; background-color: #FFFFFF; border: 0.5px solid #ECF0F1;')
+    return styles.get(val, 'color: #7F8C8D; background-color: #FFFFFF;')
 
-# Hiển thị bảng dữ liệu
 cols = list(st.session_state.db.columns)
 df_display = st.session_state.db[[cols[0], 'Chức danh', 'Công ty'] + cols[3:]]
 
@@ -182,4 +194,4 @@ def to_excel(df):
         df.to_excel(writer, index=False)
     return output.getvalue()
 
-st.download_button("📥 TẢI BÁO CÁO CHI TIẾT (.XLSX)", data=to_excel(st.session_state.db), file_name="PVD_Report_2026.xlsx", use_container_width=True)
+st.download_button("📥 TẢI BÁO CÁO EXCEL", data=to_excel(st.session_state.db), file_name="PVD_Blue_Report.xlsx", use_container_width=True)

@@ -14,13 +14,14 @@ except Exception as e:
     st.stop()
 
 def get_col_name(day):
-    d = datetime(2026, 2, day)
+    # Cố định tháng 2/2026
+    d = date(2026, 2, day)
     days_vn = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
-    return f"{day:02d}/{d.strftime('%b')}\n{days_vn[d.weekday()]}"
+    return f"{day:02d}/02\n{days_vn[d.weekday()]}"
 
 NAMES = ["Bùi Anh Phương", "Lê Thái Việt", "Lê Tùng Phong", "Nguyễn Tiến Dũng", "Nguyễn Văn Quang", "Phạm Hồng Minh", "Nguyễn Gia Khánh", "Nguyễn Hữu Lộc", "Nguyễn Tấn Đạt", "Chu Văn Trường", "Hồ Sỹ Đức", "Hoàng Thái Sơn", "Phạm Thái Bảo", "Cao Trung Nam", "Lê Trọng Nghĩa", "Nguyễn Văn Mạnh", "Nguyễn Văn Sơn", "Dương Mạnh Quyết", "Trần Quốc Huy", "Rusliy Saifuddin", "Đào Tiến Thành", "Đoàn Minh Quân", "Rawing Empanit", "Bùi Sỹ Xuân", "Cao Văn Thắng", "Cao Xuân Vinh", "Đàm Quang Trung", "Đào Văn Tám", "Đinh Duy Long", "Đinh Ngọc Hiếu", "Đỗ Đức Ngọc", "Đỗ Văn Tường", "Đồng Văn Trung", "Hà Viết Hùng", "Hồ Trọng Đông", "Hoàng Tùng", "Lê Hoài Nam", "Lê Hoài Phước", "Lê Minh Hoàng", "Lê Quang Minh", "Lê Quốc Duy", "Mai Nhân Dương", "Ngô Quỳnh Hải", "Ngô Xuân Điền", "Nguyễn Hoàng Quy", "Nguyễn Hữu Toàn", "Nguyễn Mạnh Cường", "Nguyễn Quốc Huy", "Nguyễn Tuấn Anh", "Nguyễn Tuấn Minh", "Nguyễn Văn Bảo Ngọc", "Nguyễn Văn Duẩn", "Nguyễn Văn Hưng", "Nguyễn Văn Võ", "Phan Tây Bắc", "Trần Văn Hoàn", "Trần Văn Hùng", "Trần Xuân Nhật", "Võ Hồng Thịnh", "Vũ Tuấn Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Trần Tuấn Dũng"]
 
-# 3. Khởi tạo dữ liệu (Đã sửa thụt lề chuẩn Python)
+# 3. Khởi tạo dữ liệu
 if 'db' not in st.session_state:
     try:
         # Thử tải dữ liệu từ Tab PVD_Data
@@ -28,9 +29,9 @@ if 'db' not in st.session_state:
         if df_cloud is not None and not df_cloud.empty:
             st.session_state.db = df_cloud
         else:
-            raise ValueError
+            raise ValueError("Data empty")
     except:
-        # Nếu chưa có, tạo bảng mẫu
+        # Nếu chưa có trên Cloud, tạo bảng mẫu trắng 64 người
         df = pd.DataFrame({'Họ và Tên': NAMES, 'Chức danh': 'Kỹ sư', 'Công ty': 'PVD'})
         for d in range(1, 29):
             df[get_col_name(d)] = ""
@@ -45,13 +46,13 @@ st.markdown(
     <style>
     .stApp { background-color: #0A192F !important; color: #E6F1FF !important; }
     .main-header { color: #64FFDA; font-size: 32px; font-weight: 800; border-bottom: 2px solid #64FFDA; padding-bottom: 10px; }
-    .pvd-logo-fixed { position: fixed; top: 25px; left: 20px; z-index: 10000; width: 225px; }
-    .main .block-container { padding-left: 290px; padding-right: 30px; }
+    .main .block-container { padding-top: 2rem; }
+    /* Style cho bảng DataFrame */
+    div[data-testid="stDataFrame"] { border: 1px solid #64FFDA; border-radius: 5px; }
     </style>
     """, unsafe_allow_html=True
 )
 
-st.image("logo_pvd.png", width=225)
 st.markdown("<div class='main-header'>PVD PERSONNEL CLOUD 2026</div>", unsafe_allow_html=True)
 
 # 5. Các Tab chức năng
@@ -63,20 +64,23 @@ with tab1:
     with c2:
         opt = st.selectbox("Trạng thái:", ["Đi Biển", "CA", "WS", "P", "S"])
         val = st.selectbox("Giàn:", st.session_state.list_gian) if opt == "Đi Biển" else opt
-    with c3: dates = st.date_input("Chọn ngày:", value=(date(2026, 2, 1), date(2026, 2, 7)))
+    with c3: dates = st.date_input("Chọn ngày:", value=(date(2026, 2, 1), date(2026, 2, 7)), 
+                                   min_value=date(2026, 2, 1), max_value=date(2026, 2, 28))
     
-    if st.button("🔥 CẬP NHẬT", type="primary", use_container_width=True):
+    if st.button("🔥 CẬP NHẬT DỮ LIỆU TẠM THỜI", type="primary", use_container_width=True):
         if isinstance(dates, tuple) and len(dates) == 2:
-            for d in range(dates[0].day, dates[1].day + 1):
+            start_d, end_d = dates[0].day, dates[1].day
+            for d in range(start_d, end_d + 1):
                 st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(s_staff), get_col_name(d)] = val
-            st.rerun()
+            st.success("Đã cập nhật vào bảng bên dưới. Hãy nhấn Tab 'ĐỒNG BỘ CLOUD' để lưu vĩnh viễn!")
 
 with tab2:
-    st.warning("⚠️ Nhấn nút dưới đây sẽ ghi đè toàn bộ dữ liệu lên Google Sheets.")
-    if st.button("🌐 LƯU LÊN GOOGLE SHEETS", use_container_width=True):
+    st.warning("⚠️ Chú ý: Dữ liệu trên Google Sheets sẽ bị ghi đè bởi bảng hiện tại.")
+    if st.button("🌐 XÁC NHẬN LƯU LÊN CLOUD", use_container_width=True):
         try:
+            # Lưu dữ liệu lên trang tính PVD_Data
             conn.update(worksheet="PVD_Data", data=st.session_state.db)
-            st.success("✅ Đã đồng bộ thành công!")
+            st.success("✅ Đã đồng bộ thành công lên Google Sheets!")
         except Exception as e:
             st.error(f"Lỗi khi ghi dữ liệu: {e}")
 
@@ -85,7 +89,9 @@ def style_cells(v):
     if v == "CA": return 'color: #FFFFFF; font-weight: bold; background-color: #1B2631;'
     if v in st.session_state.list_gian: return 'color: #64FFDA; font-weight: bold; background-color: #112240;'
     styles = {"P": 'background-color: #F44336;', "S": 'background-color: #9C27B0;', "WS": 'background-color: #FFEB3B; color: black;'}
-    return styles.get(v, 'background-color: #0A192F;')
+    return styles.get(v, '')
 
-st.subheader("BẢNG TỔNG HỢP CHI TIẾT")
-st.dataframe(st.session_state.db.style.map(style_cells, subset=st.session_state.db.columns[3:]), use_container_width=True, height=600)
+st.subheader("BẢNG TỔNG HỢP CHI TIẾT THÁNG 02/2026")
+# Hiển thị bảng với màu sắc
+st.dataframe(st.session_state.db.style.map(style_cells, subset=st.session_state.db.columns[3:]), 
+             use_container_width=True, height=600)

@@ -7,7 +7,7 @@ from datetime import datetime, date
 # 1. Cấu hình trang
 st.set_page_config(page_title="PVD Management 2026", layout="wide", initial_sidebar_state="collapsed")
 
-# 2. KHỞI TẠO BỘ NHỚ
+# 2. KHỞI TẠO BỘ NHỚ TẠM (Lưu ý: Dữ liệu này sẽ mất khi load lại trang hoặc đổi thiết bị)
 if 'list_gian' not in st.session_state:
     st.session_state.list_gian = ["PVD I", "PVD II", "PVD III", "PVD VI", "PVD 11"]
 
@@ -29,7 +29,6 @@ if 'db' not in st.session_state:
     df['Chức danh'] = 'Kỹ sư'
     df['Công ty'] = 'PVD'
     for d in range(1, 29):
-        # ĐỂ TRỐNG MẶC ĐỊNH THAY VÌ "CA"
         df[get_col_name(d)] = "" 
     st.session_state.db = df
 
@@ -37,39 +36,12 @@ if 'db' not in st.session_state:
 st.markdown(
     """
     <style>
-    .stApp {
-        background-color: #0A192F !important;
-        color: #E6F1FF !important;
-    }
+    .stApp { background-color: #0A192F !important; color: #E6F1FF !important; }
     [data-testid="collapsedControl"] { display: none; }
-    .pvd-logo-fixed {
-        position: fixed;
-        top: 25px;
-        left: 20px;
-        z-index: 10000;
-        width: 225px;
-    }
-    .main .block-container {
-        padding-left: 290px; 
-        padding-right: 30px;
-    }
-    .main-header {
-        color: #64FFDA;
-        font-size: 32px;
-        font-weight: 800;
-        border-bottom: 2px solid #64FFDA;
-        padding-bottom: 10px;
-    }
-    .stTabs [aria-selected="true"] {
-        color: #64FFDA !important;
-        border-bottom-color: #64FFDA !important;
-    }
-    thead tr th {
-        background-color: #112240 !important;
-        color: #CCD6F6 !important;
-        white-space: pre-wrap !important;
-        border: 1px solid #233554 !important;
-    }
+    .pvd-logo-fixed { position: fixed; top: 25px; left: 20px; z-index: 10000; width: 225px; }
+    .main .block-container { padding-left: 290px; padding-right: 30px; }
+    .main-header { color: #64FFDA; font-size: 32px; font-weight: 800; border-bottom: 2px solid #64FFDA; padding-bottom: 10px; }
+    thead tr th { background-color: #112240 !important; color: #CCD6F6 !important; white-space: pre-wrap !important; border: 1px solid #233554 !important; }
     </style>
     """,
     unsafe_allow_html=True
@@ -80,27 +52,24 @@ try:
     st.image("logo_pvd.png", width=225)
     st.markdown('<div class="pvd-logo-fixed"></div>', unsafe_allow_html=True)
 except:
-    st.sidebar.error("Lỗi: Không tìm thấy file logo_pvd.png")
+    st.sidebar.error("Không thấy file logo_pvd.png")
 
 st.markdown("<div class='main-header'>PV DRILLING PERSONNEL MANAGEMENT 2026</div>", unsafe_allow_html=True)
 
-# 4. TABS CHỨC NĂNG
+# 4. TABS
 tab_rig, tab_info, tab_manage = st.tabs(["🚀 CHẤM CÔNG", "📝 HỒ SƠ", "🏗️ GIÀN"])
 
 with tab_rig:
     c1, c2, c3 = st.columns([2, 1.5, 1.5])
-    with c1:
-        sel_staff = st.multiselect("Nhân viên:", NAMES)
+    with c1: sel_staff = st.multiselect("Nhân viên:", NAMES)
     with c2:
         status_opt = st.selectbox("Trạng thái:", ["Đi Biển", "Nghỉ CA (CA)", "Làm Việc (WS)", "Nghỉ Phép (P)", "Nghỉ Ốm (S)"])
-        # Nếu chọn Nghỉ CA thì lưu là "CA", còn lại điền giá trị tương ứng
         if status_opt == "Đi Biển":
             final_val = st.selectbox("Giàn:", st.session_state.list_gian)
         elif status_opt == "Nghỉ CA (CA)":
             final_val = "CA"
         else:
             final_val = {"Làm Việc (WS)": "WS", "Nghỉ Phép (P)": "P", "Nghỉ Ốm (S)": "S"}[status_opt]
-            
     with c3:
         sel_dates = st.date_input("Chọn ngày:", value=(date(2026, 2, 1), date(2026, 2, 7)), min_value=date(2026, 2, 1), max_value=date(2026, 2, 28))
 
@@ -114,7 +83,7 @@ with tab_rig:
 
 with tab_info:
     c_staff, c_role, c_corp = st.columns([2, 1, 1])
-    with c_staff: i_staff = st.multiselect("Chọn nhân sự:", NAMES, key="info_staff_key")
+    with c_staff: i_staff = st.multiselect("Chọn nhân sự:", NAMES, key="info_k")
     with c_role: n_role = st.text_input("Chức danh:")
     with c_corp: n_corp = st.text_input("Đơn vị:")
     if st.button("💾 LƯU HỒ SƠ"):
@@ -136,22 +105,20 @@ with tab_manage:
             st.session_state.list_gian.remove(rig_del)
             st.rerun()
 
-# 5. HIỂN THỊ BẢNG (STYLE BLUE - ĐỂ TRỐNG Ô KHÔNG CÓ DỮ LIỆU)
+# 5. HIỂN THỊ BẢNG
 st.subheader("BẢNG TỔNG HỢP")
 
 def style_cells(val):
-    # Nếu ô trống thì không màu, nền tối theo app
-    if val == "":
-        return 'background-color: #0A192F;'
-    
-    # Nếu là các Giàn
+    if val == "": return 'background-color: #0A192F;'
     if val in st.session_state.list_gian:
         color = st.session_state.rig_colors.get(val, "#64FFDA")
         return f'color: {color}; font-weight: bold; background-color: #112240; border: 0.5px solid #233554;'
     
-    # Các trạng thái khác
+    # LÀM NỔI CHỮ CA
+    if val == "CA":
+        return 'color: #FFFFFF; font-weight: bold; background-color: #1B2631;' 
+    
     styles = {
-        "CA": 'color: #495670; background-color: #0A192F;', # Hiện chữ CA mờ nếu có
         "P": 'background-color: #F44336; color: white; font-weight: bold;',
         "S": 'background-color: #9C27B0; color: white; font-weight: bold;',
         "WS": 'background-color: #FFEB3B; color: #0A192F; font-weight: bold;'
@@ -160,14 +127,13 @@ def style_cells(val):
 
 cols = list(st.session_state.db.columns)
 df_display = st.session_state.db[[cols[0], 'Chức danh', 'Công ty'] + cols[3:]]
-
 st.dataframe(df_display.style.applymap(style_cells, subset=df_display.columns[3:]), use_container_width=True, height=650)
 
-# 6. XUẤT EXCEL
+# 6. XUẤT EXCEL (Đây là cách để bạn gửi file cho bạn mình xem dữ liệu chuẩn nhất hiện tại)
 def to_excel(df):
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df.to_excel(writer, index=False)
     return output.getvalue()
 
-st.download_button("📥 TẢI EXCEL", data=to_excel(st.session_state.db), file_name="PVD_Blue_Report.xlsx", use_container_width=True)
+st.download_button("📥 TẢI EXCEL GỬI ĐỒNG NGHIỆP", data=to_excel(st.session_state.db), file_name="PVD_Report.xlsx", use_container_width=True)

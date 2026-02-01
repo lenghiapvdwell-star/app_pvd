@@ -18,10 +18,12 @@ NAMES = ["Bùi Anh Phương", "Lê Thái Việt", "Lê Tùng Phong", "Nguyễn T
 
 # 3. Khởi tạo dữ liệu
 if 'db' not in st.session_state:
-    try:
-        # Tải dữ liệu từ tab PVD_Data trên Cloud
-        st.session_state.db = conn.read(worksheet="PVD_Data", ttl=0)
-    except:
+    # Thay đổi đoạn kết nối ở đầu file app_pvd.py
+try:
+    conn = st.connection("gsheets", type=GSheetsConnection)
+except Exception as e:
+    st.error("Chưa kết nối được Cloud. Vui lòng kiểm tra lại Secrets!")
+    st.stop()
         # Nếu chưa có, tạo mới
         df = pd.DataFrame({'Họ và Tên': NAMES, 'Chức danh': 'Kỹ sư', 'Công ty': 'PVD'})
         for d in range(1, 29): df[get_col_name(d)] = ""

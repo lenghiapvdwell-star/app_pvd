@@ -33,6 +33,7 @@ st.markdown("""
     html, body, [class*="css"] { font-size: 22px !important; }
     .main-title-text { font-size: 40px !important; font-weight: 900; color: #3b82f6; text-align: center; margin: 0; }
     div[data-testid="stDataEditor"] div { font-size: 20px !important; }
+    /* Giữ chuột để kéo */
     div[data-testid="stDataEditor"] > div:first-child { cursor: grab; }
     div[data-testid="stDataEditor"] > div:first-child:active { cursor: grabbing; }
     </style>
@@ -51,7 +52,7 @@ components.html("""
                 if(!isDown) return;
                 e.preventDefault();
                 const x = e.pageX - el.offsetLeft;
-                const walk = (x - startX) * 1.5;
+                const walk = (x - startX) * 2;
                 el.scrollLeft = scrollLeft - walk;
             });
             clearInterval(interval);
@@ -108,10 +109,13 @@ with tabs[2]:
         st.rerun()
     
     st.divider()
-    del_staff = st.selectbox("Chọn nhân viên cần xóa:", st.session_state.db['Họ and Tên'].tolist())
-    if st.button("XÓA NHÂN VIÊN", type="secondary"):
-        st.session_state.db = st.session_state.db[st.session_state.db['Họ và Tên'] != del_staff]
-        st.rerun()
+    # ĐÃ SỬA LỖI KEYERROR Ở ĐÂY: 'Họ và Tên' thay vì 'Họ and Tên'
+    staff_list = st.session_state.db['Họ và Tên'].tolist()
+    if staff_list:
+        del_staff = st.selectbox("Chọn nhân viên cần xóa:", staff_list)
+        if st.button("XÓA NHÂN VIÊN", type="secondary"):
+            st.session_state.db = st.session_state.db[st.session_state.db['Họ và Tên'] != del_staff]
+            st.rerun()
 
 # --- TAB GIÀN KHOAN ---
 with tabs[3]:
@@ -123,10 +127,11 @@ with tabs[3]:
             st.session_state.list_gian.append(new_g)
             st.rerun()
     with g2:
-        del_g = st.selectbox("Chọn giàn cần xóa:", st.session_state.list_gian)
-        if st.button("XÓA GIÀN"):
-            st.session_state.list_gian.remove(del_g)
-            st.rerun()
+        if st.session_state.list_gian:
+            del_g = st.selectbox("Chọn giàn cần xóa:", st.session_state.list_gian)
+            if st.button("XÓA GIÀN"):
+                st.session_state.list_gian.remove(del_g)
+                st.rerun()
 
 # 6. QUÉT SỐ DƯ
 st.markdown("---")
@@ -147,18 +152,21 @@ if st.button("🚀 QUÉT & CẬP NHẬT SỐ DƯ", type="primary", use_container
     st.session_state.db = df_tmp
     st.rerun()
 
-# 7. BẢNG TỔNG HỢP (MÀU SẮC GIÀN)
+# 7. BẢNG TỔNG HỢP (Màu sắc tự động)
 st.write("### 📊 BẢNG TỔNG HỢP NHÂN SỰ")
 date_cols = [c for c in st.session_state.db.columns if "/Feb" in c]
 display_order = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Nghỉ Ca Còn Lại', 'Job Detail'] + date_cols
 
-# Cấu hình màu sắc tag cho từng giàn
+# Thiết lập bảng để mỗi giàn hiện màu tag khác nhau
 options = st.session_state.list_gian + ["CA", "WS", "NP"]
 col_cfg = {
+    "STT": st.column_config.NumberColumn(width="small"),
     "Nghỉ Ca Còn Lại": st.column_config.NumberColumn(format="%.1f", width="small"),
-    "Job Detail": st.column_config.TextColumn(width="large")
+    "Job Detail": st.column_config.TextColumn(width="large"),
 }
+
 for c in date_cols:
+    # Streamlit tự gán màu khác nhau cho từng option trong SelectboxColumn
     col_cfg[c] = st.column_config.SelectboxColumn(width="small", options=options)
 
 st.session_state.db = st.data_editor(

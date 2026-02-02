@@ -9,7 +9,7 @@ st.set_page_config(page_title="PVD Crew Dispatch Pro", layout="wide", page_icon=
 # --- LOGO & TIÊU ĐỀ ---
 col_logo, col_title = st.columns([1, 6])
 with col_logo:
-    # Sử dụng link raw từ GitHub của bạn để hiển thị ảnh
+    # Link Raw Logo của bạn
     logo_url = "https://raw.githubusercontent.com/lenghiapvdwell-star/app_pvd/main/424911181_712854060938641_6819448166542158882_n.jpg"
     st.image(logo_url, width=150)
 
@@ -31,87 +31,78 @@ def calculate_pvd_off_days(start_date, end_date):
     if not start_date or not end_date: return 0
     total_off = 0.0
     current = start_date
-    # Danh sách nghỉ Tết 2026 (M1 - M5 âm lịch)
-    tet_2026 = [datetime(2026, 2, 17), datetime(2026, 2, 18), datetime(2026, 2, 19), datetime(2026, 2, 20), datetime(2026, 2, 21)]
+    # Tết 2026: M1-M5 (17/02 - 21/02)
+    tet_2026 = [datetime(2026, 2, 17).date(), datetime(2026, 2, 18).date(), 
+                datetime(2026, 2, 19).date(), datetime(2026, 2, 20).date(), datetime(2026, 2, 21).date()]
     
     while current <= end_date:
-        if current in tet_2026: total_off += 2.0 # Tết x2
-        elif current.weekday() == 5 or current.weekday() == 6: total_off += 1.0 # T7, CN x1
-        else: total_off += 0.5 # Ngày thường x0.5
+        if current in tet_2026: total_off += 2.0
+        elif current.weekday() >= 5: total_off += 1.0 # T7, CN
+        else: total_off += 0.5 # Ngày thường
         current += timedelta(days=1)
     return total_off
 
 # --- GIAO DIỆN TABS ---
-tab1, tab2, tab3, tab4 = st.tabs(["🆕 ĐIỀU ĐỘNG MỚI", "📅 LỊCH TRÌNH BIỂN", "📊 DỮ LIỆU TỔNG", "⚙️ QUẢN LÝ"])
+tab1, tab2, tab3 = st.tabs(["🆕 ĐIỀU ĐỘNG & TÍNH PHIÊN", "📅 LỊCH TRÌNH BIỂN", "📊 DỮ LIỆU TỔNG"])
 
 with tab1:
-    st.subheader("📝 Cập nhật Job Detail")
-    with st.form("dispatch_form", clear_on_submit=True):
+    st.subheader("📝 Công cụ tính & Nhập liệu Cloud")
+    
+    # Khối tính toán nhanh (Dùng st.container thay vì st.form để tránh lỗi Submit button)
+    with st.container(border=True):
         c1, c2, c3 = st.columns(3)
         with c1:
-            name = st.selectbox("Nhân viên", STAFF_LIST)
-            rig_name = st.selectbox("Tên Giàn", RIG_LIST)
+            name = st.selectbox("Chọn nhân viên", STAFF_LIST)
+            rig_name = st.selectbox("Chọn Giàn", RIG_LIST)
         with c2:
             d_start = st.date_input("Ngày đi biển", datetime.now())
             d_end = st.date_input("Ngày về dự kiến", datetime.now() + timedelta(days=14))
         with c3:
             off_res = calculate_pvd_off_days(d_start, d_end)
-            st.metric("Nghỉ phiên dự kiến", f"{off_res} ngày")
-        
-        st.info("Sau khi nhập xong, vui lòng gửi dữ liệu qua Form bên dưới để lưu Cloud.")
-        st.components.v1.iframe(st.secrets["form_url"], height=400)
+            st.metric("Số ngày nghỉ phiên", f"{off_res} ngày")
+            st.caption("Ghi chú: T2-T6 (0.5), T7-CN (1.0), Tết (2.0)")
+
+    st.markdown("---")
+    st.write("👇 **BƯỚC 2: ĐIỀN THÔNG TIN VÀO FORM DƯỚI ĐÂY ĐỂ LƯU**")
+    
+    # Kiểm tra Key form_url trước khi hiển thị
+    if "form_url" in st.secrets:
+        st.components.v1.iframe(st.secrets["form_url"], height=600, scrolling=True)
+    else:
+        st.error("Lỗi: Chưa tìm thấy 'form_url' trong Secrets của Streamlit.")
 
 with tab2:
     st.subheader("📅 Theo dõi lịch trình biển (14 ngày tới)")
-    
-    # Tạo Header ngày tháng 01/Feb + Thứ
-    today = datetime.now()
+    today = datetime.now().date()
     dates = [today + timedelta(days=i) for i in range(14)]
     
-    # Thiết kế bảng lịch trình
-    cols = st.columns([2] + [1]*14)
+    cols = st.columns([1.5] + [1]*14)
     cols[0].write("**Nhân sự**")
     for i, d in enumerate(dates):
         d_str = d.strftime("%d/%b")
         w_str = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"][d.weekday()]
-        cols[i+1].markdown(f"<div style='text-align:center; font-size:12px;'><b>{d_str}</b><br>{w_str}</div>", unsafe_allow_html=True)
+        cols[i+1].markdown(f"<div style='text-align:center; font-size:11px;'><b>{d_str}</b><br>{w_str}</div>", unsafe_allow_html=True)
     
     st.divider()
-    
-    # Giả lập dữ liệu hiển thị (Sau này sẽ đọc từ Sheet)
     for staff in STAFF_LIST:
-        r_cols = st.columns([2] + [1]*14)
-        r_cols[0].write(f"👤 {staff}")
-        
-        # Logic tô màu: Nếu nhân viên đang ở giàn (giả lập)
-        current_rig = "PVD I" if staff == "Bùi Anh Phong" else "PVD VI"
-        color = RIG_COLORS.get(current_rig, "#EEE")
-        
-        for i in range(1, 15):
-            # Hiển thị giàn khoan theo màu sắc trong 7 ngày đầu
-            if i <= 7:
-                r_cols[i].markdown(f"<div style='background-color:{color}; color:white; font-size:10px; text-align:center; border-radius:4px; padding:2px;'>{current_rig}</div>", unsafe_allow_html=True)
+        r_cols = st.columns([1.5] + [1]*14)
+        r_cols[0].write(f"👷 {staff}")
+        # Giả lập màu sắc (Sau này kết nối data thật từ Sheet)
+        color = RIG_COLORS["PVD I"] if staff == "Bùi Anh Phong" else RIG_COLORS["PVD VI"]
+        for i in range(1, 8): # Giả lập 7 ngày đang đi biển
+            r_cols[i].markdown(f"<div style='background-color:{color}; color:white; font-size:10px; text-align:center; border-radius:4px; padding:2px;'>ON</div>", unsafe_allow_html=True)
 
 with tab3:
-    st.subheader("📊 Dữ liệu tổng hợp từ Google Sheets")
-    if st.button("🔄 Làm mới dữ liệu Cloud"):
+    st.subheader("📊 Dữ liệu tổng hợp từ Cloud")
+    if st.button("🔄 Làm mới dữ liệu từ Google Sheets"):
         st.cache_data.clear()
         st.rerun()
     
-    try:
-        df = pd.read_csv(st.secrets["sheet_url"] + "&cache_bust=" + str(time.time()))
-        st.dataframe(df, use_container_width=True, hide_index=True)
-    except:
-        st.warning("Đang kết nối dữ liệu...")
-
-with tab4:
-    st.subheader("⚙️ Quản lý danh sách")
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.write("**Danh sách Giàn Khoan**")
-        for r in RIG_LIST:
-            st.text(f"🏗️ {r}")
-    with col_b:
-        st.write("**Danh sách Nhân sự**")
-        for s in STAFF_LIST:
-            st.text(f"👷 {s}")
+    if "sheet_url" in st.secrets:
+        try:
+            df = pd.read_csv(st.secrets["sheet_url"] + "&cache_bust=" + str(time.time()))
+            st.dataframe(df, use_container_width=True, hide_index=True)
+        except:
+            st.warning("Đang kết nối dữ liệu hoặc Sheet đang trống...")
+    else:
+        st.error("Thiếu link 'sheet_url' trong Secrets.")

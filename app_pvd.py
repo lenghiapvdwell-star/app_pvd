@@ -6,13 +6,12 @@ from datetime import datetime, date
 # 1. CẤU HÌNH TRANG
 st.set_page_config(page_title="PVD Personnel Management 2026", layout="wide")
 
-# Hàm tạo tên cột ngày tháng
 def get_col_name(day):
     d = date(2026, 2, day)
     days_vn = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
     return f"{day:02d}/Feb {days_vn[d.weekday()]}"
 
-# 2. KHỞI TẠO DANH SÁCH 64 NHÂN VIÊN
+# 2. KHỞI TẠO DỮ LIỆU
 NAMES = [
     "Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang",
     "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong",
@@ -45,101 +44,52 @@ if 'db' not in st.session_state:
         df[get_col_name(d)] = ""
     st.session_state.db = df
 
-# 3. CSS TỔNG THỂ (CHỮ TO 1.5X & LOGO TRÁI)
+# 3. CSS (CHỮ TO & GIAO DIỆN)
 st.markdown("""
     <style>
     .stApp { background-color: #0E1117; color: #FFFFFF; }
-    html, body, [class*="css"] { font-size: 20px !important; }
-    label { font-size: 24px !important; font-weight: bold !important; color: #3b82f6 !important; }
-    .stButton>button { font-size: 22px !important; font-weight: bold; border-radius: 10px; height: 3em; }
+    html, body, [class*="css"] { font-size: 18px !important; }
     .main-title-text {
-        font-size: 50px !important; font-weight: 900 !important; color: #3b82f6; 
-        text-transform: uppercase; text-align: center; line-height: 1.1; margin: 0;
+        font-size: 45px !important; font-weight: 900 !important; color: #3b82f6; 
+        text-transform: uppercase; text-align: center; margin: 0;
     }
-    .stTabs [data-baseweb="tab"] { font-size: 24px !important; height: 60px !important; font-weight: bold !important; }
+    /* Tối ưu hóa vùng cuộn cho Data Editor */
+    div[data-testid="stDataEditor"] > div {
+        overflow-x: auto !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
 # 4. HEADER
 h_col1, h_col2, h_col3 = st.columns([2, 6, 2])
 with h_col1:
-    try: st.image("logo_pvd.png", width=200)
-    except: st.write("### PVD LOGO")
+    try: st.image("logo_pvd.png", width=180)
+    except: st.write("### PVD")
 with h_col2:
     st.markdown('<p class="main-title-text">HỆ THỐNG ĐIỀU PHỐI<br>NHÂN SỰ PVD 2026</p>', unsafe_allow_html=True)
 
-# 5. CÁC TABS CHỨC NĂNG
-tabs = st.tabs(["🚀 ĐIỀU ĐỘNG", "📝 JOB DETAIL", "👤 NHÂN VIÊN", "✍️ SỬA TAY", "🏗️ GIÀN KHOAN"])
+# 5. TABS
+tabs = st.tabs(["🚀 ĐIỀU ĐỘNG", "📝 JOB DETAIL", "👤 NHÂN VIÊN", "🏗️ GIÀN KHOAN"])
 
-# --- TAB ĐIỀU ĐỘNG ---
-with tabs[0]:
+with tabs[0]: # Điều động
     c1, c2, c3 = st.columns([2, 1, 1.5])
     sel_staff = c1.multiselect("CHỌN NHÂN VIÊN:", st.session_state.db['Họ và Tên'].tolist())
     status = c2.selectbox("TRẠNG THÁI:", ["Đi Biển", "Nghỉ Ca (CA)", "Làm Xưởng (WS)", "Nghỉ Phép (NP)"])
     val_to_fill = c2.selectbox("CHỌN GIÀN:", st.session_state.list_gian) if status == "Đi Biển" else ({"Nghỉ Ca (CA)": "CA", "Làm Xưởng (WS)": "WS", "Nghỉ Phép (NP)": "NP"}.get(status))
     dates = c3.date_input("KHOẢNG NGÀY:", value=(date(2026, 2, 1), date(2026, 2, 2)))
-    if st.button("XÁC NHẬN CẬP NHẬT"):
+    if st.button("XÁC NHẬN"):
         if isinstance(dates, tuple) and len(dates) == 2:
             for d in range(dates[0].day, dates[1].day + 1):
                 col = get_col_name(d)
                 st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(sel_staff), col] = val_to_fill
             st.rerun()
 
-# --- TAB JOB DETAIL ---
-with tabs[1]:
-    st.subheader("📝 Cập nhật nội dung công việc")
-    with st.form("job_form"):
-        sel_job_staff = st.multiselect("Chọn nhân viên:", st.session_state.db['Họ và Tên'].tolist())
-        job_text = st.text_area("Nội dung công việc:")
-        if st.form_submit_button("LƯU JOB"):
-            if sel_job_staff:
-                st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(sel_job_staff), 'Job Detail'] = job_text
-                st.success("Đã lưu thành công!")
-                st.rerun()
-
-# --- TAB NHÂN VIÊN ---
-with tabs[2]:
-    with st.form("add_staff"):
-        n_name = st.text_input("Họ và Tên mới:")
-        n_cty = st.text_input("Tên Công ty:", value="PVD")
-        n_pos = st.text_input("Chức danh:", value="Kỹ sư")
-        if st.form_submit_button("LƯU NHÂN VIÊN"):
-            new_row = {
-                'STT': len(st.session_state.db) + 1, 
-                'Họ và Tên': n_name, 
-                'Công ty': n_cty, 
-                'Chức danh': n_pos, 
-                'Nghỉ Ca Còn Lại': 0.0,
-                'Job Detail': ''
-            }
-            for d in range(1, 29): new_row[get_col_name(d)] = ""
-            st.session_state.db = pd.concat([st.session_state.db, pd.DataFrame([new_row])], ignore_index=True)
-            st.rerun()
-
-# --- TAB SỬA TAY (Tích hợp thêm chức năng sửa nhanh) ---
-with tabs[3]:
-    st.info("💡 Bạn có thể sửa trực tiếp mọi thông tin ở bảng bên dưới và nhấn CHỐT DỮ LIỆU.")
-    edited_df = st.data_editor(st.session_state.db, use_container_width=True, height=600)
-    if st.button("CHỐT DỮ LIỆU ĐÃ SỬA"):
-        st.session_state.db = edited_df
-        st.rerun()
-
-# --- TAB GIÀN KHOAN ---
-with tabs[4]:
-    g1, g2 = st.columns(2)
-    with g1:
-        new_g = st.text_input("Tên giàn mới")
-        if st.button("THÊM GIÀN"): st.session_state.list_gian.append(new_g); st.rerun()
-    with g2:
-        del_g = st.selectbox("Xóa giàn", st.session_state.list_gian)
-        if st.button("XÓA GIÀN"): st.session_state.list_gian.remove(del_g); st.rerun()
-
-# 6. KHU VỰC QUÉT SỐ DƯ (GÓC TRÁI)
+# 6. NÚT QUÉT SỐ DƯ (GÓC TRÁI)
 st.markdown("---")
-col_scan, col_save = st.columns([1.5, 3])
+col_scan, _ = st.columns([1.5, 3])
 with col_scan:
     if st.button("🚀 QUÉT & CẬP NHẬT SỐ DƯ", type="primary", use_container_width=True):
-        ngay_le_tet = [17, 18, 19, 20, 21] 
+        ngay_le_tet = [17, 18, 19, 20, 21] # Lễ Tết tháng 2/2026
         df_tmp = st.session_state.db.copy()
         for index, row in df_tmp.iterrows():
             balance = 0.0
@@ -147,37 +97,48 @@ with col_scan:
                 col = get_col_name(d)
                 val = row[col]
                 d_obj = date(2026, 2, d)
-                is_weekend = d_obj.weekday() >= 5
+                is_weekend = d_obj.weekday() >= 5 # T7, CN
                 is_holiday = d in ngay_le_tet
                 
+                # CỘNG: Khi đi biển
                 if val in st.session_state.list_gian:
                     if is_holiday: balance += 2.0
                     elif is_weekend: balance += 1.0
                     else: balance += 0.5
+                
+                # TRỪ: Chỉ khi là CA và KHÔNG PHẢI ngày nghỉ/lễ
                 elif val == "CA":
                     if not is_weekend and not is_holiday:
                         balance -= 1.0
+                
+                # KHÔNG ĐỔI: Nếu là WS hoặc NP hoặc để trống
+                else:
+                    pass
+                    
             df_tmp.at[index, 'Nghỉ Ca Còn Lại'] = round(balance, 1)
         st.session_state.db = df_tmp
-        st.success("Đã cập nhật số dư thành công!")
+        st.success("Đã tính toán xong số dư ca!")
         st.rerun()
 
-# 7. HIỂN THỊ BẢNG TỔNG HỢP (CHỈNH SỬA TRỰC TIẾP)
-# Đưa Công ty và Chức danh ra bảng hiển thị
+# 7. BẢNG TỔNG HỢP (Kéo ngang/dọc & Sửa trực tiếp)
+st.subheader("📊 BẢNG TỔNG HỢP NHÂN SỰ (Cho phép sửa tay & kéo cuộn)")
 date_cols = [c for c in st.session_state.db.columns if "/Feb" in c]
 display_order = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Nghỉ Ca Còn Lại', 'Job Detail'] + date_cols
 
-# Sử dụng data_editor để bạn có thể sửa tay ngay tại bảng chính
-st.subheader("📊 BẢNG TỔNG HỢP NHÂN SỰ")
-st.session_state.db = st.data_editor(
+# Lưu lại thay đổi từ bảng editor
+edited_db = st.data_editor(
     st.session_state.db[display_order], 
     use_container_width=True, 
-    height=800,
-    disabled=['STT', 'Nghỉ Ca Còn Lại'] # Không cho sửa STT và Số dư vì hệ thống tự tính
+    height=600,
+    disabled=['STT', 'Nghỉ Ca Còn Lại'] # Hệ thống tự quản lý 2 cột này
 )
+
+# Cập nhật ngược lại vào session_state khi người dùng sửa tay
+if not edited_db.equals(st.session_state.db[display_order]):
+    st.session_state.db.update(edited_df)
 
 # 8. XUẤT EXCEL
 output = BytesIO()
 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
     st.session_state.db.to_excel(writer, index=False)
-st.download_button("📥 XUẤT BÁO CÁO EXCEL", data=output.getvalue(), file_name="PVD_Report_2026.xlsx")
+st.download_button("📥 XUẤT BÁO CÁO", data=output.getvalue(), file_name="PVD_Report.xlsx")

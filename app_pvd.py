@@ -2,45 +2,72 @@ import streamlit as st
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
-import base64
-import json
 
 # 1. Cấu hình trang
 st.set_page_config(page_title="PVD Personnel 2026", layout="wide")
 
-# 2. Giải mã thông tin tài khoản (Dứt điểm lỗi PEM/Ký tự lạ)
-# Chuỗi này đã được mã hóa an toàn, không chứa ký tự xuống dòng gây lỗi
-encoded_creds = "eyJ0eXBlIjogInNlcnZpY2VfYWNjb3VudCIsICJwcm9qZWN0X2lkIjogInB2ZC1tYW5hZ2VtZW50LTg3IiwgInByaXZhdGVfa2V5X2lkIjogImVmMzE1ZGRjNDFjNTIwMzRlNmYzODk3Njk0YThhZjYzZGUzYzBmZGQiLCAicHJpdmF0ZV9rZXkiOiAiLS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tXG5NSUlFdlFJQkFEQU5CZ2txaGtpRzl3MEJBUUVGQUFTQ0JLY3dnZ1NqQWdFQUFvSUJBUURIcTdxSXlTY0ZMMTJqXG4yUzhkdUErTXB4b2tjOWZwdWxMZkhtVWRPSUJ1WmMyMk1sZ3JsMi9SbGp4MSt0OUFCdEJTUmFza25mY3k4VFRsXG54WWRuNm1Jd0lCcnowMGpvdWdEdnJEYkNSdFUra1VQVGRJUWkyQ3dmekhPMGtkVmxETmpYSE9mYXEwWU5yQ2NmXG4yZjNVYjRRNy9ZcE5OTW5wQ2Q2KzQ1bk9rR1pRNGd6K0xIMzZmVEdSOW9UZm1PbklaNG8wc3RIeU8wSXB3aDFoXG52OUtMUUFvTUJtTGo4aDdVQVhGRkxiekJGOXlBWHN6QzNDazYxMUE3SzczTkRaRlRsRUNnSFNiRFFTZHVQSFFRXG5MODhNUVc1Q01LSi9wVzljQ3V3REhWQVJUbzJGQmJrQjFkbERBc1pBUlcvNmQxNU9pY2FORVor दादी ZFZMcXQrUjZvQXpBZ01CQUFFQ2dnRUFKMGlME5JRk8rZ2d0cGpUdXZpd2Vjdy9WWnVLYjBsSmtSNTJWUzBCNGxEL1hcblQwZHNiaGNuK3RaU0l1d3V6RXdLNUlUc2ZSSE9OdWlaL2JMMVJ3Nm9Mc3ZDS0pPdlBwYUo1SjIvVUUzYldwRFAXG5CVVZoTWZIU0RKZVBGREcxQ0dLVXJ3M3kxK1RtclgzM1hKN28vOGpJL1h5T24wNEpZNTM3Z3hjSWhjbUhOOVpJXG50T1hEYStlWWUxeUo1RUFOS0ZWbmQvM0dUUndpcjB3N1p2QjRCYTZjTDRIZDJkWF0veHY2OWprTXdLL25iN3FiXG5uZXRGMXRtbFV4VGpuRUZIQStrMFpJekNWTnk0S1VnNDR5RG1xWHlUUXNsTkh4S2RIZFhpYTBNUjR2VDBsdVNPXG5GZnRMeU83OTdvbStxdVdNajRpN0xrc0tWVTlFWW1sSE45WkRHR0Z4Z1FLQmdRRG9VUkRqMnBGaTc4S3BrOWk0XG5IOU52QXI1L2xvMnJsR3ZBYnQ1NXFkckhHYnZld2pMSUQ4V0ZSUmdSTGYyUm5pT1RaUnR6ck5GVGUzQUlXbGp2XG5sRTdoeElwblJXallvTUxrTGJPWDNKaWFoWnlrN1kyZDBSKzBubkpNTWlxSXRJbXM3VFNrRmlob05ySEdsXG5QNVY5Z1M5UG1ieTdkSkFRRGswcFJLYzRvUUtCZ1FEY0JxNDlJbHpqbEtSSk1XemJtay9rSWJCRjllV1V4SmppXG5Ec3crTVlPNGNQWTY2WEkvOWNiOG5WZVREclZ4cS9XQldrSzU5Nmh1VE82WjZFM2hqNkRjRkRjZ2lXdUxqekNyXG5TYkFJTzUxTkhROWFFNmUyaHRYc3NadnQyZFNvUU5temwyRVFIS1I3UjlLd21zcStrOHVhSzZoNG5YZXhRV1VkXG5XeEoxOXlrVXdLQmdHVk0zQUdQRC9CRlBldTExVDFNVzJTL25KT0Q4WmlNcW9PSmxLY1dncGhveHp2MkVXQ2VcbmQvR0oxRm5CWlIwM0NLby8zejJNY09abkg4MzBuMjB4UExvNVJwa3dydnZEZytaVjBiOUlEV3B4QlNES0Q2R05cbi5sR2Q4blpQUG1PUmZOS1c5bks1b1ZNMVF5WFowdUJNbm9IUWIvSFV4ckF5dnBMUnVhR3lGdnloQW9HQUcwRWdcbm1DWUg1RkVBR1VFN1BiaWFvblp4U2s2ZFFFZHZkMVdZM2pTcmlnZjkvNjdQMU8xcl9PdDFJNDY0RWZDczNEXG5GVlllSVB1YW1xbng2N3pVMmk0TzNoTG5wWFA5UHc1MVJhL012bDZaSmpsRkR4RUlzcmNVOEx1STRnYVdjTzZSXG5jV042NUdKek1Ma2I0QnVDbndoRmlCdEpWV1paZHRkdkJyM1Z3RTBDZ1lFQTU5a1NXR1Vxcm9KcnQ2SERtVFhJXG5iemhodE1acjNGZUs5U254eEM2VmRDZ2xPTlRQTVhSa2k5MHRiRmJLNHNYeWpHbnJHZk9vbE1DVitkMWpma1RXVlxuNi9pTThJaFNFTkU3VzZVNnNUY1RBaEpoN3BaU0h0NUVKOVZ4M1pnSldUb0UzbGV5U0RNUHlPK1E4NS9lbnlvXG5JQTVkbEZWdjNxUVVUdFBGOWVSRVVjPQotLS0tLUVORCBQUklWQVRFIEtFWS0tLS0tXG4iLCAiY2xpZW50X2VtYWlsIjogInB2ZC1zeW5jQHB2ZC1tYW5hZ2VtZW50LTg3LmlhbS5nc2VydmljZWFjY291bnQuY29tIiwgImNsaWVudF9pZCI6ICIxMDExNDk1NzI5Mjk1MTQ1NjA5NTMiLCAiYXV0aF91cmkiOiAiaHR0cHM6Ly9hY2NvdW50cy5nb29nbGUuY29tL28vb2F1dGgyL2F1dGgiLCAidG9rZW5fdXJpIjogImh0dHBzOi8vb2F1dGgyLmdvb2dsZWFwaXMuY29tL3Rva2VuIiwgImF1dGhfcHJvdmlkZXJfeDUwOV9jZXJ0X3VybCI6ICJodHRwczovL3d3dy5nb29nbGVhcGlzLmNvbS9vYXV0aDIvdjEvY2VydHMiLCAiY2xpZW50X3g1MDlfY2VydF91cmwiOiAiaHR0cHM6Ly93d3cuZ29vZ2xlYXBpcy5jb20vcm9ib3QvdjEvbWV0YWRhdGEveDUwOS9wdmQtc3luYyU0MHB2ZC1tYW5hZ2VtZW50LTg3LmlhbS5nc2VydmljZWFjY291bnQuY29tIn0="
+# 2. Khai báo thông tin tài khoản trực tiếp (Dạng tối giản)
+# Đây là cách bền bỉ nhất, không phụ thuộc vào Secrets hay Base64
+PK = "-----BEGIN PRIVATE KEY-----\n" + \
+     "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDHq7qIyScFL12j\n" + \
+     "2S8duA+Mpxokc9fpulLfHmUdOIBuZc22Mlgrl2/Rljx1+t9ABtBSRasknfcy8TTl\n" + \
+     "xYdn6mIwIBpz00jougDvrDbCRtU+EUPTdIQi2CwfzHO0kdVlDNjXHOfaq0YNrCcf\n" + \
+     "2f3Ub4Q7/YpNNMnpCd6+45nOkGZQ4gz+LH36fTGR9oTfmOnIZ4o0stHyO0Ipwh1h\n" + \
+     "v9KLQAoMBmLj8h7UAxFFLbIzBF9yAXszC3k611A7K73NDZFTlECgHSbDQSduPHUQ\n" + \
+     "L8HfMQW5CMkJ/pW9cCuwDHVARTo2GBbkB1dlDAsZARW/6d15OicaNEZ+yoQsCzVL\n" + \
+     "xt+r6oAzAgMBAAECggEAJ0i0NIFO+ggtpjTuviwecw/VZuKb0lJkR52VS0B4lD/X\n" + \
+     "T0dsbXcn+tZSIuwuzEwK5ITsfRHPNuiZ/bL1Rw6oLsvCKJOjPpaJ5J2/UE3bWpDP\n" + \
+     "BWVhMfHSDJePFDG1CGKUrw3y1+TmrX33XJ7o/8jI/XyOn04Jg537gxcIhcmHN9ZI\n" + \
+     "tOXDa+eYe1yJ5EANKFVnd/3GTRwir0w7ZvB4Ba6cL4HD2dXM/xv69jkMwK/nb7qb\n" + \
+     "netF1tmlUxTjnEFHAkl0ZIzCVNy4KUg44yDmqXyTQslNHxKdHdXia0MR4vT0luSO\n" + \
+     "FftLyO797om+quWGj4i7LksKVU9EYmlHN9ZDGDFxgQKBgQDoURDj2pFi78Kpk9i4\n" + \
+     "H9NvAr5/lo2rlGvAbt55qdrHGbvewjLID8WFRRgRLf2RniOTZRtzrNFTe3AIWljv\n" + \
+     "leE7hxIpnRWjYEoMLkLbOX3JiahZyk7Y2d0R+0nmJNMiqItIms7TSkFihOhnrHGl\n" + \
+     "P5V9gS9Pmby7dJAQDk0pRKc4oQKBgQDcBq49IlzjlKRJMWzbmk/kIbBf9eWUxJyi\n" + \
+     "Dsw+MYO4cPY6XI/9cb8nVeTjLdVxq/WBWKk596huTO6Z6E3hj6DcFDcgiWuLjzCr\n" + \
+     "SbAIO51NHQ9aE6e2htXssZft2dSoQNmzl2EQHKR7R9Kwmsq+k8uaK6h4nXexQWUd\n" + \
+     "WxGJ9eykUwKBgGVM3AGPD/BFPeu11T1MW2S/nJOD8ZiMqoOJlKcWgphoxzv2EDCe\n" + \
+     "nd/GJ1FnBZR03CKo/3z2McOZnH830n20xPLo5RpkwrvvDg+ZV0b9IDWpxBSDKD6GN\n" + \
+     "NlGd8nZRPmORfNKW9nK5oVM1QyXZ0uBMnoHQb/HUxrAyvpLRuaGyFvyhAoGAG0Eg\n" + \
+     "mCYHh5FEAGUE7PbiaonZxSk6dQEdvd1DY3jSrigf9/67P1O1r/Ot1I464EfCs3D+\n" + \
+     "FVYeIPuamqnx67zU2i4O3hLnpXPpPW51Ra/Mvl6ZJjlFDxEIsrcU8LuI4gaWcO6R\n" + \
+     "cWN65GJzMLkb4BuCnuhFiBtJVkWZdtdvBr3VwE0CgYEA59kSWGUqroJrt6HDmTXI\n" + \
+     "izhhtMZr3FeK9SnxxC6VdCglONTPMXRk90tbFbK4sXyjGnrGfOolMCV+d1jfkTWf\n" + \
+     "6/iM8IhSENE7W6U6sTcTAhJh7tZSHt5EJ9V83ZgJWToE3leySDMPyO+Q85/enyoq\n" + \
+     "IA5dlFVv3qQUTFtPG9REUuc=\n" + \
+     "-----END PRIVATE KEY-----\n"
 
-@st.cache_resource
-def get_authenticated_client():
-    # Giải mã Base64 sang JSON
-    decoded_bytes = base64.b64decode(encoded_creds)
-    creds_dict = json.loads(decoded_bytes)
-    # Xử lý ký tự xuống dòng thực tế
-    creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
-    
-    scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-    return gspread.authorize(credentials)
+cred_dict = {
+    "type": "service_account",
+    "project_id": "pvd-management-87",
+    "private_key_id": "ef315ddc41c52034e6f3897694a8af63de3c0fdd",
+    "private_key": PK,
+    "client_email": "pvd-sync@pvd-management-87.iam.gserviceaccount.com",
+    "token_uri": "https://oauth2.googleapis.com/token",
+}
 
-# 3. Giao diện và Đọc dữ liệu
+# 3. Kết nối và Hiển thị
 st.title("PVD PERSONNEL CLOUD 2026")
 
+@st.cache_resource
+def connect_to_gsheet():
+    scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+    creds = Credentials.from_service_account_info(cred_dict, scopes=scopes)
+    return gspread.authorize(creds)
+
 try:
-    client = get_authenticated_client()
-    # Mở bằng ID file đã biết
+    client = connect_to_gsheet()
+    # Mở bằng ID file chính xác
     spreadsheet_id = "1mNVM-Gq6JkF41Yz7JDRiiLtWOtoQHnXwyp3LTRGt-2E"
     sheet = client.open_by_key(spreadsheet_id)
     worksheet = sheet.worksheet("PVD_Data")
     
-    # Đọc dữ liệu
-    records = worksheet.get_all_records()
-    df = pd.DataFrame(records)
+    # Đọc dữ liệu chuyển thành DataFrame
+    df = pd.DataFrame(worksheet.get_all_records())
     
-    st.success("🚀 KẾT NỐI CLOUD THÀNH CÔNG!")
+    st.success("✅ ĐÃ KẾT NỐI VỚI DỮ LIỆU ĐÁM MÂY!")
     st.dataframe(df, use_container_width=True)
 
 except Exception as e:
     st.error(f"❌ LỖI: {e}")
-    st.info("Kiểm tra xem tên Tab có đúng là 'PVD_Data' không.")
+    st.info("Hãy kiểm tra lại tên Tab trong Google Sheet (phải là PVD_Data).")

@@ -5,7 +5,7 @@ from datetime import datetime, date
 import streamlit.components.v1 as components
 
 # 1. CẤU HÌNH TRANG
-st.set_page_config(page_title="PVD Management", layout="wide")
+st.set_page_config(page_title="PVD Management 2026", layout="wide")
 
 def get_col_name(day):
     d = date(2026, 2, day)
@@ -41,23 +41,30 @@ if 'db' not in st.session_state:
     for d in range(1, 29): df[get_col_name(d)] = ""
     st.session_state.db = df
 
-# 3. CSS TINH GỌN & MÀU SẮC (Chữ nhỏ 14px)
+# 3. CSS & JS (PHÔNG CHỮ TO 1.5x & KHUNG NHỎ GỌN)
 st.markdown("""
     <style>
     .stApp { background-color: #0E1117; color: #FFFFFF; }
-    html, body, [class*="css"] { font-size: 14px !important; }
-    .main-title-text { font-size: 30px !important; font-weight: 800; color: #3b82f6; text-align: center; margin: 0; }
     
-    /* Hiệu ứng cầm tay để kéo bảng */
+    /* Phông chữ toàn bộ to lên 1.5 lần (~24px) */
+    html, body, [class*="css"], .stMarkdown { font-size: 22px !important; }
+    
+    /* Header và Tab vẫn giữ sự nổi bật */
+    .main-title-text { font-size: 45px !important; font-weight: 900; color: #3b82f6; text-align: center; }
+    
+    /* Tinh chỉnh bảng st.data_editor: Chữ bên trong bảng to lên */
+    div[data-testid="stDataEditor"] div { font-size: 20px !important; }
+    
+    /* Hiệu ứng kéo chuột */
     div[data-testid="stDataEditor"] > div:first-child { cursor: grab; }
     div[data-testid="stDataEditor"] > div:first-child:active { cursor: grabbing; }
     
-    /* Thu nhỏ khoảng cách giữa các thành phần */
-    .block-container { padding-top: 1rem !important; padding-bottom: 0rem !important; }
+    /* Thu hẹp khoảng cách lề để tiết kiệm không gian */
+    .block-container { padding-top: 1.5rem !important; padding-bottom: 1rem !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# JS hỗ trợ kéo chuột trái để cuộn ngang bảng
+# JS giúp giữ chuột trái kéo bảng
 components.html("""
 <script>
     const interval = setInterval(() => {
@@ -71,7 +78,7 @@ components.html("""
                 if(!isDown) return;
                 e.preventDefault();
                 const x = e.pageX - el.offsetLeft;
-                const walk = (x - startX) * 2;
+                const walk = (x - startX) * 1.5;
                 el.scrollLeft = scrollLeft - walk;
             });
             clearInterval(interval);
@@ -80,10 +87,10 @@ components.html("""
 </script>
 """, height=0)
 
-# 4. HEADER (Dùng logo_pvd.png)
-h1, h2 = st.columns([1, 4])
+# 4. HEADER
+h1, h2, h3 = st.columns([1.5, 7, 1.5])
 with h1: 
-    try: st.image("logo_pvd.png", width=120)
+    try: st.image("logo_pvd.png", width=150)
     except: st.write("### PVD")
 with h2: st.markdown('<p class="main-title-text">HỆ THỐNG NHÂN SỰ PVD 2026</p>', unsafe_allow_html=True)
 
@@ -92,64 +99,60 @@ tabs = st.tabs(["🚀 ĐIỀU ĐỘNG", "📝 JOB", "👤 NHÂN VIÊN", "🏗️
 
 with tabs[0]:
     c1, c2, c3 = st.columns([2, 1, 1.5])
-    sel_staff = c1.multiselect("Nhân viên:", st.session_state.db['Họ và Tên'].tolist())
-    status = c2.selectbox("Trạng thái:", ["Đi Biển", "Nghỉ Ca (CA)", "Làm Xưởng (WS)", "Nghỉ Phép (NP)"])
-    val_to_fill = c2.selectbox("Giàn:", st.session_state.list_gian) if status == "Đi Biển" else ({"Nghỉ Ca (CA)": "CA", "Làm Xưởng (WS)": "WS", "Nghỉ Phép (NP)": "NP"}.get(status))
-    dates = c3.date_input("Ngày:", value=(date(2026, 2, 1), date(2026, 2, 2)))
-    if st.button("CẬP NHẬT DỮ LIỆU"):
+    sel_staff = c1.multiselect("CHỌN NHÂN VIÊN:", st.session_state.db['Họ và Tên'].tolist())
+    status = c2.selectbox("TRẠNG THÁI:", ["Đi Biển", "Nghỉ Ca (CA)", "Làm Xưởng (WS)", "Nghỉ Phép (NP)"])
+    val_to_fill = c2.selectbox("CHỌN GIÀN:", st.session_state.list_gian) if status == "Đi Biển" else ({"Nghỉ Ca (CA)": "CA", "Làm Xưởng (WS)": "WS", "Nghỉ Phép (NP)": "NP"}.get(status))
+    dates = c3.date_input("KHOẢNG NGÀY:", value=(date(2026, 2, 1), date(2026, 2, 2)))
+    if st.button("XÁC NHẬN CẬP NHẬT", use_container_width=True):
         if isinstance(dates, tuple) and len(dates) == 2:
             for d in range(dates[0].day, dates[1].day + 1):
                 col = get_col_name(d)
                 st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(sel_staff), col] = val_to_fill
             st.rerun()
 
-# 6. QUÉT SỐ DƯ (GÓC TRÁI)
+# 6. QUÉT SỐ DƯ
 st.markdown("---")
-if st.button("🚀 QUÉT SỐ DƯ", type="primary"):
+if st.button("🚀 QUÉT & CẬP NHẬT SỐ DƯ", type="primary", use_container_width=True):
     ngay_le_tet = [17, 18, 19, 20, 21]
     df_tmp = st.session_state.db.copy()
     for idx, row in df_tmp.iterrows():
         bal = 0.0
         for d in range(1, 29):
             col = get_col_name(d); val = row[col]; d_obj = date(2026, 2, d)
-            is_off = d_obj.weekday() >= 5 or d in ngay_le_tet
+            is_weekend = d_obj.weekday() >= 5
+            is_holiday = d in ngay_le_tet
             if val in st.session_state.list_gian:
-                if d in ngay_le_tet: bal += 2.0
-                elif d_obj.weekday() >= 5: bal += 1.0
+                if is_holiday: bal += 2.0
+                elif is_weekend: bal += 1.0
                 else: bal += 0.5
-            elif val == "CA" and not is_off: bal -= 1.0
+            elif val == "CA" and not (is_weekend or is_holiday):
+                bal -= 1.0
         df_tmp.at[idx, 'Nghỉ Ca Còn Lại'] = round(bal, 1)
     st.session_state.db = df_tmp
     st.rerun()
 
-# 7. BẢNG TỔNG HỢP (PHÂN MÀU GIÀN KHOAN)
+# 7. BẢNG TỔNG HỢP (Khung gọn - Chữ to)
+st.subheader("📊 BẢNG TỔNG HỢP NHÂN SỰ")
 date_cols = [c for c in st.session_state.db.columns if "/Feb" in c]
 display_order = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Nghỉ Ca Còn Lại', 'Job Detail'] + date_cols
 
-# Cấu hình danh sách chọn kèm màu sắc
 options = st.session_state.list_gian + ["CA", "WS", "NP"]
-
 col_cfg = {
     "STT": st.column_config.NumberColumn(width="small"),
     "Nghỉ Ca Còn Lại": st.column_config.NumberColumn(format="%.1f", width="small"),
     "Job Detail": st.column_config.TextColumn(width="medium")
 }
-
-# Tự động gán SelectboxColumn cho tất cả các cột ngày tháng
 for c in date_cols:
-    col_cfg[c] = st.column_config.SelectboxColumn(
-        width="small",
-        options=options
-    )
+    col_cfg[c] = st.column_config.SelectboxColumn(width="small", options=options)
 
-st.write("**📊 BẢNG TỔNG HỢP NHÂN SỰ**")
+# Hiển thị bảng với chiều cao vừa phải (600px) để khung trông nhỏ gọn
 st.session_state.db = st.data_editor(
     st.session_state.db[display_order], 
     use_container_width=True, 
-    height=600,
+    height=550, 
     column_config=col_cfg,
     disabled=['STT', 'Nghỉ Ca Còn Lại']
 )
 
-# 8. XUẤT FILE
-st.download_button("📥 XUẤT EXCEL", data=BytesIO().getvalue(), file_name="PVD_Management_2026.xlsx")
+# 8. XUẤT EXCEL
+st.download_button("📥 XUẤT BÁO CÁO", data=BytesIO().getvalue(), file_name="PVD_Report.xlsx", use_container_width=True)

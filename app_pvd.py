@@ -7,42 +7,44 @@ import streamlit.components.v1 as components
 # 1. CẤU HÌNH TRANG
 st.set_page_config(page_title="PVD Well Services 2026", layout="wide")
 
-# Hàm lấy tên cột: Ngày/Tháng ở trên, Thứ ở dưới
+# Hàm lấy tên cột: Ngày/Tháng \n Thứ (Căn giữa)
 def get_col_name(day):
     d = date(2026, 2, day)
     days_vn = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
-    # Sử dụng \n để xuống dòng trong tiêu đề
     return f"{day:02d}/02\n{days_vn[d.weekday()]}"
 
-DATE_COLS = [get_col_name(d) for d in range(1, 28 + 1)]
+DATE_COLS = [get_col_name(d) for d in range(1, 29)]
 
-# 2. KHỞI TẠO DỮ LIỆU
-NAMES = [
-    "Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang",
-    "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong",
-    "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia",
-    "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin",
-    "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang",
-    "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu",
-    "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong",
-    "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh",
-    "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy",
-    "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh",
-    "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung",
-    "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat",
-    "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung"
-]
+# --- KIỂM TRA VÀ RESET DỮ LIỆU NẾU CỘT THAY ĐỔI (TRÁNH KEYERROR) ---
+if 'db' in st.session_state:
+    if get_col_name(1) not in st.session_state.db.columns:
+        del st.session_state.db # Xóa để khởi tạo lại với tên cột mới
+# -----------------------------------------------------------------
 
 if 'list_gian' not in st.session_state:
     st.session_state.list_gian = ["PVD I", "PVD II", "PVD III", "PVD VI", "PVD 11"]
 
 if 'db' not in st.session_state:
+    NAMES = [
+        "Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang",
+        "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong",
+        "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia",
+        "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin",
+        "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang",
+        "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu",
+        "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong",
+        "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh",
+        "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy",
+        "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh",
+        "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung",
+        "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat",
+        "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung"
+    ]
     init_data = {'STT': range(1, len(NAMES) + 1), 'Họ và Tên': NAMES, 'Công ty': 'PVD', 'Chức danh': 'Kỹ sư', 'Nghỉ Ca Còn Lại': 0.0, 'Job Detail': ""}
-    # Khởi tạo bằng chuỗi rỗng để tránh hiện chữ "None"
     for col in DATE_COLS: init_data[col] = ""
     st.session_state.db = pd.DataFrame(init_data)
 
-# 3. CSS GIAO DIỆN NÂNG CAO
+# 3. CSS GIAO DIỆN (LÀM SẠCH TIÊU ĐỀ & CĂN GIỮA)
 st.markdown("""
     <style>
     .stApp { background-color: #0E1117; color: #FFFFFF; }
@@ -54,20 +56,19 @@ st.markdown("""
     }
     .main-title-text { font-size: 38px !important; font-weight: 900; color: #00f2ff; margin: 0; }
     
-    /* Định dạng Header bảng: Căn giữa, cho phép xuống dòng, ẩn nút lọc */
+    /* Định dạng Header bảng: Cho phép xuống dòng và Căn giữa */
     div[data-testid="stDataEditor"] th {
-        height: 60px !important;
-        white-space: pre-wrap !important; /* Cho phép xuống dòng \n */
+        height: 70px !important;
+        white-space: pre-wrap !important;
         text-align: center !important;
         vertical-align: middle !important;
-        background-color: #1E293B !important;
         color: #00f2ff !important;
     }
     
-    /* Ẩn các icon thừa (mũi tên lọc/sắp xếp) để gọn bảng */
-    div[data-testid="stDataEditor"] .glideDataEditor { font-family: sans-serif; }
+    /* Xóa các nút (ứng dụng con) trên tiêu đề bảng */
+    div[data-testid="stDataEditor"] [data-testid="styled-canvas"] { cursor: default; }
     
-    /* Xử lý triệt để chữ None */
+    /* Ẩn chữ None hoàn toàn */
     div[data-testid="stDataEditor"] span:contains("None") { color: transparent !important; }
     </style>
     """, unsafe_allow_html=True)
@@ -81,10 +82,10 @@ with h1:
 with h2: st.markdown('<p class="main-title-text">PVD WELL SERVICES MANAGEMENT 2026</p>', unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
-# 5. TABS CHỨC NĂNG (GIỮ NGUYÊN)
+# 5. TABS (ĐIỀU ĐỘNG)
 tabs = st.tabs(["🚀 ĐIỀU ĐỘNG", "📝 JOB DETAIL", "👤 NHÂN VIÊN", "🏗️ GIÀN KHOAN"])
 
-with tabs[0]: # ĐIỀU ĐỘNG
+with tabs[0]:
     c1, c2, c3 = st.columns([2, 1, 1.5])
     sel_staff = c1.multiselect("CHỌN NHÂN VIÊN:", st.session_state.db['Họ và Tên'].tolist())
     status = c2.selectbox("TRẠNG THÁI:", ["Đi Biển", "Nghỉ Ca (CA)", "Làm Xưởng (WS)", "Nghỉ Phép (NP)"])
@@ -96,7 +97,7 @@ with tabs[0]: # ĐIỀU ĐỘNG
                 st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(sel_staff), get_col_name(d)] = val_to_fill
             st.rerun()
 
-# 6. QUÉT SỐ DƯ (LOGIC CHUẨN)
+# 6. QUÉT SỐ DƯ (LOGIC KHÔNG TRỪ T7, CN, LỄ, WS)
 st.markdown("---")
 if st.button("🚀 QUÉT & CẬP NHẬT SỐ DƯ", type="primary", use_container_width=True):
     ngay_le_tet = [17, 18, 19, 20, 21]
@@ -116,7 +117,7 @@ if st.button("🚀 QUÉT & CẬP NHẬT SỐ DƯ", type="primary", use_container
     st.session_state.db = df_tmp
     st.rerun()
 
-# 7. BẢNG TỔNG HỢP (TAG MÀU & TIÊU ĐỀ 2 DÒNG)
+# 7. BẢNG TỔNG HỢP (MÀU SẮC RIÊNG CHO MỖI GIÀN)
 st.write("### 📊 BẢNG TỔNG HỢP NHÂN SỰ")
 
 display_order = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Nghỉ Ca Còn Lại', 'Job Detail'] + DATE_COLS
@@ -125,7 +126,6 @@ all_options = st.session_state.list_gian + ["CA", "WS", "NP"]
 col_cfg = {
     "STT": st.column_config.NumberColumn(width="small"),
     "Nghỉ Ca Còn Lại": st.column_config.NumberColumn(format="%.1f", width="small"),
-    "Job Detail": st.column_config.TextColumn(width="medium"),
 }
 for c in DATE_COLS:
     # SelectboxColumn tự động tô màu mỗi giàn một màu khác nhau
@@ -138,7 +138,7 @@ st.session_state.db = st.data_editor(
     disabled=['STT', 'Nghỉ Ca Còn Lại']
 )
 
-# 8. XUẤT EXCEL & JS KÉO CHUỘT
+# 8. XUẤT EXCEL & KÉO CHUỘT
 st.download_button("📥 XUẤT EXCEL", data=BytesIO().getvalue(), file_name="PVD_WS_2026.xlsx", use_container_width=True)
 
 components.html("""

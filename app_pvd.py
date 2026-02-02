@@ -31,7 +31,7 @@ if 'db' not in st.session_state:
         df[get_col_name(d)] = ""
     st.session_state.db = df
 
-# 3. CSS TỔNG THỂ: LOGO TRÁI TUYỆT ĐỐI & CHỮ SIÊU TO
+# 3. CSS TỔNG THỂ: GIỮ NGUYÊN PHÔNG CHỮ TO 1.5 LẦN & BỐ CỤC
 st.markdown("""
     <style>
     .stApp { background-color: #0E1117; color: #FFFFFF; }
@@ -51,14 +51,11 @@ st.markdown("""
         border-bottom: 3px solid #3b82f6;
         margin-bottom: 40px;
     }
-    .logo-left {
+    .logo-left-container {
         position: absolute;
-        left: 0;
+        left: 20px;
         top: 50%;
         transform: translateY(-50%);
-        background-color: white; /* Tạo nền trắng cho logo nổi bật trên nền tối */
-        padding: 10px;
-        border-radius: 8px;
     }
     .main-title-text {
         font-size: 60px !important;
@@ -76,17 +73,21 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 4. HIỂN THỊ HEADER VỚI LOGO TRỰC TIẾP
-st.markdown(f"""
-    <div class="header-box">
-        <div class="logo-left">
-            <img src="https://www.pvdrilling.com.vn/images/logo.png" width="220">
-        </div>
-        <p class="main-title-text">HỆ THỐNG ĐIỀU PHỐI<br>NHÂN SỰ PVD 2026</p>
-    </div>
-    """, unsafe_allow_html=True)
+# 4. HIỂN THỊ HEADER (Dùng st.columns để chèn file logo_pvd.png từ GitHub)
+# Chúng ta tạo 1 div container cho tiêu đề, và dùng st.image riêng cho logo để Streamlit nhận diện file local/github tốt hơn
+header_col1, header_col2, header_col3 = st.columns([2, 6, 2])
 
-# 5. TABS CHỨC NĂNG (TO RÕ)
+with header_col1:
+    try:
+        # Streamlit sẽ tự tìm file logo_pvd.png trong cùng thư mục trên GitHub
+        st.image("logo_pvd.png", width=220)
+    except:
+        st.write("⚠️ Không tìm thấy file logo_pvd.png")
+
+with header_col2:
+    st.markdown('<p class="main-title-text">HỆ THỐNG ĐIỀU PHỐI<br>NHÂN SỰ PVD 2026</p>', unsafe_allow_html=True)
+
+# 5. TABS CHỨC NĂNG (GIỮ NGUYÊN)
 tabs = st.tabs(["🚀 ĐIỀU ĐỘNG", "📝 NHẬP JOB DETAIL", "👤 NHÂN VIÊN", "✍️ CHỈNH SỬA", "🔍 QUÉT SỐ DƯ", "🏗️ GIÀN KHOAN"])
 
 with tabs[0]: # Điều động
@@ -139,7 +140,7 @@ with tabs[4]: # Quét số dư
         st.balloons()
         st.rerun()
 
-# 6. HIỂN THỊ BẢNG (Font to + Format số đẹp)
+# 6. HIỂN THỊ BẢNG (Giữ nguyên định dạng số gọn 0.5, 1)
 st.markdown("---")
 date_cols = [c for c in st.session_state.db.columns if "/Feb" in c]
 display_order = ['STT', 'Họ và Tên', 'Nghỉ Ca Còn Lại', 'Job Detail'] + date_cols

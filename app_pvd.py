@@ -7,11 +7,14 @@ import streamlit.components.v1 as components
 # 1. CẤU HÌNH TRANG
 st.set_page_config(page_title="PVD Well Services 2026", layout="wide")
 
-# Hàm lấy tên cột tối giản (Chỉ Ngày/Tháng)
+# Hàm lấy tên cột: Ngày/Tháng ở trên, Thứ ở dưới
 def get_col_name(day):
-    return f"{day:02d}/02"
+    d = date(2026, 2, day)
+    days_vn = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
+    # Sử dụng \n để xuống dòng trong tiêu đề
+    return f"{day:02d}/02\n{days_vn[d.weekday()]}"
 
-DATE_COLS = [get_col_name(d) for d in range(1, 29)]
+DATE_COLS = [get_col_name(d) for d in range(1, 28 + 1)]
 
 # 2. KHỞI TẠO DỮ LIỆU
 NAMES = [
@@ -35,14 +38,14 @@ if 'list_gian' not in st.session_state:
 
 if 'db' not in st.session_state:
     init_data = {'STT': range(1, len(NAMES) + 1), 'Họ và Tên': NAMES, 'Công ty': 'PVD', 'Chức danh': 'Kỹ sư', 'Nghỉ Ca Còn Lại': 0.0, 'Job Detail': ""}
-    for col in DATE_COLS: init_data[col] = None
+    # Khởi tạo bằng chuỗi rỗng để tránh hiện chữ "None"
+    for col in DATE_COLS: init_data[col] = ""
     st.session_state.db = pd.DataFrame(init_data)
 
-# 3. CSS GIAO DIỆN (LÀM GỌN KHUNG NGÀY THÁNG)
+# 3. CSS GIAO DIỆN NÂNG CAO
 st.markdown("""
     <style>
     .stApp { background-color: #0E1117; color: #FFFFFF; }
-    html, body, [class*="css"] { font-size: 20px !important; }
     
     /* Đường gạch xanh Pro */
     .main-title-container {
@@ -51,11 +54,20 @@ st.markdown("""
     }
     .main-title-text { font-size: 38px !important; font-weight: 900; color: #00f2ff; margin: 0; }
     
-    /* Tối ưu khung ngày tháng: Ẩn nút sort và làm gọn header bảng */
-    [data-testid="stDataEditor"] [data-testid="styled-canvas"] { cursor: grab; }
-    th { background-color: #1E293B !important; color: #00f2ff !important; }
+    /* Định dạng Header bảng: Căn giữa, cho phép xuống dòng, ẩn nút lọc */
+    div[data-testid="stDataEditor"] th {
+        height: 60px !important;
+        white-space: pre-wrap !important; /* Cho phép xuống dòng \n */
+        text-align: center !important;
+        vertical-align: middle !important;
+        background-color: #1E293B !important;
+        color: #00f2ff !important;
+    }
     
-    /* Xử lý xóa None */
+    /* Ẩn các icon thừa (mũi tên lọc/sắp xếp) để gọn bảng */
+    div[data-testid="stDataEditor"] .glideDataEditor { font-family: sans-serif; }
+    
+    /* Xử lý triệt để chữ None */
     div[data-testid="stDataEditor"] span:contains("None") { color: transparent !important; }
     </style>
     """, unsafe_allow_html=True)
@@ -69,7 +81,7 @@ with h1:
 with h2: st.markdown('<p class="main-title-text">PVD WELL SERVICES MANAGEMENT 2026</p>', unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
-# 5. TABS (GIỮ NGUYÊN)
+# 5. TABS CHỨC NĂNG (GIỮ NGUYÊN)
 tabs = st.tabs(["🚀 ĐIỀU ĐỘNG", "📝 JOB DETAIL", "👤 NHÂN VIÊN", "🏗️ GIÀN KHOAN"])
 
 with tabs[0]: # ĐIỀU ĐỘNG
@@ -84,18 +96,7 @@ with tabs[0]: # ĐIỀU ĐỘNG
                 st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(sel_staff), get_col_name(d)] = val_to_fill
             st.rerun()
 
-with tabs[1]: # JOB DETAIL
-    j1, j2 = st.columns([2, 3])
-    sel_j = j1.multiselect("Nhân sự:", st.session_state.db['Họ và Tên'].tolist(), key="j_edit")
-    cont = j2.text_area("Mô tả Job:")
-    if st.button("CẬP NHẬT JOB"):
-        st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(sel_j), 'Job Detail'] = cont
-        st.rerun()
-
-# Tab Nhân viên và Giàn giữ nguyên các nút thêm/xóa...
-# (Phần này bạn có thể giữ nguyên code cũ của bạn)
-
-# 6. QUÉT SỐ DƯ (LOGIC CHUẨN: KHÔNG TRỪ T7, CN, LỄ, WS)
+# 6. QUÉT SỐ DƯ (LOGIC CHUẨN)
 st.markdown("---")
 if st.button("🚀 QUÉT & CẬP NHẬT SỐ DƯ", type="primary", use_container_width=True):
     ngay_le_tet = [17, 18, 19, 20, 21]
@@ -115,7 +116,7 @@ if st.button("🚀 QUÉT & CẬP NHẬT SỐ DƯ", type="primary", use_container
     st.session_state.db = df_tmp
     st.rerun()
 
-# 7. BẢNG TỔNG HỢP (XỬ LÝ MÀU VÀ GỌN NHẤT)
+# 7. BẢNG TỔNG HỢP (TAG MÀU & TIÊU ĐỀ 2 DÒNG)
 st.write("### 📊 BẢNG TỔNG HỢP NHÂN SỰ")
 
 display_order = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Nghỉ Ca Còn Lại', 'Job Detail'] + DATE_COLS
@@ -127,7 +128,7 @@ col_cfg = {
     "Job Detail": st.column_config.TextColumn(width="medium"),
 }
 for c in DATE_COLS:
-    # SelectboxColumn sẽ tự động gán các màu nền khác nhau cho mỗi giá trị
+    # SelectboxColumn tự động tô màu mỗi giàn một màu khác nhau
     col_cfg[c] = st.column_config.SelectboxColumn(width="small", options=all_options, required=False)
 
 st.session_state.db = st.data_editor(

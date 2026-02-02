@@ -45,90 +45,89 @@ if 'db' not in st.session_state:
         df[get_col_name(d)] = ""
     st.session_state.db = df
 
-# 3. CSS CUSTOM: ÉP HEADER RA GIỮA TUYỆT ĐỐI
+# 3. CSS CUSTOM: LOGO TRÁI - TIÊU ĐỀ GIỮA - NỀN TỐI
 st.markdown("""
     <style>
     .stApp { background-color: #0E1117; color: #FFFFFF; }
     
-    /* Container bao quanh logo và chữ */
-    .full-header-container {
+    .header-container {
         display: flex;
-        flex-direction: row;
         align-items: center;
-        justify-content: center; /* Căn giữa theo chiều ngang */
-        width: 100%;
-        gap: 30px;
-        padding: 20px 0px 50px 0px;
+        justify-content: flex-start; /* Logo nằm góc trái */
+        padding: 10px 0px 30px 0px;
+        border-bottom: 1px solid #3b82f6;
+        margin-bottom: 20px;
     }
     
+    .title-wrapper {
+        flex-grow: 1;
+        text-align: center; /* Tiêu đề vẫn nằm giữa trang */
+        margin-right: 220px; /* Bù trừ khoảng cách để tiêu đề cân giữa so với toàn trang */
+    }
+
     .main-title-text {
-        font-size: 55px !important;
+        font-size: 45px !important;
         font-weight: 850 !important;
         color: #3b82f6; 
         margin: 0;
         text-transform: uppercase;
-        letter-spacing: 2px;
-        line-height: 1.1;
-        text-align: left; /* Chữ canh lề trái so với logo nhưng cả cụm vẫn ở giữa */
+        letter-spacing: 1px;
+        line-height: 1.2;
     }
 
-    /* Giữ Tabs lề trái */
-    .stTabs [data-baseweb="tab-list"] {
-        justify-content: flex-start !important;
-    }
+    .stTabs [data-baseweb="tab-list"] { justify-content: flex-start !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# 4. HEADER CĂN GIỮA (Dùng Columns để bổ trợ việc căn chỉnh)
-# Tạo 3 cột, cột giữa chứa cả Logo và Tiêu đề
-empty_l, center_col, empty_r = st.columns([1, 8, 1])
+# 4. HEADER: LOGO TRÁI & TIÊU ĐỀ GIỮA
+col_logo, col_title = st.columns([1, 4])
+with col_logo:
+    try:
+        # Sử dụng logo nội bộ, nếu lỗi sẽ hiện text
+        st.image("logo_pvd.png", width=220)
+    except:
+        st.write("### PETROVIETNAM")
 
-with center_col:
-    # Dùng HTML để bọc cả Image và Text vào một dòng duy nhất và căn giữa
-    header_html = f"""
-    <div class="full-header-container">
-        <img src="https://www.pvdrilling.com.vn/images/logo.png" width="220">
-        <p class="main-title-text">HỆ THỐNG ĐIỀU PHỐI<br>NHÂN SỰ PVD 2026</p>
-    </div>
-    """
-    st.markdown(header_html, unsafe_allow_html=True)
-    # Lưu ý: Nếu file logo_pvd.png của bạn đã upload, hãy thay link online bằng file nội bộ nếu cần.
+with col_title:
+    st.markdown('<p class="main-title-text" style="text-align: center;">HỆ THỐNG ĐIỀU PHỐI<br>NHÂN SỰ PVD 2026</p>', unsafe_allow_html=True)
 
 # 5. CÁC TABS CHỨC NĂNG
 tabs = st.tabs(["🚀 Điều Động", "📝 Nhập Job Detail", "👤 Thêm Nhân Viên", "✍️ Sửa Tổng Hợp", "🔍 Quét Số Dư", "🏗️ Giàn Khoan"])
 
-# --- Các phần logic bên dưới giữ nguyên ---
-with tabs[0]:
-    c1, c2, c3 = st.columns([2, 1, 1.5])
-    sel_staff = c1.multiselect("Chọn nhân viên:", st.session_state.db['Họ và Tên'].tolist())
-    status = c2.selectbox("Trạng thái:", ["Đi Biển", "Nghỉ Ca (CA)", "Làm Xưởng (WS)", "Nghỉ Phép (NP)"])
-    val_to_fill = ""
-    if status == "Đi Biển":
-        val_to_fill = c2.selectbox("Chọn Giàn:", st.session_state.list_gian)
-    else:
-        mapping = {"Nghỉ Ca (CA)": "CA", "Làm Xưởng (WS)": "WS", "Nghỉ Phép (NP)": "NP"}
-        val_to_fill = mapping.get(status, status)
-    dates = c3.date_input("Khoảng ngày:", value=(date(2026, 2, 1), date(2026, 2, 2)))
-    if st.button("XÁC NHẬN CẬP NHẬT", type="primary"):
-        if isinstance(dates, tuple) and len(dates) == 2:
-            for d in range(dates[0].day, dates[1].day + 1):
-                col = get_col_name(d)
-                st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(sel_staff), col] = val_to_fill
-            st.rerun()
-
+# --- Tab 2: Nhập Job Detail (Đã sửa lỗi Họ và Tên) ---
 with tabs[1]:
-    st.subheader("📝 Cập nhật nội dung công việc")
+    st.subheader("📝 Cập nhật Job Detail")
     with st.form("job_form"):
-        sel_job_staff = st.multiselect("Chọn nhân viên thực hiện job:", st.session_state.db['Họ và Tên'].tolist())
-        job_text = st.text_area("Nội dung Job Detail:", placeholder="Gõ ghi chú công việc tại đây...")
+        sel_job_staff = st.multiselect("Chọn nhân viên:", st.session_state.db['Họ và Tên'].tolist())
+        job_text = st.text_area("Nội dung công việc:")
         if st.form_submit_button("LƯU JOB DETAIL"):
             if sel_job_staff:
                 st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(sel_job_staff), 'Job Detail'] = job_text
-                st.success("Đã cập nhật Job Detail thành công!")
+                st.success("Đã cập nhật!")
                 st.rerun()
 
-# (Các tab khác giữ nguyên logic của bạn...)
-# ...
+# --- Tab 5: Quét số dư (Làm tròn số) ---
+with tabs[4]:
+    if st.button("🚀 QUÉT & CHỐT THÁNG"):
+        tet_2026 = [17, 18, 19, 20, 21]
+        df_tmp = st.session_state.db.copy()
+        for index, row in df_tmp.iterrows():
+            balance = 0.0
+            for d in range(1, 29):
+                col = get_col_name(d)
+                if col in df_tmp.columns:
+                    val = row[col]
+                    d_obj = date(2026, 2, d)
+                    if val in st.session_state.list_gian:
+                        if d in tet_2026: balance += 2.0
+                        elif d_obj.weekday() >= 5: balance += 1.0
+                        else: balance += 0.5
+                    elif val == "CA": balance -= 1.0
+            # Làm tròn về 1 chữ số thập phân
+            df_tmp.at[index, 'Nghỉ Ca Còn Lại'] = round(float(balance), 1)
+        st.session_state.db = df_tmp
+        st.balloons()
+        st.rerun()
 
 # 6. HIỂN THỊ BẢNG TỔNG HỢP
 st.markdown("---")
@@ -143,11 +142,14 @@ def style_cells(val):
     if val == "NP": return 'background-color: #9B59B6; color: white;'
     return ''
 
+# Định dạng hiển thị cột Nghỉ Ca Còn Lại cho đẹp
 st.dataframe(
-    st.session_state.db[display_order].style.applymap(style_cells, subset=date_cols),
+    st.session_state.db[display_order].style.applymap(style_cells, subset=date_cols)
+    .format({"Nghỉ Ca Còn Lại": "{:.1f}"}), # Ép hiển thị 0.5 hoặc 1.0 thay vì 0.5000
     use_container_width=True, height=600
 )
 
+# 7. XUẤT EXCEL
 output = BytesIO()
 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
     st.session_state.db.to_excel(writer, index=False)

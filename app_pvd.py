@@ -45,7 +45,7 @@ if 'db' not in st.session_state:
         df[get_col_name(d)] = ""
     st.session_state.db = df
 
-# 3. CSS CUSTOM: NỀN TỐI & HEADER CĂN GIỮA (LOGO + CHỮ NẰM NGANG)
+# 3. CSS CUSTOM: NỀN TỐI & HEADER CĂN GIỮA TO RÕ
 st.markdown("""
     <style>
     .stApp { background-color: #0E1117; color: #FFFFFF; }
@@ -54,16 +54,17 @@ st.markdown("""
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 25px;
-        padding: 10px 0px 30px 0px;
+        gap: 40px; /* Tăng khoảng cách giữa logo và chữ */
+        padding: 20px 0px 40px 0px;
     }
     .main-title {
-        font-size: 38px !important;
-        font-weight: 800 !important;
+        font-size: 58px !important; /* To lên gấp 1.5 lần so với bản cũ */
+        font-weight: 850 !important;
         color: #3b82f6; 
         margin: 0;
         text-transform: uppercase;
-        letter-spacing: 1px;
+        letter-spacing: 2px;
+        line-height: 1.2;
     }
     /* Giữ Tabs lề trái */
     .stTabs [data-baseweb="tab-list"] {
@@ -72,13 +73,14 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 4. HEADER CĂN GIỮA
+# 4. HEADER CĂN GIỮA (LOGO TO GẤP ĐÔI)
 st.markdown('<div class="centered-header">', unsafe_allow_html=True)
 try:
-    st.image("logo_pvd.png", width=110) 
+    # Tăng width lên 220 (gấp đôi bản cũ 110)
+    st.image("logo_pvd.png", width=220) 
 except:
     st.write("### [PVD LOGO]")
-st.markdown('<p class="main-title">HỆ THỐNG ĐIỀU PHỐI NHÂN SỰ PVD 2026</p>', unsafe_allow_html=True)
+st.markdown('<p class="main-title">HỆ THỐNG ĐIỀU PHỐI <br> NHÂN SỰ PVD 2026</p>', unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
 # 5. CÁC TABS CHỨC NĂNG
@@ -103,11 +105,10 @@ with tabs[0]:
                 st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(sel_staff), col] = val_to_fill
             st.rerun()
 
-# TAB: NHẬP JOB DETAIL (Đã sửa lỗi Hên và Tên)
+# TAB: NHẬP JOB DETAIL
 with tabs[1]:
     st.subheader("📝 Cập nhật nội dung công việc")
     with st.form("job_form"):
-        # ĐÃ SỬA: st.session_state.db['Họ và Tên'] thay vì 'Hên và Tên'
         sel_job_staff = st.multiselect("Chọn nhân viên thực hiện job:", st.session_state.db['Họ và Tên'].tolist())
         job_text = st.text_area("Nội dung Job Detail:", placeholder="Gõ ghi chú công việc tại đây...")
         if st.form_submit_button("LƯU JOB DETAIL"):

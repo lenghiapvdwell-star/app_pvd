@@ -12,7 +12,7 @@ def get_col_name(day):
     days_vn = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
     return f"{day:02d}/Feb {days_vn[d.weekday()]}"
 
-# 2. KHỞI TẠO DANH SÁCH 64 NHÂN VIÊN (Đầy đủ như ban đầu)
+# 2. KHỞI TẠO DANH SÁCH 64 NHÂN VIÊN
 NAMES = [
     "Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang",
     "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong",
@@ -36,12 +36,12 @@ if 'db' not in st.session_state:
     df = pd.DataFrame({
         'STT': range(1, len(NAMES) + 1),
         'Họ và Tên': NAMES, 'Công ty': 'PVD', 'Chức danh': 'Kỹ sư',
-        'Nghỉ Ca Còn Lại': 0.0, 'Job Detail': ''
+        'Nghỉ Ca Còn Lại': 0.0, 'Job Detail': ""
     })
     for d in range(1, 29): df[get_col_name(d)] = ""
     st.session_state.db = df.fillna("")
 
-# 3. CSS & JS (PHÔNG CHỮ TO 1.5x & KÉO CHUỘT)
+# 3. CSS & JS
 st.markdown("""
     <style>
     .stApp { background-color: #0E1117; color: #FFFFFF; }
@@ -79,17 +79,17 @@ components.html("""
 </script>
 """, height=0)
 
-# 4. HEADER (TÊN MỚI & LOGO TO LẠI)
+# 4. HEADER
 h1, h2 = st.columns([2, 8])
 with h1: 
-    try: st.image("logo_pvd.png", width=200) # Tăng kích thước logo
+    try: st.image("logo_pvd.png", width=200)
     except: st.write("### PVD")
 with h2: st.markdown('<p class="main-title-text">HỆ THỐNG ĐIỀU PHỐI NHÂN SỰ<br>PVD WELL SERVICES 2026</p>', unsafe_allow_html=True)
 
-# 5. TABS CHỨC NĂNG
+# 5. TABS
 tabs = st.tabs(["🚀 ĐIỀU ĐỘNG", "📝 JOB DETAIL", "👤 NHÂN VIÊN", "🏗️ GIÀN KHOAN"])
 
-with tabs[0]: # ĐIỀU ĐỘNG
+with tabs[0]: # TAB ĐIỀU ĐỘNG
     c1, c2, c3 = st.columns([2, 1, 1.5])
     sel_staff = c1.multiselect("CHỌN NHÂN VIÊN:", st.session_state.db['Họ và Tên'].tolist())
     status = c2.selectbox("TRẠNG THÁI:", ["Đi Biển", "Nghỉ Ca (CA)", "Làm Xưởng (WS)", "Nghỉ Phép (NP)"])
@@ -100,9 +100,10 @@ with tabs[0]: # ĐIỀU ĐỘNG
             for d in range(dates[0].day, dates[1].day + 1):
                 col = get_col_name(d)
                 st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(sel_staff), col] = val_to_fill
+            st.session_state.db = st.session_state.db.fillna("")
             st.rerun()
 
-with tabs[1]: # JOB DETAIL
+with tabs[1]: # TAB JOB DETAIL
     j1, j2 = st.columns([2, 3])
     sel_j_staff = j1.multiselect("Chọn nhân sự:", st.session_state.db['Họ và Tên'].tolist())
     j_content = j2.text_area("Nội dung Job Detail:")
@@ -111,31 +112,12 @@ with tabs[1]: # JOB DETAIL
         st.session_state.db = st.session_state.db.fillna("")
         st.rerun()
 
-with tabs[2]: # NHÂN VIÊN
+with tabs[2]: # TAB NHÂN VIÊN
     a1, a2 = st.columns(2)
-    new_n = a1.text_input("Tên nhân viên mới:")
-    new_p = a2.text_input("Chức danh:", value="Kỹ sư")
-    if st.button("THÊM NHÂN VIÊN"):
-        nr = {'STT': len(st.session_state.db)+1, 'Họ và Tên': new_n, 'Công ty': 'PVD', 'Chức danh': new_p, 'Nghỉ Ca Còn Lại': 0.0, 'Job Detail': ''}
+    if st.button("THÊM NHÂN VIÊN MỚI"):
+        nr = {'STT': len(st.session_state.db)+1, 'Họ và Tên': a1.text_input("Tên:"), 'Công ty': 'PVD', 'Chức danh': a2.text_input("Chức danh:"), 'Nghỉ Ca Còn Lại': 0.0, 'Job Detail': ""}
         for d in range(1, 29): nr[get_col_name(d)] = ""
         st.session_state.db = pd.concat([st.session_state.db, pd.DataFrame([nr])], ignore_index=True).fillna("")
-        st.rerun()
-    st.divider()
-    ds = st.selectbox("Chọn nhân viên cần xóa:", st.session_state.db['Họ và Tên'].tolist())
-    if st.button("XÓA NHÂN VIÊN"):
-        st.session_state.db = st.session_state.db[st.session_state.db['Họ và Tên'] != ds]
-        st.rerun()
-
-with tabs[3]: # GIÀN KHOAN
-    g1, g2 = st.columns(2)
-    ng = g1.text_input("Thêm giàn mới:")
-    if st.button("LƯU GIÀN"):
-        st.session_state.list_gian.append(ng)
-        st.rerun()
-    st.divider()
-    dg = g2.selectbox("Xóa giàn khoan:", st.session_state.list_gian)
-    if st.button("XÓA GIÀN"):
-        st.session_state.list_gian.remove(dg)
         st.rerun()
 
 # 6. QUÉT SỐ DƯ
@@ -157,23 +139,38 @@ if st.button("🚀 QUÉT & CẬP NHẬT SỐ DƯ", type="primary", use_container
     st.session_state.db = df_tmp.fillna("")
     st.rerun()
 
-# 7. BẢNG TỔNG HỢP (MÀU SẮC & GỌN GÀNG)
+# 7. BẢNG TỔNG HỢP (XỬ LÝ MÀU VÀ CHỮ NONE)
 st.write("### 📊 BẢNG TỔNG HỢP NHÂN SỰ")
+
+# Ép kiểu dữ liệu để chắc chắn không còn giá trị None/NaN
+for col in st.session_state.db.columns:
+    if col not in ['STT', 'Nghỉ Ca Còn Lại']:
+        st.session_state.db[col] = st.session_state.db[col].astype(str).replace(['None', 'nan', '<NA>'], "")
+
 date_cols = [c for c in st.session_state.db.columns if "/Feb" in c]
 display_order = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Nghỉ Ca Còn Lại', 'Job Detail'] + date_cols
 
+# CẤU HÌNH CỘT VÀ MÀU SẮC
 options = st.session_state.list_gian + ["CA", "WS", "NP"]
 col_cfg = {
     "STT": st.column_config.NumberColumn(width="small"),
     "Nghỉ Ca Còn Lại": st.column_config.NumberColumn(format="%.1f", width="small"),
     "Job Detail": st.column_config.TextColumn(width="small"),
 }
-for c in date_cols:
-    col_cfg[c] = st.column_config.SelectboxColumn(width="small", options=options)
 
+# Áp dụng Selectbox cho các cột ngày để hiện màu sắc tag khác nhau
+for c in date_cols:
+    col_cfg[c] = st.column_config.SelectboxColumn(
+        width="small", 
+        options=options,
+        required=False
+    )
+
+# Hiển thị bảng
 st.session_state.db = st.data_editor(
     st.session_state.db[display_order], 
-    use_container_width=True, height=600, 
+    use_container_width=True, 
+    height=600, 
     column_config=col_cfg,
     disabled=['STT', 'Nghỉ Ca Còn Lại']
 )

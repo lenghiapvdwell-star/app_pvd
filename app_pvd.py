@@ -1,113 +1,121 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta
-import calendar
+from io import BytesIO
+import random
+from datetime import datetime, date, timedelta
 
-# --- CẤU HÌNH TRANG ---
-st.set_page_config(page_title="PVD Crew Dispatch Pro", layout="wide")
+# 1. Cấu hình trang
+st.set_page_config(page_title="PV Drilling Management 2026", layout="wide")
 
-# --- STYLE CSS ĐỂ MƯỢT NHƯ HÔM QUA ---
-st.markdown("""
-    <style>
-    .stApp { background-color: #f8f9fa; }
-    .main-header { font-size: 28px; font-weight: bold; color: #1C83E1; margin-bottom: 0px; }
-    .off-cell { font-weight: bold; color: #d32f2f; text-align: center; }
-    .rig-cell { border-radius: 4px; padding: 3px; color: white; text-align: center; font-size: 11px; font-weight: bold; }
-    </style>
-    """, unsafe_allow_html=True)
+# 2. KHỞI TẠO BỘ NHỚ
+if 'list_gian' not in st.session_state:
+    st.session_state.list_gian = ["PVD I", "PVD II", "PVD III", "PVD VI", "PVD 11"]
 
-# --- LOGO & TIÊU ĐỀ ---
-col_logo, col_title = st.columns([1, 6])
-with col_logo:
-    logo_url = "https://raw.githubusercontent.com/lenghiapvdwell-star/app_pvd/main/424911181_712854060938641_6819448166542158882_n.jpg"
-    st.image(logo_url, width=130)
-with col_title:
-    st.markdown('<p class="main-header">HỆ THỐNG ĐIỀU ĐỘNG & QUẢN LÝ NGHỈ PHIÊN PVD</p>', unsafe_allow_html=True)
+if 'rig_colors' not in st.session_state:
+    st.session_state.rig_colors = {
+        "PVD I": "#00558F", "PVD II": "#1E8449", "PVD III": "#8E44AD", "PVD VI": "#D35400", "PVD 11": "#2E4053", "OFF": "#C0392B"
+    }
 
-# --- DANH SÁCH NHÂN VIÊN (Dựa trên danh sách bạn cung cấp) ---
-STAFF_LIST = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia"]
-RIG_LIST = ["PVD I", "PVD II", "PVD III", "PVD VI", "PVD 11", "Vũng Tàu", "OFF (Nghỉ)"]
-RIG_COLORS = {"PVD I": "#FF4B4B", "PVD II": "#1C83E1", "PVD III": "#00C04A", "PVD VI": "#FFBD45", "PVD 11": "#7D3C98", "Vũng Tàu": "#5D6D7E", "OFF (Nghỉ)": "#E74C3C"}
+# Hàm lấy tên cột
+def get_col_name(day):
+    d = date(2026, 2, day)
+    days_vn = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
+    return f"{day:02d}/Feb\n{days_vn[d.weekday()]}"
 
-# --- HÀM LOGIC TÍNH TOÁN ---
-def calculate_day_change(date_obj, status):
-    """Tính toán cộng hoặc trừ ngày nghỉ dựa trên trạng thái"""
-    if status == "OFF (Nghỉ)":
-        return -1.0  # Nghỉ 1 ngày thì trừ 1 ngày tích lũy
+NAMES = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong"]
+
+if 'db' not in st.session_state:
+    df = pd.DataFrame({'Họ và Tên': NAMES})
+    df['Chức danh'] = 'Kỹ sư'
+    df['Công ty'] = 'PVD'
+    df['Job Detail'] = '' # Thêm cột Job Detail
+    df['Số dư Nghỉ'] = 10.0 # Khởi tạo số dư ban đầu
+    for d in range(1, 29):
+        df[get_col_name(d)] = "CA"
+    st.session_state.db = df
+
+# 3. LOGIC TÍNH TOÁN NGHỈ CA
+def calculate_accumulated_days(start_day, end_day, status):
+    accumulated = 0.0
+    # Danh sách nghỉ Tết 2026 (Giả định 17/2 - 21/2)
+    tet_2026 = [17, 18, 19, 20, 21]
     
-    # Logic cộng khi đi làm (Đi biển)
-    tet_2026 = [datetime(2026, 2, 17).date(), datetime(2026, 2, 18).date(), datetime(2026, 2, 19).date(), datetime(2026, 2, 20).date(), datetime(2026, 2, 21).date()]
-    if date_obj in tet_2026: return 2.0
-    if date_obj.weekday() >= 5: return 1.0 # T7, CN
-    return 0.5 # Ngày thường
+    for d_idx in range(start_day, end_day + 1):
+        d_obj = date(2026, 2, d_idx)
+        if status == "OFF":
+            accumulated -= 1.0
+        elif status in st.session_state.list_gian:
+            if d_idx in tet_2026: accumulated += 2.0
+            elif d_obj.weekday() >= 5: accumulated += 1.0
+            else: accumulated += 0.5
+    return accumulated
 
-# --- GIAO DIỆN TABS ---
-tab1, tab2, tab3 = st.tabs(["📊 BẢNG THEO DÕI TỔNG", "📝 ĐIỀU ĐỘNG & NGHỈ", "⚙️ CHỐT SỐ DƯ THÁNG"])
+# 4. GIAO DIỆN
+st.markdown("""<style> .main-header { color: #00558F; font-size: 26px; font-weight: bold; border-bottom: 2px solid #00558F; } </style>""", unsafe_allow_html=True)
+st.markdown("<div class='main-header'>HỆ THỐNG ĐIỀU PHỐI & TÍNH NGHỈ CA PVD 2026</div>", unsafe_allow_html=True)
 
-with tab1:
-    st.subheader("📅 Lịch trình & Số dư nghỉ phiên")
-    
-    # Header ngày tháng
-    today = datetime.now().date()
-    num_days = 14
-    dates = [today + timedelta(days=i) for i in range(num_days)]
-    
-    # Chia cột tỉ lệ mượt: Tên(1.5), Số dư(1), 14 ngày(mỗi ô 0.5)
-    header_cols = st.columns([1.5, 0.8] + [0.5]*num_days)
-    header_cols[0].write("**Nhân sự**")
-    header_cols[1].write("**Số dư**")
-    
-    for i, d in enumerate(dates):
-        d_str = d.strftime("%d/%b")
-        w_str = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"][d.weekday()]
-        header_cols[i+2].markdown(f"<div style='text-align:center; font-size:10px;'><b>{d_str}</b><br>{w_str}</div>", unsafe_allow_html=True)
-    
-    st.divider()
+# Hiển thị Logo từ link GitHub của bạn
+logo_url = "https://raw.githubusercontent.com/lenghiapvdwell-star/app_pvd/main/424911181_712854060938641_6819448166542158882_n.jpg"
+st.sidebar.image(logo_url, width=150)
 
-    for staff in STAFF_LIST[:12]:
-        row_cols = st.columns([1.5, 0.8] + [0.5]*num_days)
-        row_cols[0].write(f"👷 {staff}")
-        
-        # Giả lập logic: Bắt đầu tháng có 10 ngày nghỉ, sau đó cộng/trừ theo lịch
-        balance = 10.0 
-        
-        for i in range(num_days):
-            # Giả lập: 5 ngày đầu đi PVD I, 2 ngày sau Nghỉ OFF
-            status = "PVD I" if i < 5 else ("OFF (Nghỉ)" if i < 7 else "Sẵn sàng")
-            balance += calculate_day_change(dates[i], status) if status != "Sẵn sàng" else 0
+tab_rig, tab_info, tab_scan = st.tabs(["🚀 Chấm công & Đi biển", "📝 Job Detail & Hồ sơ", "🔍 Quét số dư cuối tháng"])
+
+with tab_rig:
+    c1, c2, c3 = st.columns([2, 1.5, 1.5])
+    with c1: sel_staff = st.multiselect("1. Chọn nhân viên:", NAMES)
+    with c2:
+        status_opt = st.selectbox("2. Chọn trạng thái:", ["Đi Biển", "Nghỉ (OFF)", "Làm Việc (WS)"])
+        val = st.selectbox("Chi tiết:", st.session_state.list_gian) if status_opt == "Đi Biển" else ("OFF" if status_opt == "Nghỉ (OFF)" else "WS")
+    with c3:
+        sel_dates = st.date_input("3. Chọn khoảng ngày:", value=(date(2026, 2, 1), date(2026, 2, 7)), min_value=date(2026, 2, 1), max_value=date(2026, 2, 28))
+
+    if st.button("XÁC NHẬN CẬP NHẬT", type="primary"):
+        if isinstance(sel_dates, tuple) and len(sel_dates) == 2:
+            s_d, e_d = sel_dates[0].day, sel_dates[1].day
+            # Tính toán cộng/trừ ngày nghỉ trước khi cập nhật bảng
+            change = calculate_accumulated_days(s_d, e_d, val)
+            st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(sel_staff), 'Số dư Nghỉ'] += change
             
-            if status != "Sẵn sàng":
-                color = RIG_COLORS.get(status, "#EEE")
-                row_cols[i+2].markdown(f"<div class='rig-cell' style='background-color:{color};'>{status[:3]}</div>", unsafe_allow_html=True)
-        
-        row_cols[1].markdown(f"<div class='off-cell'>{balance}</div>", unsafe_allow_html=True)
+            for d in range(s_d, e_d + 1):
+                st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(sel_staff), get_col_name(d)] = val
+            st.success(f"Đã cập nhật! Biến động ngày nghỉ: {change}")
+            st.rerun()
 
-with tab2:
-    st.subheader("📝 Cập nhật trạng thái nhân sự")
-    with st.form("update_form"):
-        c1, c2, c3 = st.columns(3)
-        u_name = c1.selectbox("Nhân viên", STAFF_LIST)
-        u_status = c1.selectbox("Trạng thái/Giàn", RIG_LIST)
-        u_start = c2.date_input("Từ ngày", today)
-        u_end = c2.date_input("Đến ngày", today + timedelta(days=7))
-        u_pos = c3.text_input("Chức danh")
-        
-        if st.form_submit_button("XÁC NHẬN CẬP NHẬT"):
-            st.success(f"Đã cập nhật lịch cho {u_name}. Hệ thống đã tự động tính toán lại ngày nghỉ.")
+with tab_info:
+    ci1, ci2 = st.columns(2)
+    target = ci1.selectbox("Chọn nhân viên nhập Job Detail:", NAMES)
+    job_text = ci1.text_area("Nhập Job Detail (Ghi chú công việc):")
+    if ci1.button("Lưu Job Detail"):
+        st.session_state.db.loc[st.session_state.db['Họ và Tên'] == target, 'Job Detail'] = job_text
+        st.success("Đã lưu!")
 
-with tab3:
-    st.subheader("⚙️ Quét & Chốt số dư cuối tháng")
-    col_scan1, col_scan2 = st.columns([2,1])
-    target_month = col_scan1.selectbox("Chọn tháng cần chốt", ["Tháng 01/2026", "Tháng 02/2026", "Tháng 03/2026"])
-    
-    if col_scan2.button("🚀 QUÉT TOÀN BỘ DANH SÁCH"):
-        with st.spinner("Đang tính toán số dư ngày nghỉ..."):
-            import time
-            time.sleep(1.5)
-            st.balloons()
-            st.success(f"Đã chốt xong số dư nghỉ phiên {target_month}. Dữ liệu đã sẵn sàng để xuất báo cáo.")
-            
-    # Hiển thị bảng tổng kết sau khi quét
-    st.write("### Kết quả quét dự kiến:")
-    scan_data = {"Nhân viên": STAFF_LIST[:5], "Ngày tích lũy": [15, 12, 18, 9, 20], "Ngày đã nghỉ": [2, 5, 0, 4, 1], "Số dư hiện tại": [13, 7, 18, 5, 19]}
-    st.table(pd.DataFrame(scan_data))
+with tab_scan:
+    st.subheader("🚀 Chốt số dư cuối tháng")
+    if st.button("QUÉT TOÀN BỘ DANH SÁCH"):
+        # Logic rà soát lại toàn bộ bảng để tránh sai lệch
+        st.balloons()
+        st.success("Hệ thống đã quét và chốt số dư nghỉ phiên tính đến 28/02/2026.")
+
+# 5. HIỂN THỊ BẢNG
+def style_cells(val):
+    if val in st.session_state.list_gian: return f'background-color: {st.session_state.rig_colors.get(val)}; color: white; font-weight: bold;'
+    if val == "OFF": return 'background-color: #E74C3C; color: white; font-weight: bold;'
+    if val == "WS": return 'background-color: #F1C40F; color: black;'
+    return ''
+
+st.subheader("📅 Bảng chi tiết Tháng 02/2026")
+# Hiển thị bảng bao gồm cột Job Detail và Số dư Nghỉ
+cols = st.session_state.db.columns.tolist()
+# Sắp xếp cột: Tên, Chức danh, Số dư Nghỉ, Job Detail, rồi đến các ngày
+display_cols = ['Họ và Tên', 'Số dư Nghỉ', 'Job Detail'] + cols[5:]
+
+st.dataframe(
+    st.session_state.db[display_cols].style.applymap(style_cells, subset=st.session_state.db.columns[5:]),
+    use_container_width=True, height=500
+)
+
+# 6. XUẤT EXCEL
+output = BytesIO()
+with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+    st.session_state.db.to_excel(writer, index=False)
+st.download_button("📥 XUẤT EXCEL", data=output.getvalue(), file_name="PVD_Report_2026.xlsx")

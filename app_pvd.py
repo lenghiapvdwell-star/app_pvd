@@ -16,55 +16,28 @@ def get_col_name(day):
 if 'list_gian' not in st.session_state:
     st.session_state.list_gian = ["PVD I", "PVD II", "PVD III", "PVD VI", "PVD 11"]
 
-NAMES = [
-    "Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang",
-    "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong",
-    "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia",
-    "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin",
-    "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang",
-    "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu",
-    "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong",
-    "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh",
-    "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy",
-    "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh",
-    "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung",
-    "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat",
-    "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung"
-]
-
 if 'db' not in st.session_state:
+    initial_names = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang"]
     df = pd.DataFrame({
-        'STT': range(1, len(NAMES) + 1),
-        'Họ và Tên': NAMES, 'Công ty': 'PVD', 'Chức danh': 'Kỹ sư',
+        'STT': range(1, len(initial_names) + 1),
+        'Họ và Tên': initial_names, 'Công ty': 'PVD', 'Chức danh': 'Kỹ sư',
         'Nghỉ Ca Còn Lại': 0.0, 'Job Detail': ''
     })
     for d in range(1, 29): df[get_col_name(d)] = ""
     st.session_state.db = df
 
-# 3. CSS & JS (PHÔNG CHỮ TO 1.5x & KHUNG NHỎ GỌN)
+# 3. CSS & JS (PHÔNG CHỮ TO 1.5x & KÉO CHUỘT)
 st.markdown("""
     <style>
     .stApp { background-color: #0E1117; color: #FFFFFF; }
-    
-    /* Phông chữ toàn bộ to lên 1.5 lần (~24px) */
-    html, body, [class*="css"], .stMarkdown { font-size: 22px !important; }
-    
-    /* Header và Tab vẫn giữ sự nổi bật */
-    .main-title-text { font-size: 45px !important; font-weight: 900; color: #3b82f6; text-align: center; }
-    
-    /* Tinh chỉnh bảng st.data_editor: Chữ bên trong bảng to lên */
+    html, body, [class*="css"] { font-size: 22px !important; }
+    .main-title-text { font-size: 40px !important; font-weight: 900; color: #3b82f6; text-align: center; margin: 0; }
     div[data-testid="stDataEditor"] div { font-size: 20px !important; }
-    
-    /* Hiệu ứng kéo chuột */
     div[data-testid="stDataEditor"] > div:first-child { cursor: grab; }
     div[data-testid="stDataEditor"] > div:first-child:active { cursor: grabbing; }
-    
-    /* Thu hẹp khoảng cách lề để tiết kiệm không gian */
-    .block-container { padding-top: 1.5rem !important; padding-bottom: 1rem !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# JS giúp giữ chuột trái kéo bảng
 components.html("""
 <script>
     const interval = setInterval(() => {
@@ -88,15 +61,16 @@ components.html("""
 """, height=0)
 
 # 4. HEADER
-h1, h2, h3 = st.columns([1.5, 7, 1.5])
+h1, h2 = st.columns([1.5, 8.5])
 with h1: 
-    try: st.image("logo_pvd.png", width=150)
+    try: st.image("logo_pvd.png", width=120)
     except: st.write("### PVD")
-with h2: st.markdown('<p class="main-title-text">HỆ THỐNG NHÂN SỰ PVD 2026</p>', unsafe_allow_html=True)
+with h2: st.markdown('<p class="main-title-text">HỆ THỐNG ĐIỀU PHỐI NHÂN SỰ PVD 2026</p>', unsafe_allow_html=True)
 
-# 5. TABS
-tabs = st.tabs(["🚀 ĐIỀU ĐỘNG", "📝 JOB", "👤 NHÂN VIÊN", "🏗️ GIÀN"])
+# 5. TABS CHỨC NĂNG
+tabs = st.tabs(["🚀 ĐIỀU ĐỘNG", "📝 JOB DETAIL", "👤 NHÂN VIÊN", "🏗️ GIÀN KHOAN"])
 
+# --- TAB ĐIỀU ĐỘNG ---
 with tabs[0]:
     c1, c2, c3 = st.columns([2, 1, 1.5])
     sel_staff = c1.multiselect("CHỌN NHÂN VIÊN:", st.session_state.db['Họ và Tên'].tolist())
@@ -110,6 +84,50 @@ with tabs[0]:
                 st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(sel_staff), col] = val_to_fill
             st.rerun()
 
+# --- TAB JOB DETAIL ---
+with tabs[1]:
+    st.write("### Cập nhật nội dung công việc")
+    j1, j2 = st.columns([2, 3])
+    sel_j_staff = j1.multiselect("Chọn nhân sự:", st.session_state.db['Họ và Tên'].tolist())
+    j_content = j2.text_area("Nội dung Job Detail:")
+    if st.button("LƯU NỘI DUNG JOB"):
+        st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(sel_j_staff), 'Job Detail'] = j_content
+        st.success("Đã cập nhật Job Detail!")
+        st.rerun()
+
+# --- TAB NHÂN VIÊN ---
+with tabs[2]:
+    st.write("### Quản lý danh sách nhân sự")
+    a1, a2, a3 = st.columns(3)
+    new_name = a1.text_input("Tên nhân viên mới:")
+    new_pos = a2.text_input("Chức danh:", value="Kỹ sư")
+    if st.button("THÊM NHÂN VIÊN"):
+        new_row = {'STT': len(st.session_state.db)+1, 'Họ và Tên': new_name, 'Công ty': 'PVD', 'Chức danh': new_pos, 'Nghỉ Ca Còn Lại': 0.0, 'Job Detail': ''}
+        for d in range(1, 29): new_row[get_col_name(d)] = ""
+        st.session_state.db = pd.concat([st.session_state.db, pd.DataFrame([new_row])], ignore_index=True)
+        st.rerun()
+    
+    st.divider()
+    del_staff = st.selectbox("Chọn nhân viên cần xóa:", st.session_state.db['Họ and Tên'].tolist())
+    if st.button("XÓA NHÂN VIÊN", type="secondary"):
+        st.session_state.db = st.session_state.db[st.session_state.db['Họ và Tên'] != del_staff]
+        st.rerun()
+
+# --- TAB GIÀN KHOAN ---
+with tabs[3]:
+    st.write("### Quản lý danh sách Giàn khoan")
+    g1, g2 = st.columns(2)
+    with g1:
+        new_g = st.text_input("Tên giàn mới:")
+        if st.button("THÊM GIÀN"):
+            st.session_state.list_gian.append(new_g)
+            st.rerun()
+    with g2:
+        del_g = st.selectbox("Chọn giàn cần xóa:", st.session_state.list_gian)
+        if st.button("XÓA GIÀN"):
+            st.session_state.list_gian.remove(del_g)
+            st.rerun()
+
 # 6. QUÉT SỐ DƯ
 st.markdown("---")
 if st.button("🚀 QUÉT & CẬP NHẬT SỐ DƯ", type="primary", use_container_width=True):
@@ -119,37 +137,33 @@ if st.button("🚀 QUÉT & CẬP NHẬT SỐ DƯ", type="primary", use_container
         bal = 0.0
         for d in range(1, 29):
             col = get_col_name(d); val = row[col]; d_obj = date(2026, 2, d)
-            is_weekend = d_obj.weekday() >= 5
-            is_holiday = d in ngay_le_tet
+            is_off = d_obj.weekday() >= 5 or d in ngay_le_tet
             if val in st.session_state.list_gian:
-                if is_holiday: bal += 2.0
-                elif is_weekend: bal += 1.0
+                if d in ngay_le_tet: bal += 2.0
+                elif d_obj.weekday() >= 5: bal += 1.0
                 else: bal += 0.5
-            elif val == "CA" and not (is_weekend or is_holiday):
-                bal -= 1.0
+            elif val == "CA" and not is_off: bal -= 1.0
         df_tmp.at[idx, 'Nghỉ Ca Còn Lại'] = round(bal, 1)
     st.session_state.db = df_tmp
     st.rerun()
 
-# 7. BẢNG TỔNG HỢP (Khung gọn - Chữ to)
-st.subheader("📊 BẢNG TỔNG HỢP NHÂN SỰ")
+# 7. BẢNG TỔNG HỢP (MÀU SẮC GIÀN)
+st.write("### 📊 BẢNG TỔNG HỢP NHÂN SỰ")
 date_cols = [c for c in st.session_state.db.columns if "/Feb" in c]
 display_order = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Nghỉ Ca Còn Lại', 'Job Detail'] + date_cols
 
+# Cấu hình màu sắc tag cho từng giàn
 options = st.session_state.list_gian + ["CA", "WS", "NP"]
 col_cfg = {
-    "STT": st.column_config.NumberColumn(width="small"),
     "Nghỉ Ca Còn Lại": st.column_config.NumberColumn(format="%.1f", width="small"),
-    "Job Detail": st.column_config.TextColumn(width="medium")
+    "Job Detail": st.column_config.TextColumn(width="large")
 }
 for c in date_cols:
     col_cfg[c] = st.column_config.SelectboxColumn(width="small", options=options)
 
-# Hiển thị bảng với chiều cao vừa phải (600px) để khung trông nhỏ gọn
 st.session_state.db = st.data_editor(
     st.session_state.db[display_order], 
-    use_container_width=True, 
-    height=550, 
+    use_container_width=True, height=500, 
     column_config=col_cfg,
     disabled=['STT', 'Nghỉ Ca Còn Lại']
 )

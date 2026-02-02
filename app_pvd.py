@@ -1,12 +1,13 @@
 import streamlit as st
 import pandas as pd
-from streamlit_gsheets import GSheetsConnection
+import gspread
+from google.oauth2.service_account import Credentials
 
 # 1. Cấu hình trang
 st.set_page_config(page_title="PVD Management 2026", layout="wide")
 
-# 2. Xây dựng bộ hồ sơ kết nối thủ công (Dứt điểm lỗi PEM và lỗi gán thuộc tính)
-# Dữ liệu này được đưa vào một biến tạm, không gán ngược vào st.secrets
+# 2. Khai báo thông tin tài khoản (Dán cứng để dứt điểm)
+# Lưu ý: private_key đã được xử lý \n ngay trong chuỗi
 cred_info = {
     "type": "service_account",
     "project_id": "pvd-management-87",
@@ -16,26 +17,30 @@ cred_info = {
     "token_uri": "https://oauth2.googleapis.com/token",
 }
 
-# 3. Kết nối Cloud
-try:
-    # Bước quan trọng: Chuyển đổi ký tự xuống dòng
+# 3. Kết nối thủ công qua gspread
+@st.cache_resource
+def get_gspread_client():
+    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+    # Tự động thay thế \n để dứt điểm lỗi PEM
     cred_info["private_key"] = cred_info["private_key"].replace("\\n", "\n")
+    creds = Credentials.from_service_account_info(cred_info, scopes=scopes)
+    return gspread.authorize(creds)
+
+try:
+    client = get_gspread_client()
+    # Mở Spreadsheet bằng ID (Dùng ID cho chắc chắn nhất)
+    # ID lấy từ link của bạn: 1mNVM-Gq6JkF41Yz7JDRiiLtWOtoQHnXwyp3LTRGt-2E
+    sheet = client.open_by_key("1mNVM-Gq6JkF41Yz7JDRiiLtWOtoQHnXwyp3LTRGt-2E")
+    worksheet = sheet.worksheet("PVD_Data")
     
-    # Khởi tạo kết nối mà KHÔNG dùng tham số type=GSheetsConnection trong st.connection 
-    # để tránh xung đột, thay vào đó truyền thẳng cấu hình vào
-    conn = st.connection("gsheets", type=GSheetsConnection, service_account=cred_info)
-    
+    # Lấy toàn bộ dữ liệu
+    data = worksheet.get_all_records()
+    df = pd.DataFrame(data)
+
     st.title("PVD PERSONNEL 2026")
-    
-    # Lấy link từ Secrets
-    url = st.secrets["connections"]["gsheets"]["spreadsheet"]
-    
-    # Đọc dữ liệu
-    df = conn.read(spreadsheet=url, worksheet="PVD_Data", ttl=0)
-    
-    st.success("✅ KẾT NỐI CLOUD THÀNH CÔNG!")
+    st.success("✅ KẾT NỐI TRỰC TIẾP THÀNH CÔNG!")
     st.dataframe(df, use_container_width=True)
 
 except Exception as e:
-    st.error(f"❌ LỖI: {e}")
-    st.info("Hãy kiểm tra tên Tab trên Google Sheet đã là 'PVD_Data' chưa.")
+    st.error(f"❌ LỖI KẾT NỐI: {e}")
+    st.info("Hãy đảm bảo Tab trong Google Sheet được đặt tên chính xác là: PVD_Data")

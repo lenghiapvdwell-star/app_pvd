@@ -11,7 +11,7 @@ def get_col_name(day):
     days_vn = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
     return f"{day:02d}/Feb {days_vn[d.weekday()]}"
 
-# 2. KHỞI TẠO DỮ LIỆU
+# 2. KHỞI TẠO DỮ LIỆU (64 nhân sự)
 NAMES = [
     "Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang",
     "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong",
@@ -44,18 +44,18 @@ if 'db' not in st.session_state:
         df[get_col_name(d)] = ""
     st.session_state.db = df
 
-# 3. CSS (CHỮ TO & GIAO DIỆN)
+# 3. CSS (CHỮ TO & FIX THANH CUỘN)
 st.markdown("""
     <style>
     .stApp { background-color: #0E1117; color: #FFFFFF; }
     html, body, [class*="css"] { font-size: 18px !important; }
     .main-title-text {
         font-size: 45px !important; font-weight: 900 !important; color: #3b82f6; 
-        text-transform: uppercase; text-align: center; margin: 0;
+        text-transform: uppercase; text-align: center; margin-bottom: 20px;
     }
-    /* Tối ưu hóa vùng cuộn cho Data Editor */
-    div[data-testid="stDataEditor"] > div {
-        overflow-x: auto !important;
+    /* Đảm bảo thanh cuộn ngang luôn hiện khi cần */
+    div[data-testid="stDataEditor"] {
+        width: 100%;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -84,12 +84,12 @@ with tabs[0]: # Điều động
                 st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(sel_staff), col] = val_to_fill
             st.rerun()
 
-# 6. NÚT QUÉT SỐ DƯ (GÓC TRÁI)
+# 6. NÚT QUÉT SỐ DƯ
 st.markdown("---")
 col_scan, _ = st.columns([1.5, 3])
 with col_scan:
     if st.button("🚀 QUÉT & CẬP NHẬT SỐ DƯ", type="primary", use_container_width=True):
-        ngay_le_tet = [17, 18, 19, 20, 21] # Lễ Tết tháng 2/2026
+        ngay_le_tet = [17, 18, 19, 20, 21]
         df_tmp = st.session_state.db.copy()
         for index, row in df_tmp.iterrows():
             balance = 0.0
@@ -97,45 +97,48 @@ with col_scan:
                 col = get_col_name(d)
                 val = row[col]
                 d_obj = date(2026, 2, d)
-                is_weekend = d_obj.weekday() >= 5 # T7, CN
+                is_weekend = d_obj.weekday() >= 5
                 is_holiday = d in ngay_le_tet
-                
-                # CỘNG: Khi đi biển
                 if val in st.session_state.list_gian:
                     if is_holiday: balance += 2.0
                     elif is_weekend: balance += 1.0
                     else: balance += 0.5
-                
-                # TRỪ: Chỉ khi là CA và KHÔNG PHẢI ngày nghỉ/lễ
                 elif val == "CA":
                     if not is_weekend and not is_holiday:
                         balance -= 1.0
-                
-                # KHÔNG ĐỔI: Nếu là WS hoặc NP hoặc để trống
-                else:
-                    pass
-                    
             df_tmp.at[index, 'Nghỉ Ca Còn Lại'] = round(balance, 1)
         st.session_state.db = df_tmp
-        st.success("Đã tính toán xong số dư ca!")
         st.rerun()
 
-# 7. BẢNG TỔNG HỢP (Kéo ngang/dọc & Sửa trực tiếp)
-st.subheader("📊 BẢNG TỔNG HỢP NHÂN SỰ (Cho phép sửa tay & kéo cuộn)")
+# 7. BẢNG TỔNG HỢP NHÂN SỰ
+st.subheader("BẢNG TỔNG HỢP NHÂN SỰ")
+
 date_cols = [c for c in st.session_state.db.columns if "/Feb" in c]
 display_order = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Nghỉ Ca Còn Lại', 'Job Detail'] + date_cols
 
-# Lưu lại thay đổi từ bảng editor
+# Thiết lập độ rộng cột để ép bảng xuất hiện thanh cuộn ngang
+column_config = {
+    "STT": st.column_config.NumberColumn(width="small"),
+    "Họ và Tên": st.column_config.TextColumn(width="medium"),
+    "Công ty": st.column_config.TextColumn(width="small"),
+    "Chức danh": st.column_config.TextColumn(width="small"),
+    "Nghỉ Ca Còn Lại": st.column_config.TextColumn(width="small"),
+    "Job Detail": st.column_config.TextColumn(width="large"),
+}
+# Ép các cột ngày tháng rộng ra để kích hoạt cuộn ngang
+for col in date_cols:
+    column_config[col] = st.column_config.TextColumn(width="medium")
+
 edited_db = st.data_editor(
     st.session_state.db[display_order], 
     use_container_width=True, 
-    height=600,
-    disabled=['STT', 'Nghỉ Ca Còn Lại'] # Hệ thống tự quản lý 2 cột này
+    height=700,
+    column_config=column_config,
+    disabled=['STT', 'Nghỉ Ca Còn Lại']
 )
 
-# Cập nhật ngược lại vào session_state khi người dùng sửa tay
-if not edited_db.equals(st.session_state.db[display_order]):
-    st.session_state.db.update(edited_df)
+# Cập nhật dữ liệu khi sửa tay
+st.session_state.db.update(edited_db)
 
 # 8. XUẤT EXCEL
 output = BytesIO()

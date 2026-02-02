@@ -10,25 +10,27 @@ st.set_page_config(page_title="PVD 2026", layout="wide")
 try:
     # Lấy thông tin từ mục Secrets
     conf = st.secrets["connections"]["gsheets"].to_dict()
-    # Chuyển đổi các chữ \n thành lệnh xuống dòng thực sự cho Google hiểu
-    conf["private_key"] = conf["private_key"].replace("\\n", "\n")
     
-    # Kết nối thủ công
-    conn = st.connection("gsheets", type=GSheetsConnection, **conf)
+    # Chuyển đổi các chữ \n thành lệnh xuống dòng thực sự cho Google hiểu
+    if "private_key" in conf:
+        conf["private_key"] = conf["private_key"].replace("\\n", "\n")
+    
+    # KẾT NỐI: Sử dụng tham số từ Secrets mà không lặp lại 'type'
+    conn = st.connection("gsheets", **conf)
     
     st.success("✅ Hệ thống đã kết nối thành công với Google Sheets!")
 except Exception as e:
-    st.error(f"❌ Lỗi cấu hình Secrets: {e}")
-    st.info("Kiểm tra lại xem bạn đã nhấn SAVE trong mục Secrets chưa.")
+    st.error(f"❌ Lỗi: {e}")
     st.stop()
 
-# 3. Thử đọc dữ liệu
+# 3. Giao diện chính
 st.title("PVD PERSONNEL CLOUD 2026")
+
 try:
-    # Đọc dữ liệu từ Sheet có tên là PVD_Data
+    # Thử đọc dữ liệu từ Tab PVD_Data
     df = conn.read(worksheet="PVD_Data", ttl=0)
-    st.write("Dữ liệu hiện tại trên Cloud:")
+    st.write("Dữ liệu hiện tại:")
     st.dataframe(df, use_container_width=True)
 except Exception as e:
-    st.warning("⚠️ Đã kết nối nhưng chưa tìm thấy Tab 'PVD_Data' hoặc Sheet đang trống.")
-    st.info("Hãy đảm bảo bạn đã đặt tên Tab trong Google Sheet là: PVD_Data")
+    st.warning("⚠️ Đã kết nối nhưng chưa thấy dữ liệu.")
+    st.info("Hãy kiểm tra: 1. Đã share file cho Email Service Account chưa? 2. Tên Tab có đúng là 'PVD_Data' không?")

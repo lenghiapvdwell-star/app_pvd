@@ -16,21 +16,8 @@ def get_col_name(day):
 if 'list_gian' not in st.session_state:
     st.session_state.list_gian = ["PVD I", "PVD II", "PVD III", "PVD VI", "PVD 11"]
 
-NAMES = [
-    "Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang",
-    "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong",
-    "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia",
-    "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin",
-    "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang",
-    "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu",
-    "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong",
-    "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh",
-    "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy",
-    "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh",
-    "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung",
-    "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat",
-    "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung"
-]
+# Danh sách nhân viên (Giữ nguyên như cũ)
+NAMES = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung"]
 
 if 'db' not in st.session_state:
     df = pd.DataFrame({
@@ -45,70 +32,70 @@ if 'db' not in st.session_state:
         df[get_col_name(d)] = ""
     st.session_state.db = df
 
-# 3. CSS CUSTOM: LOGO TRÁI - TIÊU ĐỀ GIỮA - NỀN TỐI
+# 3. CSS TỐI ƯU BỐ CỤC HEADER
 st.markdown("""
     <style>
     .stApp { background-color: #0E1117; color: #FFFFFF; }
     
-    .header-container {
+    /* Container Header */
+    .header-wrapper {
         display: flex;
         align-items: center;
-        justify-content: flex-start; /* Logo nằm góc trái */
-        padding: 10px 0px 30px 0px;
-        border-bottom: 1px solid #3b82f6;
+        justify-content: center; /* Căn giữa nội dung chính */
+        position: relative;
+        padding: 20px 0;
         margin-bottom: 20px;
+        border-bottom: 2px solid #1E293B;
     }
-    
-    .title-wrapper {
-        flex-grow: 1;
-        text-align: center; /* Tiêu đề vẫn nằm giữa trang */
-        margin-right: 220px; /* Bù trừ khoảng cách để tiêu đề cân giữa so với toàn trang */
+
+    .logo-left {
+        position: absolute;
+        left: 20px; /* Logo cách lề trái 20px nhìn sẽ sang hơn */
     }
 
     .main-title-text {
-        font-size: 45px !important;
-        font-weight: 850 !important;
-        color: #3b82f6; 
-        margin: 0;
+        font-size: 3.2rem !important;
+        font-weight: 900 !important;
+        color: #3B82F6;
+        text-align: center;
         text-transform: uppercase;
-        letter-spacing: 1px;
+        letter-spacing: 2px;
         line-height: 1.2;
+        margin: 0;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
     }
 
-    .stTabs [data-baseweb="tab-list"] { justify-content: flex-start !important; }
+    /* Tabs lề trái */
+    .stTabs [data-baseweb="tab-list"] { justify-content: flex-start !important; padding-top: 10px; }
     </style>
     """, unsafe_allow_html=True)
 
-# 4. HEADER: LOGO TRÁI & TIÊU ĐỀ GIỮA
-col_logo, col_title = st.columns([1, 4])
-with col_logo:
-    try:
-        # Sử dụng logo nội bộ, nếu lỗi sẽ hiện text
-        st.image("logo_pvd.png", width=220)
-    except:
-        st.write("### PETROVIETNAM")
-
-with col_title:
-    st.markdown('<p class="main-title-text" style="text-align: center;">HỆ THỐNG ĐIỀU PHỐI<br>NHÂN SỰ PVD 2026</p>', unsafe_allow_html=True)
+# 4. HIỂN THỊ HEADER
+st.markdown(f"""
+    <div class="header-wrapper">
+        <div class="logo-left">
+            <img src="https://www.pvdrilling.com.vn/images/logo.png" width="200">
+        </div>
+        <p class="main-title-text">HỆ THỐNG ĐIỀU PHỐI<br>NHÂN SỰ PVD 2026</p>
+    </div>
+    """, unsafe_allow_html=True)
 
 # 5. CÁC TABS CHỨC NĂNG
-tabs = st.tabs(["🚀 Điều Động", "📝 Nhập Job Detail", "👤 Thêm Nhân Viên", "✍️ Sửa Tổng Hợp", "🔍 Quét Số Dư", "🏗️ Giàn Khoan"])
+tabs = st.tabs(["🚀 Điều Động", "📝 Nhập Job Detail", "👤 Nhân Viên", "✍️ Chỉnh Sửa", "🔍 Quét Số Dư", "🏗️ Giàn Khoan"])
 
-# --- Tab 2: Nhập Job Detail (Đã sửa lỗi Họ và Tên) ---
-with tabs[1]:
-    st.subheader("📝 Cập nhật Job Detail")
+with tabs[1]: # Tab Job Detail
+    st.subheader("📝 Cập nhật chi tiết công việc")
     with st.form("job_form"):
         sel_job_staff = st.multiselect("Chọn nhân viên:", st.session_state.db['Họ và Tên'].tolist())
-        job_text = st.text_area("Nội dung công việc:")
-        if st.form_submit_button("LƯU JOB DETAIL"):
+        job_text = st.text_area("Nội dung Job Detail:")
+        if st.form_submit_button("LƯU JOB"):
             if sel_job_staff:
                 st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(sel_job_staff), 'Job Detail'] = job_text
-                st.success("Đã cập nhật!")
+                st.success("Đã lưu thành công!")
                 st.rerun()
 
-# --- Tab 5: Quét số dư (Làm tròn số) ---
-with tabs[4]:
-    if st.button("🚀 QUÉT & CHỐT THÁNG"):
+with tabs[4]: # Tab Quét Số Dư
+    if st.button("🚀 QUÉT TOÀN BỘ & CHỐT THÁNG"):
         tet_2026 = [17, 18, 19, 20, 21]
         df_tmp = st.session_state.db.copy()
         for index, row in df_tmp.iterrows():
@@ -123,7 +110,6 @@ with tabs[4]:
                         elif d_obj.weekday() >= 5: balance += 1.0
                         else: balance += 0.5
                     elif val == "CA": balance -= 1.0
-            # Làm tròn về 1 chữ số thập phân
             df_tmp.at[index, 'Nghỉ Ca Còn Lại'] = round(float(balance), 1)
         st.session_state.db = df_tmp
         st.balloons()
@@ -132,7 +118,12 @@ with tabs[4]:
 # 6. HIỂN THỊ BẢNG TỔNG HỢP
 st.markdown("---")
 date_cols = [c for c in st.session_state.db.columns if "/Feb" in c]
-display_order = ['STT', 'Họ và Tên', 'Công ty', 'Nghỉ Ca Còn Lại', 'Job Detail'] + date_cols
+display_order = ['STT', 'Họ và Tên', 'Nghỉ Ca Còn Lại', 'Job Detail'] + date_cols
+
+# Hàm định dạng số dư để hiện 0.5 hoặc 1 (bỏ .0 nếu là số nguyên)
+def format_balance(val):
+    if val == int(val): return str(int(val))
+    return str(val)
 
 def style_cells(val):
     if not val or val == "": return ""
@@ -142,10 +133,12 @@ def style_cells(val):
     if val == "NP": return 'background-color: #9B59B6; color: white;'
     return ''
 
-# Định dạng hiển thị cột Nghỉ Ca Còn Lại cho đẹp
+# Tạo bản sao hiển thị để format số dư
+df_display = st.session_state.db[display_order].copy()
+df_display['Nghỉ Ca Còn Lại'] = df_display['Nghỉ Ca Còn Lại'].apply(format_balance)
+
 st.dataframe(
-    st.session_state.db[display_order].style.applymap(style_cells, subset=date_cols)
-    .format({"Nghỉ Ca Còn Lại": "{:.1f}"}), # Ép hiển thị 0.5 hoặc 1.0 thay vì 0.5000
+    df_display.style.applymap(style_cells, subset=date_cols),
     use_container_width=True, height=600
 )
 

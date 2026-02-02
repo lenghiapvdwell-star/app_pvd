@@ -12,7 +12,7 @@ def get_col_name(day):
     days_vn = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
     return f"{day:02d}/Feb {days_vn[d.weekday()]}"
 
-# 2. KHỞI TẠO BỘ NHỚ & DANH SÁCH 64 NHÂN VIÊN
+# 2. KHỞI TẠO BỘ NHỚ & DANH SÁCH NHÂN VIÊN
 if 'list_gian' not in st.session_state:
     st.session_state.list_gian = ["PVD I", "PVD II", "PVD III", "PVD VI", "PVD 11"]
 
@@ -45,59 +45,49 @@ if 'db' not in st.session_state:
         df[get_col_name(d)] = ""
     st.session_state.db = df
 
-# 3. CSS CUSTOM: NỀN TỐI & HEADER CĂN GIỮA
+# 3. CSS CUSTOM: NỀN TỐI & HEADER CĂN GIỮA (LOGO NỐI TIẾP CHỮ)
 st.markdown("""
     <style>
-    /* Nền tối cho App */
-    .stApp {
-        background-color: #0E1117;
-        color: #FFFFFF;
-    }
-    .header-block {
+    .stApp { background-color: #0E1117; color: #FFFFFF; }
+    
+    .centered-header {
         display: flex;
-        flex-direction: column;
         align-items: center;
         justify-content: center;
-        text-align: center;
-        padding: 10px 0px 30px 0px;
+        gap: 20px;
+        padding: 20px 0px 40px 0px;
     }
     .main-title {
-        font-size: 45px !important; /* Nhỏ lại xíu theo ý bạn */
+        font-size: 42px !important;
         font-weight: 800 !important;
         color: #3b82f6; 
-        margin-top: 15px;
+        margin: 0;
         text-transform: uppercase;
         letter-spacing: 1px;
     }
-    /* Tùy chỉnh Tabs trên nền tối */
+    /* Giữ Tabs lề trái */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 10px;
-        justify-content: center;
-    }
-    .stTabs [data-baseweb="tab"] {
-        background-color: #1f2937;
-        border-radius: 5px 5px 0px 0px;
-        color: white;
-        padding: 10px 20px;
+        justify-content: flex-start !important;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# 4. HEADER: LOGO NỐI TIẾP TIÊU ĐỀ (CĂN GIỮA)
-st.markdown('<div class="header-block">', unsafe_allow_html=True)
+# 4. HEADER: LOGO VÀ TIÊU ĐỀ NẰM NGANG CĂN GIỮA
+st.markdown('<div class="centered-header">', unsafe_allow_html=True)
 try:
-    st.image("logo_pvd.png", width=200) # Logo to vừa phải
+    st.image("logo_pvd.png", width=120) 
 except:
-    st.write("### [ LOGO PVD ]")
+    st.write("### [LOGO]")
 st.markdown('<p class="main-title">HỆ THỐNG ĐIỀU PHỐI NHÂN SỰ PVD 2026</p>', unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
-# 5. CÁC TABS CHỨC NĂNG
-tabs = st.tabs(["🚀 Điều Động", "👤 Thêm Nhân Viên", "✍️ Chỉnh Sửa Tay", "🔍 Quét Số Dư", "🏗️ Quản Lý Giàn"])
+# 5. CÁC TABS CHỨC NĂNG (LỀ TRÁI)
+tabs = st.tabs(["🚀 Điều Động Biển", "📝 Nhập Job Detail", "👤 Thêm Nhân Viên", "✍️ Sửa Tổng Hợp", "🔍 Quét Số Dư", "🏗️ Giàn Khoan"])
 
-with tabs[0]: # Điều động
+# TAB: ĐIỀU ĐỘNG
+with tabs[0]:
     c1, c2, c3 = st.columns([2, 1, 1.5])
-    sel_staff = c1.multiselect("Chọn nhân viên:", st.session_state.db['Họ và Tên'].tolist())
+    sel_staff = c1.multiselect("Chọn nhân viên đi biển/nghỉ:", st.session_state.db['Họ và Tên'].tolist())
     status = c2.selectbox("Trạng thái:", ["Đi Biển", "Nghỉ Ca (CA)", "Làm Xưởng (WS)", "Nghỉ Phép (NP)"])
     val_to_fill = ""
     if status == "Đi Biển":
@@ -105,28 +95,41 @@ with tabs[0]: # Điều động
     else:
         mapping = {"Nghỉ Ca (CA)": "CA", "Làm Xưởng (WS)": "WS", "Nghỉ Phép (NP)": "NP"}
         val_to_fill = mapping.get(status, status)
-    dates = c3.date_input("Khoảng ngày:", value=(date(2026, 2, 1), date(2026, 2, 2)))
-    if st.button("XÁC NHẬN CẬP NHẬT", type="primary"):
+    dates = c3.date_input("Khoảng ngày đi:", value=(date(2026, 2, 1), date(2026, 2, 2)))
+    if st.button("XÁC NHẬN ĐIỀU ĐỘNG", type="primary"):
         if isinstance(dates, tuple) and len(dates) == 2:
             for d in range(dates[0].day, dates[1].day + 1):
                 col = get_col_name(d)
                 st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(sel_staff), col] = val_to_fill
             st.rerun()
 
-with tabs[1]: # Thêm nhân viên
+# TAB: NHẬP JOB DETAIL (MỚI)
+with tabs[1]:
+    st.subheader("📝 Cập nhật chi tiết công việc")
+    with st.form("job_detail_form"):
+        sel_job_staff = st.multiselect("Chọn nhân viên thực hiện job:", st.session_state.db['Hên và Tên'].tolist())
+        job_text = st.text_area("Nội dung công việc (Job Detail):", placeholder="Ví dụ: Thay cáp thép giàn PVD I, Bảo dưỡng cụm bơm...")
+        if st.form_submit_button("LƯU CHI TIẾT CÔNG VIỆC"):
+            if sel_job_staff:
+                st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(sel_job_staff), 'Job Detail'] = job_text
+                st.success("Đã cập nhật Job Detail thành công!")
+                st.rerun()
+
+# TAB: THÊM NHÂN VIÊN
+with tabs[2]:
     with st.form("add_new"):
         n_name = st.text_input("Họ và Tên:")
         n_corp = st.text_input("Công ty:", value="PVD")
-        n_pos = st.text_input("Chức danh:", value="Kỹ sư")
-        if st.form_submit_button("Lưu nhân viên"):
+        if st.form_submit_button("Lưu nhân sự mới"):
             if n_name:
                 new_stt = len(st.session_state.db) + 1
-                new_row = {'STT': new_stt, 'Họ và Tên': n_name, 'Công ty': n_corp, 'Chức danh': n_pos, 'Nghỉ Ca Còn Lại': 0.0, 'Job Detail': ''}
+                new_row = {'STT': new_stt, 'Họ và Tên': n_name, 'Công ty': n_corp, 'Chức danh': 'Kỹ sư', 'Nghỉ Ca Còn Lại': 0.0, 'Job Detail': ''}
                 for d in range(1, 29): new_row[get_col_name(d)] = ""
                 st.session_state.db = pd.concat([st.session_state.db, pd.DataFrame([new_row])], ignore_index=True)
                 st.rerun()
 
-with tabs[3]: # Quét số dư
+# TAB: QUÉT SỐ DƯ
+with tabs[4]:
     if st.button("🚀 QUÉT TOÀN BỘ & CHỐT THÁNG"):
         tet_2026 = [17, 18, 19, 20, 21]
         df_tmp = st.session_state.db.copy()
@@ -147,7 +150,7 @@ with tabs[3]: # Quét số dư
         st.balloons()
         st.rerun()
 
-# 6. HIỂN THỊ BẢNG DỮ LIỆU SẮC NÉT
+# 6. HIỂN THỊ BẢNG TỔNG HỢP
 st.markdown("---")
 date_cols = [c for c in st.session_state.db.columns if "/Feb" in c]
 display_order = ['STT', 'Họ và Tên', 'Công ty', 'Nghỉ Ca Còn Lại', 'Job Detail'] + date_cols

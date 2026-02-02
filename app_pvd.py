@@ -1,12 +1,13 @@
 import streamlit as st
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
+import json
 
 # 1. Cấu hình trang
 st.set_page_config(page_title="PVD Management 2026", layout="wide")
 
-# 2. Tạo bộ khung Credentials chuẩn
-# Chúng ta không truyền trực tiếp vào connection để tránh lỗi 'unexpected keyword argument'
+# 2. Khai báo thông tin tài khoản (Dán cứng để dứt điểm lỗi Secrets)
+# Chúng ta sẽ tự xử lý Key ở đây
 service_account_info = {
     "type": "service_account",
     "project_id": "pvd-management-87",
@@ -16,26 +17,26 @@ service_account_info = {
     "token_uri": "https://oauth2.googleapis.com/token",
 }
 
-# 3. Kết nối bằng cách truyền dict vào tham số service_account
+# 3. Kết nối an toàn
 try:
-    # Làm sạch ký tự xuống dòng
+    # Sửa lỗi PEM trực tiếp trong code Python
     service_account_info["private_key"] = service_account_info["private_key"].replace("\\n", "\n")
     
-    # Kết nối CHUẨN: Link spreadsheet lấy từ Secrets, còn tài khoản lấy từ dict trên
-    conn = st.connection(
-        "gsheets",
-        type=GSheetsConnection,
+    # Khởi tạo kết nối gsheets theo cách CHUẨN NHẤT
+    conn = st.connection("gsheets", type=GSheetsConnection)
+    
+    # Đọc dữ liệu (Lấy link spreadsheet từ Secrets)
+    df = conn.read(
         spreadsheet=st.secrets["connections"]["gsheets"]["spreadsheet"],
-        service_account=service_account_info
+        worksheet="PVD_Data",
+        ttl=0,
+        service_account_info=service_account_info
     )
     
     st.title("PVD PERSONNEL 2026")
-    
-    # Đọc Sheet có tên PVD_Data
-    df = conn.read(worksheet="PVD_Data", ttl=0)
-    st.success("✅ KẾT NỐI THÀNH CÔNG!")
+    st.success("✅ KẾT NỐI CLOUD THÀNH CÔNG!")
     st.dataframe(df, use_container_width=True)
 
 except Exception as e:
     st.error(f"❌ LỖI: {e}")
-    st.info("Gợi ý: Kiểm tra xem link Spreadsheet trong Secrets đã đúng chưa.")
+    st.info("Gợi ý: Hãy đảm bảo bạn đã Share file Google Sheets cho email: pvd-sync@pvd-management-87.iam.gserviceaccount.com")

@@ -28,9 +28,8 @@ def load_data_from_gs():
         return None
 
 def save_data_to_gs(df):
-    # Cập nhật dữ liệu ngược lại Google Sheets
-    conn.update(data=df)
-    st.success("Dữ liệu đã được lưu vĩnh viễn trên Google Sheets!")
+    conn.update(worksheet="Sheet1", data=df)
+    st.success("Dữ liệu đã được lưu vĩnh viễn!")
 
 # 3. KHỞI TẠO DỮ LIỆU BAN ĐẦU (Chỉ chạy 1 lần duy nhất)
 if 'db' not in st.session_state:

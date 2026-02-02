@@ -9,13 +9,17 @@ st.title("🚢 HỆ THỐNG QUẢN LÝ PVD - CLOUD 2026")
 # Kết nối Google Sheets
 conn = st.connection("gsheets", type=GSheetsConnection)
 
+def load_data():
+    # Đọc dữ liệu và bỏ qua các lỗi định dạng ban đầu
+    return conn.read(spreadsheet=st.secrets["gsheet_url"], ttl=0)
+
 try:
-    # Đọc dữ liệu từ Cloud
-    df = conn.read(spreadsheet=st.secrets["gsheet_url"])
+    df = load_data()
     
-    # Nếu sheet hoàn toàn trống, tạo DataFrame mẫu để không bị lỗi
-    if df.empty:
-        df = pd.DataFrame(columns=["MSNV", "Họ Tên", "Đơn vị", "Chức danh", "Ngày vào làm", "Ghi chú"])
+    # Nếu sheet chưa có dữ liệu hoặc lỗi tiêu đề, tạo khung mặc định
+    expected_cols = ["MSNV", "Họ Tên", "Đơn vị", "Chức danh", "Ngày vào làm", "Ghi chú"]
+    if df.empty or len(df.columns) < 2:
+        df = pd.DataFrame(columns=expected_cols)
 
     tab1, tab2, tab3 = st.tabs(["➕ NHẬP LIỆU", "🔍 TRA CỨU", "📥 XUẤT BÁO CÁO"])
 
@@ -34,32 +38,36 @@ try:
 
         if submit:
             if msnv and ho_ten:
-                new_row = pd.DataFrame([{
-                    "MSNV": msnv, "Họ Tên": ho_ten, "Đơn vị": don_vi,
-                    "Chức danh": chuc_danh, "Ngày vào làm": str(ngay_vao), "Ghi chú": ghi_chu
-                }])
+                # Tạo hàng mới đúng cấu trúc
+                new_row = pd.DataFrame([[msnv, ho_ten, don_vi, chuc_danh, str(ngay_vao), ghi_chu]], 
+                                     columns=df.columns[:6] if not df.empty else expected_cols)
                 
-                # Ghi đè dữ liệu mới lên Sheet
                 updated_df = pd.concat([df, new_row], ignore_index=True)
+                
+                # Lưu đè lên Google Sheet
                 conn.update(spreadsheet=st.secrets["gsheet_url"], data=updated_df)
                 
-                st.success("✅ Đã đồng bộ lên không gian mạng! Mọi người đều có thể thấy.")
+                st.success("✅ Đã lưu thành công lên Cloud!")
                 st.cache_data.clear()
                 st.rerun()
             else:
                 st.error("⚠️ Vui lòng điền MSNV và Họ Tên!")
 
     with tab2:
-        st.subheader("📊 Dữ liệu nhân sự trực tuyến")
+        st.subheader("📊 Dữ liệu trực tuyến")
         search = st.text_input("🔍 Tìm kiếm nhanh:")
-        df_filter = df if not search else df[df.astype(str).apply(lambda x: x.str.contains(search, case=False)).any(axis=1)]
-        st.dataframe(df_filter, use_container_width=True, hide_index=True)
+        if not df.empty:
+            df_filter = df if not search else df[df.astype(str).apply(lambda x: x.str.contains(search, case=False)).any(axis=1)]
+            st.dataframe(df_filter, use_container_width=True, hide_index=True)
+        else:
+            st.info("Chưa có dữ liệu trên hệ thống.")
 
     with tab3:
-        st.subheader("📤 Xuất dữ liệu Excel")
-        csv = df.to_csv(index=False).encode('utf-8-sig')
-        st.download_button("📥 TẢI FILE EXCEL (.CSV)", data=csv, file_name='PVD_Data_Cloud.csv')
+        st.subheader("📤 Xuất dữ liệu")
+        if not df.empty:
+            csv = df.to_csv(index=False).encode('utf-8-sig')
+            st.download_button("📥 TẢI FILE EXCEL (.CSV)", data=csv, file_name='PVD_Data_Cloud.csv')
 
 except Exception as e:
-    st.error("❌ Lỗi cấu hình Sheet.")
-    st.info("Hãy đảm bảo Hàng 1 của Sheet có đủ: MSNV, Họ Tên, Đơn vị, Chức danh, Ngày vào làm, Ghi chú")
+    st.error(f"❌ Lỗi kết nối: {e}")
+    st.info("Mẹo: Hãy thử đổi tên Sheet ở dưới cùng thành 'Sheet1' và kiểm tra lại quyền Editor.")

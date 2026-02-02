@@ -39,23 +39,42 @@ if 'db' not in st.session_state:
         'Nghỉ Ca Còn Lại': 0.0, 'Job Detail': ""
     })
     for d in range(1, 29): df[get_col_name(d)] = ""
-    st.session_state.db = df
+    st.session_state.db = df.fillna("")
 
-# 3. CSS & JS (PHÔNG CHỮ TO 1.5x & KÉO CHUỘT)
+# 3. CSS GIAO DIỆN PRO & XỬ LÝ NONE
 st.markdown("""
     <style>
+    /* Nền và phông chữ */
     .stApp { background-color: #0E1117; color: #FFFFFF; }
     html, body, [class*="css"] { font-size: 22px !important; }
+    
+    /* Tiêu đề và đường gạch xanh Pro */
+    .main-title-container {
+        text-align: center;
+        padding-bottom: 10px;
+        border-bottom: 3px solid #3b82f6;
+        box-shadow: 0px 4px 10px -5px #3b82f6;
+        margin-bottom: 25px;
+    }
     .main-title-text { 
         font-size: 38px !important; font-weight: 900; color: #3b82f6; 
-        text-align: center; margin: 0; line-height: 1.2;
+        margin: 0; line-height: 1.2;
     }
+    
+    /* Xóa chữ None trên bảng bằng CSS mạnh */
+    div[data-testid="stDataEditor"] div:contains("None") {
+        color: transparent !important;
+        user-select: none !important;
+    }
+    
+    /* Tinh chỉnh bảng */
     div[data-testid="stDataEditor"] div { font-size: 20px !important; }
     div[data-testid="stDataEditor"] > div:first-child { cursor: grab; }
     div[data-testid="stDataEditor"] > div:first-child:active { cursor: grabbing; }
     </style>
     """, unsafe_allow_html=True)
 
+# JS Kéo chuột trái
 components.html("""
 <script>
     const interval = setInterval(() => {
@@ -78,14 +97,16 @@ components.html("""
 </script>
 """, height=0)
 
-# 4. HEADER
+# 4. HEADER VỚI ĐƯỜNG KẺ PRO
+st.markdown('<div class="main-title-container">', unsafe_allow_html=True)
 h1, h2 = st.columns([2, 8])
 with h1: 
     try: st.image("logo_pvd.png", width=200)
     except: st.write("### PVD")
 with h2: st.markdown('<p class="main-title-text">HỆ THỐNG ĐIỀU PHỐI NHÂN SỰ<br>PVD WELL SERVICES 2026</p>', unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
 
-# 5. TABS CHỨC NĂNG (GIỮ NGUYÊN)
+# 5. TABS CHỨC NĂNG
 tabs = st.tabs(["🚀 ĐIỀU ĐỘNG", "📝 JOB DETAIL", "👤 NHÂN VIÊN", "🏗️ GIÀN KHOAN"])
 
 with tabs[0]: # ĐIỀU ĐỘNG
@@ -109,33 +130,38 @@ with tabs[1]: # JOB DETAIL
         st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(sel_j_staff), 'Job Detail'] = j_content
         st.rerun()
 
-with tabs[2]: # NHÂN VIÊN
-    a1, a2 = st.columns(2)
-    n_n = a1.text_input("Tên nhân viên mới:")
-    n_p = a2.text_input("Chức danh mới:", value="Kỹ sư")
-    if st.button("THÊM NHÂN VIÊN"):
-        nr = {'STT': len(st.session_state.db)+1, 'Họ và Tên': n_n, 'Công ty': 'PVD', 'Chức danh': n_p, 'Nghỉ Ca Còn Lại': 0.0, 'Job Detail': ''}
-        for d in range(1, 29): nr[get_col_name(d)] = ""
-        st.session_state.db = pd.concat([st.session_state.db, pd.DataFrame([nr])], ignore_index=True)
-        st.rerun()
-    st.divider()
-    ds = st.selectbox("Xóa nhân viên:", st.session_state.db['Họ và Tên'].tolist())
-    if st.button("XÁC NHẬN XÓA NV"):
-        st.session_state.db = st.session_state.db[st.session_state.db['Họ và Tên'] != ds]
-        st.rerun()
+with tabs[2]: # QUẢN LÝ NHÂN VIÊN
+    col_add, col_del = st.columns(2)
+    with col_add:
+        st.write("➕ Thêm nhân viên")
+        n_name = st.text_input("Họ và Tên:")
+        n_pos = st.text_input("Chức danh:", value="Kỹ sư")
+        if st.button("LƯU NHÂN VIÊN"):
+            new_row = {'STT': len(st.session_state.db)+1, 'Họ và Tên': n_name, 'Công ty': 'PVD', 'Chức danh': n_pos, 'Nghỉ Ca Còn Lại': 0.0, 'Job Detail': ''}
+            for d in range(1, 29): new_row[get_col_name(d)] = ""
+            st.session_state.db = pd.concat([st.session_state.db, pd.DataFrame([new_row])], ignore_index=True)
+            st.rerun()
+    with col_del:
+        st.write("❌ Xóa nhân viên")
+        d_name = st.selectbox("Chọn tên:", st.session_state.db['Họ và Tên'].tolist())
+        if st.button("XÁC NHẬN XÓA"):
+            st.session_state.db = st.session_state.db[st.session_state.db['Họ và Tên'] != d_name]
+            st.rerun()
 
-with tabs[3]: # GIÀN KHOAN
-    ng = st.text_input("Tên giàn mới:")
-    if st.button("THÊM GIÀN MỚI"):
-        st.session_state.list_gian.append(ng)
-        st.rerun()
-    st.divider()
-    dg = st.selectbox("Xóa giàn:", st.session_state.list_gian)
-    if st.button("XÁC NHẬN XÓA GIÀN"):
-        st.session_state.list_gian.remove(dg)
-        st.rerun()
+with tabs[3]: # QUẢN LÝ GIÀN
+    g_add, g_del = st.columns(2)
+    with g_add:
+        n_g = st.text_input("Tên giàn mới:")
+        if st.button("THÊM GIÀN"):
+            st.session_state.list_gian.append(n_g)
+            st.rerun()
+    with g_del:
+        d_g = st.selectbox("Chọn giàn xóa:", st.session_state.list_gian)
+        if st.button("XÓA GIÀN"):
+            st.session_state.list_gian.remove(d_g)
+            st.rerun()
 
-# 6. QUÉT SỐ DƯ (GIỮ NGUYÊN LOGIC)
+# 6. QUÉT SỐ DƯ
 st.markdown("---")
 if st.button("🚀 QUÉT & CẬP NHẬT SỐ DƯ", type="primary", use_container_width=True):
     ngay_le_tet = [17, 18, 19, 20, 21]
@@ -154,22 +180,23 @@ if st.button("🚀 QUÉT & CẬP NHẬT SỐ DƯ", type="primary", use_container
     st.session_state.db = df_tmp
     st.rerun()
 
-# 7. BẢNG TỔNG HỢP (XỬ LÝ TRIỆT ĐỂ CHỮ NONE VÀ MÀU SẮC)
+# 7. BẢNG TỔNG HỢP (MÀU SẮC & GỌN GÀNG)
 st.write("### 📊 BẢNG TỔNG HỢP NHÂN SỰ")
 
-# Bước quan trọng: Ép toàn bộ thành String và thay thế các giá trị trống
+# Xử lý làm sạch dữ liệu hiển thị (ép chuỗi sạch None)
 df_display = st.session_state.db.copy()
-# Thay thế mọi giá trị NaN hoặc chuỗi "None" bằng khoảng trắng
-df_display = df_display.fillna("").astype(str).replace("None", "")
+for col in df_display.columns:
+    if col not in ['STT', 'Nghỉ Ca Còn Lại']:
+        df_display[col] = df_display[col].apply(lambda x: "" if str(x).lower() in ["none", "nan", ""] else x)
 
 date_cols = [c for c in df_display.columns if "/Feb" in c]
 display_order = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Nghỉ Ca Còn Lại', 'Job Detail'] + date_cols
 
-# Cấu hình màu sắc
+# Cấu hình màu sắc Tag
 options = st.session_state.list_gian + ["CA", "WS", "NP"]
 col_cfg = {
     "STT": st.column_config.NumberColumn(width="small"),
-    "Nghỉ Ca Còn Lại": st.column_config.TextColumn(width="small"), # Để String cho sạch None
+    "Nghỉ Ca Còn Lại": st.column_config.NumberColumn(format="%.1f", width="small"),
     "Job Detail": st.column_config.TextColumn(width="small"),
 }
 for c in date_cols:
@@ -177,7 +204,7 @@ for c in date_cols:
 
 st.session_state.db = st.data_editor(
     df_display[display_order], 
-    use_container_width=True, height=600, 
+    use_container_width=True, height=650, 
     column_config=col_cfg,
     disabled=['STT', 'Nghỉ Ca Còn Lại']
 )

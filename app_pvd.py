@@ -85,19 +85,40 @@ with tabs[0]:
                 st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(sel_staff), col] = val_to_fill
             st.rerun()
 
+# --- TAB JOB DETAIL ---
+with tabs[1]:
+    st.subheader("📝 Cập nhật nội dung công việc")
+    with st.form("job_form"):
+        sel_job_staff = st.multiselect("Chọn nhân viên:", st.session_state.db['Họ và Tên'].tolist())
+        job_text = st.text_area("Nội dung công việc:")
+        if st.form_submit_button("LƯU JOB"):
+            if sel_job_staff:
+                st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(sel_job_staff), 'Job Detail'] = job_text
+                st.success("Đã lưu thành công!")
+                st.rerun()
+
 # --- TAB NHÂN VIÊN ---
 with tabs[2]:
     with st.form("add_staff"):
-        n_name = st.text_input("Họ và Tên mới:"); n_pos = st.text_input("Chức danh", "Kỹ sư")
+        n_name = st.text_input("Họ và Tên mới:")
+        n_cty = st.text_input("Tên Công ty:", value="PVD")
+        n_pos = st.text_input("Chức danh:", value="Kỹ sư")
         if st.form_submit_button("LƯU NHÂN VIÊN"):
-            new_row = {'STT': len(st.session_state.db)+1, 'Họ và Tên': n_name, 'Công ty': 'PVD', 'Chức danh': n_pos, 'Nghỉ Ca Còn Lại': 0.0}
+            new_row = {
+                'STT': len(st.session_state.db) + 1, 
+                'Họ và Tên': n_name, 
+                'Công ty': n_cty, 
+                'Chức danh': n_pos, 
+                'Nghỉ Ca Còn Lại': 0.0,
+                'Job Detail': ''
+            }
             for d in range(1, 29): new_row[get_col_name(d)] = ""
             st.session_state.db = pd.concat([st.session_state.db, pd.DataFrame([new_row])], ignore_index=True)
             st.rerun()
 
-# --- TAB SỬA TAY (DATA EDITOR) ---
+# --- TAB SỬA TAY (Tích hợp thêm chức năng sửa nhanh) ---
 with tabs[3]:
-    st.info("Sửa trực tiếp vào ô bên dưới rồi nhấn nút Chốt dữ liệu")
+    st.info("💡 Bạn có thể sửa trực tiếp mọi thông tin ở bảng bên dưới và nhấn CHỐT DỮ LIỆU.")
     edited_df = st.data_editor(st.session_state.db, use_container_width=True, height=600)
     if st.button("CHỐT DỮ LIỆU ĐÃ SỬA"):
         st.session_state.db = edited_df
@@ -115,10 +136,10 @@ with tabs[4]:
 
 # 6. KHU VỰC QUÉT SỐ DƯ (GÓC TRÁI)
 st.markdown("---")
-col_scan, _ = st.columns([1, 3])
+col_scan, col_save = st.columns([1.5, 3])
 with col_scan:
     if st.button("🚀 QUÉT & CẬP NHẬT SỐ DƯ", type="primary", use_container_width=True):
-        ngay_le_tet = [17, 18, 19, 20, 21] # Ví dụ các ngày lễ
+        ngay_le_tet = [17, 18, 19, 20, 21] 
         df_tmp = st.session_state.db.copy()
         for index, row in df_tmp.iterrows():
             balance = 0.0
@@ -134,24 +155,26 @@ with col_scan:
                     elif is_weekend: balance += 1.0
                     else: balance += 0.5
                 elif val == "CA":
-                    # Không trừ nếu là Thứ 7, CN hoặc Lễ
                     if not is_weekend and not is_holiday:
                         balance -= 1.0
-                # NP không làm gì (không cộng không trừ)
             df_tmp.at[index, 'Nghỉ Ca Còn Lại'] = round(balance, 1)
         st.session_state.db = df_tmp
-        st.success("Đã cập nhật số dư!")
+        st.success("Đã cập nhật số dư thành công!")
         st.rerun()
 
-# 7. HIỂN THỊ BẢNG TỔNG HỢP
+# 7. HIỂN THỊ BẢNG TỔNG HỢP (CHỈNH SỬA TRỰC TIẾP)
+# Đưa Công ty và Chức danh ra bảng hiển thị
 date_cols = [c for c in st.session_state.db.columns if "/Feb" in c]
-display_order = ['STT', 'Họ và Tên', 'Nghỉ Ca Còn Lại', 'Job Detail'] + date_cols
+display_order = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Nghỉ Ca Còn Lại', 'Job Detail'] + date_cols
 
-def format_bal(v): return str(int(v)) if v == int(v) else str(v)
-df_display = st.session_state.db[display_order].copy()
-df_display['Nghỉ Ca Còn Lại'] = df_display['Nghỉ Ca Còn Lại'].apply(format_bal)
-
-st.dataframe(df_display, use_container_width=True, height=800)
+# Sử dụng data_editor để bạn có thể sửa tay ngay tại bảng chính
+st.subheader("📊 BẢNG TỔNG HỢP NHÂN SỰ")
+st.session_state.db = st.data_editor(
+    st.session_state.db[display_order], 
+    use_container_width=True, 
+    height=800,
+    disabled=['STT', 'Nghỉ Ca Còn Lại'] # Không cho sửa STT và Số dư vì hệ thống tự tính
+)
 
 # 8. XUẤT EXCEL
 output = BytesIO()

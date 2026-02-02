@@ -9,13 +9,12 @@ import os
 # 1. CẤU HÌNH TRANG
 st.set_page_config(page_title="PVD Well Services 2026", layout="wide")
 
-# CSS để ẩn các vòng xoay Connecting gây khó chịu và tối ưu giao diện
 st.markdown("""
     <style>
-        #MainMenu {visibility: hidden;}
-        header {visibility: hidden;}
-        .stButton button {width: 100%; border-radius: 5px;}
         [data-testid="stStatusWidget"] {display: none;}
+        .stButton button {width: 100%; border-radius: 5px; height: 3em; font-weight: bold;}
+        .main { background-color: #0e1117; }
+        h1 { text-shadow: 2px 2px #000000; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -25,9 +24,24 @@ with col_logo:
     if os.path.exists("logo_pvd.png"):
         st.image("logo_pvd.png", width=120)
 with col_title:
-    st.markdown('<h1 style="color: #00f2ff; text-align: center; margin-bottom: 0;">PVD WELL SERVICES MANAGEMENT 2026</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 style="color: #00f2ff; text-align: center; margin-top: 10px;">PVD WELL SERVICES MANAGEMENT 2026</h1>', unsafe_allow_html=True)
 
-# 2. KHỞI TẠO KẾT NỐI & DỮ LIỆU (Chỉ chạy 1 lần)
+# 2. KHỞI TẠO DANH SÁCH 64 NHÂN VIÊN GỐC
+NAMES_64 = [
+    "Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", 
+    "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", 
+    "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", 
+    "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", 
+    "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", 
+    "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", 
+    "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", 
+    "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", 
+    "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", 
+    "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", 
+    "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung"
+]
+
+# 3. KẾT NỐI VÀ QUẢN LÝ DỮ LIỆU
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def get_col_name(day):
@@ -38,15 +52,12 @@ def get_col_name(day):
 DATE_COLS = [get_col_name(d) for d in range(1, 29)]
 NGAY_LE_TET = [15, 16, 17, 18, 19, 20, 21]
 
-@st.cache_data(ttl=3600) # Lưu bộ nhớ đệm trong 1 tiếng
-def fetch_data():
+@st.cache_data(ttl=0)
+def load_all_data():
     try:
         db = conn.read(worksheet="Sheet1")
-        # Kiểm tra cấu trúc cột
-        for col in ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Nghỉ Ca Còn Lại', 'Job Detail'] + DATE_COLS:
-            if col not in db.columns: db[col] = ""
     except:
-        db = pd.DataFrame(columns=['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Nghỉ Ca Còn Lại', 'Job Detail'] + DATE_COLS)
+        db = pd.DataFrame()
     
     try:
         gians = conn.read(worksheet="Gians")['TenGian'].dropna().tolist()
@@ -56,49 +67,66 @@ def fetch_data():
     try:
         staffs = conn.read(worksheet="Staffs")
     except:
-        staffs = pd.DataFrame(columns=['STT', 'Họ và Tên', 'Công ty', 'Chức danh'])
+        staffs = pd.DataFrame()
         
     return db, gians, staffs
 
+# KIỂM TRA VÀ KHỞI TẠO DỮ LIỆU (Đảm bảo có 64 nhân viên)
 if 'db' not in st.session_state:
-    st.session_state.db, st.session_state.gians, st.session_state.staffs = fetch_data()
+    db_raw, gians_raw, staffs_raw = load_all_data()
+    
+    # Nếu tab Staffs trống, nạp 64 người
+    if staffs_raw.empty:
+        st.session_state.staffs = pd.DataFrame({
+            "STT": range(1, len(NAMES_64) + 1),
+            "Họ và Tên": NAMES_64,
+            "Công ty": ["PVD"] * len(NAMES_64),
+            "Chức danh": ["Kỹ sư"] * len(NAMES_64)
+        })
+    else:
+        st.session_state.staffs = staffs_raw
 
-# 3. CÁC HÀM XỬ LÝ (Không rerun toàn bộ)
-def trigger_save():
-    with st.spinner("Đang đồng bộ dữ liệu..."):
-        conn.update(worksheet="Sheet1", data=st.session_state.db)
-        conn.update(worksheet="Gians", data=pd.DataFrame({"TenGian": st.session_state.gians}))
-        conn.update(worksheet="Staffs", data=st.session_state.staffs)
-        st.cache_data.clear() # Xóa cache sau khi lưu thành công
-        st.success("✅ ĐÃ LƯU LÊN CLOUD VÀ LÀM MỚI BỘ NHỚ!")
+    # Nếu tab Sheet1 trống, tạo bảng điều động từ danh sách NV
+    if db_raw.empty:
+        init_db = st.session_state.staffs.copy()
+        init_db["Nghỉ Ca Còn Lại"] = 0.0
+        init_db["Job Detail"] = ""
+        for c in DATE_COLS: init_db[c] = ""
+        st.session_state.db = init_db
+    else:
+        st.session_state.db = db_raw
+        
+    st.session_state.gians = gians_raw
 
-# NÚT LƯU CỐ ĐỊNH TRÊN CÙNG
-c_s1, c_s2 = st.columns([4, 1])
-with c_s2:
-    if st.button("💾 LƯU DỮ LIỆU", type="primary"):
-        trigger_save()
+# 4. NÚT LƯU CLOUD TỔNG THỂ
+st.divider()
+col_save_text, col_save_btn = st.columns([4, 1])
+with col_save_btn:
+    if st.button("💾 LƯU CLOUD (SAVE ALL)", type="primary", use_container_width=True):
+        with st.spinner("Đang đồng bộ dữ liệu..."):
+            conn.update(worksheet="Sheet1", data=st.session_state.db)
+            conn.update(worksheet="Gians", data=pd.DataFrame({"TenGian": st.session_state.gians}))
+            conn.update(worksheet="Staffs", data=st.session_state.staffs)
+            st.success("✅ Đã lưu thành công!")
 
-# 4. GIAO DIỆN TABS
+# 5. GIAO DIỆN TABS
 tabs = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 TỔNG HỢP", "🏗️ GIÀN KHOAN", "👤 NHÂN VIÊN", "📝 CHI TIẾT", "📥 XUẤT FILE"])
 
-# TAB ĐIỀU ĐỘNG (Sử dụng Fragment để không load lại toàn app)
-@st.fragment
-def tab_dieu_dong():
-    c1, c2, c3 = st.columns([2, 1, 1.5])
-    sel_staff = c1.multiselect("NHÂN VIÊN:", st.session_state.db['Họ và Tên'].tolist())
-    status = c2.selectbox("TRẠNG THÁI:", ["Đi Biển", "CA", "WS", "NP"])
-    val = c2.selectbox("GIÀN:", st.session_state.gians) if status == "Đi Biển" else status
-    dates = c3.date_input("KHOẢNG NGÀY:", value=(date(2026, 2, 1), date(2026, 2, 2)))
-    if st.button("XÁC NHẬN ĐIỀU ĐỘNG"):
-        if isinstance(dates, tuple) and len(dates) == 2:
-            for d in range(dates[0].day, dates[1].day + 1):
-                st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(sel_staff), get_col_name(d)] = val
-            st.toast("Đã ghi nhớ thay đổi!")
+with tabs[0]: # TAB ĐIỀU ĐỘNG
+    with st.form("dieu_dong_form"):
+        c1, c2, c3 = st.columns([2, 1, 1.5])
+        sel_staff = c1.multiselect("CHỌN NHÂN VIÊN:", st.session_state.db['Họ và Tên'].tolist())
+        status = c2.selectbox("TRẠNG THÁI:", ["Đi Biển", "CA", "WS", "NP"])
+        val = c2.selectbox("GIÀN:", st.session_state.gians) if status == "Đi Biển" else status
+        dates = c3.date_input("KHOẢNG NGÀY:", value=(date(2026, 2, 1), date(2026, 2, 2)))
+        if st.form_submit_button("ÁP DỤNG THAY ĐỔI"):
+            if isinstance(dates, tuple) and len(dates) == 2:
+                for d in range(dates[0].day, dates[1].day + 1):
+                    st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(sel_staff), get_col_name(d)] = val
+                st.toast("Đã ghi nhận thay đổi tạm thời!")
 
-with tabs[0]: tab_dieu_dong()
-
-with tabs[1]: # BẢNG TỔNG HỢP
-    if st.button("🚀 TÍNH TOÁN NGHỈ CA NHANH"):
+with tabs[1]: # TAB TỔNG HỢP (BẢNG CHÍNH)
+    if st.button("🚀 TÍNH TOÁN NGHỈ CA TOÀN BỘ"):
         for idx, row in st.session_state.db.iterrows():
             bal = 0.0
             for d in range(1, 29):
@@ -112,42 +140,56 @@ with tabs[1]: # BẢNG TỔNG HỢP
         st.rerun()
 
     disp_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Nghỉ Ca Còn Lại', 'Job Detail'] + DATE_COLS
-    # Sử dụng bộ editor không tự động rerun
-    st.session_state.db = st.data_editor(st.session_state.db[disp_cols], use_container_width=True, height=500)
+    st.session_state.db = st.data_editor(st.session_state.db[disp_cols], use_container_width=True, height=550)
 
-with tabs[3]: # QUẢN LÝ NHÂN VIÊN
+with tabs[2]: # TAB GIÀN KHOAN
+    st.session_state.gians = st.data_editor(pd.DataFrame({"TenGian": st.session_state.gians}), num_rows="dynamic")['TenGian'].dropna().tolist()
+
+with tabs[3]: # TAB NHÂN VIÊN (Chỉnh tên, cty, chức danh)
+    st.subheader("👥 Danh sách nhân viên (64 người +)")
     st.session_state.staffs = st.data_editor(st.session_state.staffs, use_container_width=True, num_rows="dynamic")
-    if st.button("Cập nhật vào bảng chính"):
-        # Logic này giúp thêm người mới mà không mất dữ liệu cũ
+    if st.button("ĐỒNG BỘ THÔNG TIN SANG BẢNG CHÍNH"):
+        # Cập nhật thông tin cơ bản sang bảng điều động
         for _, s in st.session_state.staffs.iterrows():
-            if s['Họ và Tên'] not in st.session_state.db['Họ và Tên'].tolist():
+            if s['Họ và Tên'] in st.session_state.db['Họ và Tên'].values:
+                idx = st.session_state.db[st.session_state.db['Họ và Tên'] == s['Họ và Tên']].index[0]
+                st.session_state.db.at[idx, 'Công ty'] = s['Công ty']
+                st.session_state.db.at[idx, 'Chức danh'] = s['Chức danh']
+            else:
+                # Nếu là nhân viên mới hoàn toàn
                 new_row = {c: "" for c in st.session_state.db.columns}
                 new_row.update(s.to_dict()); new_row['Nghỉ Ca Còn Lại'] = 0.0
                 st.session_state.db = pd.concat([st.session_state.db, pd.DataFrame([new_row])], ignore_index=True)
-        st.rerun()
+        st.success("Đã đồng bộ thông tin!")
 
-with tabs[5]: # XUẤT FILE
+with tabs[4]: # TAB CHI TIẾT (Sửa Job Detail nhanh)
+    sel_name = st.selectbox("Chọn nhân viên sửa Job Detail:", st.session_state.db['Họ và Tên'].tolist())
+    idx_job = st.session_state.db[st.session_state.db['Họ và Tên'] == sel_name].index[0]
+    new_job_val = st.text_area("Nội dung Job Detail:", value=st.session_state.db.at[idx_job, 'Job Detail'], height=200)
+    if st.button("Cập nhật Job"):
+        st.session_state.db.at[idx_job, 'Job Detail'] = new_job_val
+        st.success("Đã cập nhật!")
+
+with tabs[5]: # TAB XUẤT FILE
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        st.session_state.db.to_excel(writer, index=False, sheet_name='Management')
-    st.download_button("📥 TẢI FILE EXCEL (.xlsx)", data=output.getvalue(), file_name=f"PVD_2026.xlsx", use_container_width=True)
+        st.session_state.db.to_excel(writer, index=False, sheet_name='PVD_2026')
+    st.download_button("📥 TẢI FILE EXCEL (.xlsx)", data=output.getvalue(), file_name=f"PVD_Management_2026.xlsx", use_container_width=True)
 
-# 5. JS CHO CUỘN NGANG MƯỢT
+# 6. JS CUỘN NGANG
 components.html("""
 <script>
     const interval = setInterval(() => {
         const el = window.parent.document.querySelector('div[data-testid="stDataEditor"] [role="grid"]');
         if (el) {
-            el.style.cursor = "grab";
             let isDown = false; let startX, scrollLeft;
-            el.addEventListener('mousedown', (e) => { isDown = true; startX = e.pageX - el.offsetLeft; scrollLeft = el.scrollLeft; el.style.cursor = "grabbing"; });
-            el.addEventListener('mouseleave', () => { isDown = false; el.style.cursor = "grab"; });
-            el.addEventListener('mouseup', () => { isDown = false; el.style.cursor = "grab"; });
+            el.addEventListener('mousedown', (e) => { isDown = true; startX = e.pageX - el.offsetLeft; scrollLeft = el.scrollLeft; });
+            el.addEventListener('mouseleave', () => { isDown = false; });
+            el.addEventListener('mouseup', () => { isDown = false; });
             el.addEventListener('mousemove', (e) => {
                 if(!isDown) return;
-                e.preventDefault();
                 const x = e.pageX - el.offsetLeft;
-                el.scrollLeft = scrollLeft - (x - startX) * 2.5;
+                el.scrollLeft = scrollLeft - (x - startX) * 2;
             });
             clearInterval(interval);
         }

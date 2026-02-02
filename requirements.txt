@@ -1,5 +1,5 @@
 streamlit==1.31.1
-pandas>=1.5.3,<2.0.0
-st-gsheets-connection==0.0.3
-xlsxwriter>=3.1.2
-openpyxl>=3.1.2
+pandas
+st-gsheets-connection
+xlsxwriter
+openpyxl

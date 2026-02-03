@@ -12,7 +12,6 @@ st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 st.markdown("""
     <style>
     .block-container {padding-top: 1rem; padding-bottom: 0rem;}
-    [data-testid="stMetricValue"] {font-size: 1.5rem;}
     </style>
     """, unsafe_allow_html=True)
 
@@ -97,7 +96,7 @@ def update_logic(df):
 
 st.session_state.db = update_logic(st.session_state.db)
 
-# CỐ ĐỊNH THỨ TỰ CỘT THEO YÊU CẦU MỚI
+# ÉP THỨ TỰ CỘT CHÍNH XÁC: Tổng CA và Tồn cũ nằm cạnh nhau
 cols_order = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'Quỹ CA Tổng', 'CA Tháng Trước'] + DATE_COLS
 st.session_state.db = st.session_state.db.reindex(columns=[c for c in cols_order if c in st.session_state.db.columns])
 
@@ -130,7 +129,6 @@ with tabs[0]:
                             st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(f_staff), col] = f_val
                 st.rerun()
 
-    # Cấu hình bảng hiển thị với thứ tự cột mới
     config = {
         "STT": st.column_config.NumberColumn("STT", width=40, disabled=True, pinned=True),
         "Họ và Tên": st.column_config.TextColumn("Họ và Tên", width=180, pinned=True),
@@ -138,7 +136,7 @@ with tabs[0]:
         "Chức danh": st.column_config.TextColumn("Chức danh", width=100),
         "Job Detail": st.column_config.TextColumn("Job Detail", width=120),
         "Quỹ CA Tổng": st.column_config.NumberColumn("T ca", width=70, format="%.1f", disabled=True, pinned=True),
-        "CA Tháng Trước": st.column_config.NumberColumn("Tồn cũ", width=70, format="%.1f"),
+        "CA Tháng Trước": st.column_config.NumberColumn("Tồn cũ", width=70, format="%.1f", pinned=True),
     }
     for col in DATE_COLS: config[col] = st.column_config.TextColumn(col, width=65)
 
@@ -161,7 +159,7 @@ with tabs[3]:
     st.header("💾 Quản lý dữ liệu")
     if st.button("📤 UPLOAD GOOGLE SHEETS", use_container_width=True, type="primary"):
         conn.update(worksheet=sheet_name, data=st.session_state.db)
-        st.success("Đã lưu thành công lên Google Sheets!")
+        st.success("Đã lưu!")
     
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:

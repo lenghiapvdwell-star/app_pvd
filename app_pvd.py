@@ -20,7 +20,21 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. KHỞI TẠO DỮ LIỆU ---
+# --- 2. QUẢN LÝ DỮ LIỆU ---
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+# Khởi tạo db và khóa reset bảng
+if 'db' not in st.session_state:
+    try:
+        df_cloud = conn.read(worksheet="Sheet1")
+        st.session_state.db = df_cloud if (df_cloud is not None and not df_cloud.empty) else pd.DataFrame()
+    except:
+        st.session_state.db = pd.DataFrame()
+
+# Khởi tạo Key động để reset bảng khi lỗi
+if 'editor_version' not in st.session_state:
+    st.session_state.editor_version = 0
+
 NAMES_64 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung"]
 
 def get_col_name(day):
@@ -30,43 +44,29 @@ def get_col_name(day):
 
 DATE_COLS = [get_col_name(d) for d in range(1, 29)]
 
-# --- 3. QUẢN LÝ SESSION STATE ---
-conn = st.connection("gsheets", type=GSheetsConnection)
-
-if 'db' not in st.session_state:
-    try:
-        df_cloud = conn.read(worksheet="Sheet1")
-        st.session_state.db = df_cloud if (df_cloud is not None and not df_cloud.empty) else pd.DataFrame()
-    except:
-        st.session_state.db = pd.DataFrame()
-
 if st.session_state.db.empty:
     df = pd.DataFrame({'STT': range(1, 65), 'Họ và Tên': NAMES_64, 'Công ty': 'PVDWS', 'Chức danh': 'Kỹ sư', 'Job Detail': '', 'Nghỉ Ca Còn Lại': 0.0})
     for c in DATE_COLS: df[c] = ""
     st.session_state.db = df
 
-# KHÓA CHỐNG LỖI: Key xoay vòng để reset widget
-if 'editor_key' not in st.session_state:
-    st.session_state.editor_key = 0
-
 if 'gians' not in st.session_state:
     st.session_state.gians = ["PVD I", "PVD II", "PVD III", "PVD VI", "PVD 11"]
 
-# --- 4. GIAO DIỆN TIÊU ĐỀ ---
+# --- 3. TIÊU ĐỀ VIẾT HOA ---
 c_logo, c_title = st.columns([1, 4])
 with c_logo:
     if os.path.exists("logo_pvd.png"): st.image("logo_pvd.png", width=180)
 with c_title:
     st.markdown('<br><h1 style="color: #00f2ff; text-align: left;">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
 
-# --- 5. TABS ---
+# --- 4. TABS ---
 tabs = st.tabs(["🚀 ĐIỀU ĐỘNG", "🏗️ GIÀN KHOAN", "👤 NHÂN VIÊN", "📝 CHI TIẾT"])
 
 with tabs[0]: 
     with st.expander("📝 THAO TÁC NHANH", expanded=True):
         c_in, c_sv = st.columns([4.5, 1.5])
         with c_in:
-            with st.form("input_form"):
+            with st.form("quick_input"):
                 col1, col2, col3, col4 = st.columns([2, 1, 1, 1.5])
                 sel_staff = col1.multiselect("NHÂN VIÊN:", st.session_state.db['Họ và Tên'].tolist())
                 status = col2.selectbox("TRẠNG THÁI:", ["Đi Biển", "CA", "WS", "NP"])
@@ -77,8 +77,8 @@ with tabs[0]:
                     if isinstance(dates, tuple) and len(dates) == 2 and sel_staff:
                         for d in range(dates[0].day, dates[1].day + 1):
                             st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(sel_staff), get_col_name(d)] = gian_val
-                        # RESET BẢNG: Tăng key để tránh lỗi Type Compatibility
-                        st.session_state.editor_key += 1
+                        # CHỐT VẤN ĐỀ: Đổi Key để reset bảng hoàn toàn
+                        st.session_state.editor_version += 1
                         st.rerun()
 
         with c_sv:
@@ -93,18 +93,17 @@ with tabs[0]:
     col_cfg = {
         "STT": st.column_config.NumberColumn(width=50, disabled=True),
         "Họ và Tên": st.column_config.TextColumn("Họ và Tên", width=220, disabled=True),
-        "Job Detail": st.column_config.TextColumn("Job Detail", width=300),
     }
     for c in DATE_COLS: col_cfg[c] = st.column_config.TextColumn(c, width=85)
 
-    # KHẮC PHỤC TRIỆT ĐỂ: Dùng key động để ép Streamlit tạo widget mới khi dữ liệu đổi
+    # KHẮC PHỤC TRIỆT ĐỂ: Dùng Key xoay vòng
     edited_df = st.data_editor(
         st.session_state.db,
         column_config=col_cfg,
         use_container_width=True,
         height=600,
         num_rows="dynamic",
-        key=f"editor_v_{st.session_state.editor_key}"
+        key=f"pvd_editor_v{st.session_state.editor_version}"
     )
     
     if not edited_df.equals(st.session_state.db):

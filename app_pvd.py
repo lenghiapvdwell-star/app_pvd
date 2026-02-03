@@ -9,42 +9,32 @@ import os
 # --- 1. CẤU HÌNH & THỜI GIAN ---
 st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 
-# CSS để fix lỗi hiển thị và làm đẹp giao diện
+# CSS tối ưu giao diện
 st.markdown("""
     <style>
     .block-container {padding-top: 1rem; padding-bottom: 0rem;}
-    .main-title {
-        color: #00f2ff; 
-        font-size: 32px; 
-        font-weight: bold;
-        margin-bottom: 0px;
-        padding-top: 10px;
-    }
+    [data-testid="stHeader"] {background-color: rgba(0,0,0,0);}
     .stButton>button {border-radius: 5px; height: 3em;}
     </style>
     """, unsafe_allow_html=True)
 
+# Hiển thị Logo và Tiêu đề chính ngay đầu phần mềm
+if os.path.exists("logo_pvd.png"):
+    st.logo("logo_pvd.png", icon_image="logo_pvd.png") # Hiện logo ở thanh điều hướng và góc trên
+
+# Dòng tiêu đề to và rõ nhất
+st.markdown('<h1 style="color: #00f2ff; text-align: left; margin-bottom: 0px;">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
+
+# Thanh ngang tách biệt phần đầu và phần điều khiển
+st.write("---")
+
+# Bộ chọn ngày đẩy sang bên phải
+c_top1, c_top2 = st.columns([3, 1])
+with c_top2:
+    working_date = st.date_input("📅 CHỌN THÁNG LÀM VIỆC:", value=date.today())
+
+# --- GIỮ NGUYÊN THUẬT TOÁN DƯỚI ĐÂY ---
 conn = st.connection("gsheets", type=GSheetsConnection)
-
-# --- HEADER: LOGO VÀ TIÊU ĐỀ ---
-# Tăng tỷ lệ cột 1 để chứa cả Logo và Chữ không bị nhảy dòng
-c_head1, c_head2 = st.columns([4, 1.5]) 
-
-with c_head1:
-    c_img, c_txt = st.columns([1, 3])
-    with c_img:
-        if os.path.exists("logo_pvd.png"):
-            st.image("logo_pvd.png", width=180) # Logo kích thước vừa vặn không bị cắt
-        else:
-            st.write("🔴 LOGO")
-    with c_txt:
-        st.markdown('<p class="main-title">PVD WELL SERVICES MANAGEMENT</p>', unsafe_allow_html=True)
-
-with c_head2:
-    st.write("##") # Tạo khoảng cách xuống dòng cho cân với logo
-    working_date = st.date_input("📅 THÁNG LÀM VIỆC:", value=date.today())
-
-# --- 2. XỬ LÝ DỮ LIỆU ---
 curr_month = working_date.month
 curr_year = working_date.year
 month_abbr = working_date.strftime("%b") 
@@ -102,8 +92,7 @@ st.session_state.db = update_logic(st.session_state.db)
 cols_order = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'Quỹ CA Tổng', 'CA Tháng Trước'] + DATE_COLS
 st.session_state.db = st.session_state.db.reindex(columns=cols_order)
 
-# --- 3. THANH THAO TÁC NHANH ---
-st.write("---")
+# NÚT THAO TÁC NHANH
 c_act1, c_act2, c_act3, c_act4 = st.columns([1.2, 1.2, 1.5, 1.5])
 with c_act1:
     if st.button("📤 UPLOAD CLOUD", use_container_width=True, type="primary"):
@@ -115,7 +104,7 @@ with c_act2:
         st.session_state.db.to_excel(writer, index=False, sheet_name=sheet_name)
     st.download_button("📥 XUẤT FILE EXCEL", buffer, file_name=f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
-# --- 4. CÁC TABS CHỨC NĂNG ---
+# TABS CHỨC NĂNG
 tabs = st.tabs(["🚀 ĐIỀU ĐỘNG", "🏗️ GIÀN KHOAN", "👤 NHÂN VIÊN"])
 
 with tabs[0]:

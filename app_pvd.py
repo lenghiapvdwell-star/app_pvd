@@ -4,6 +4,7 @@ from datetime import datetime, date
 import streamlit.components.v1 as components
 from streamlit_gsheets import GSheetsConnection
 import io
+import os
 
 # --- 1. CẤU HÌNH HỆ THỐNG ---
 st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
@@ -22,7 +23,6 @@ st.markdown("""
 # --- 2. KHỞI TẠO DỮ LIỆU ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Khởi tạo các biến trong Session State nếu chưa có (Tránh AttributeError)
 if 'db' not in st.session_state:
     try:
         df_cloud = conn.read(worksheet="Sheet1")
@@ -40,22 +40,31 @@ if 'gians' not in st.session_state:
 if 'editor_v' not in st.session_state:
     st.session_state.editor_v = 0
 
-# Tạo dữ liệu mẫu nếu Cloud trống
 if st.session_state.db.empty:
-    NAMES = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang"] # Rút gọn ví dụ
+    NAMES = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang"]
     DATE_COLS = [f"{d:02d}/02" for d in range(1, 29)]
     df = pd.DataFrame({'STT': range(1, len(NAMES)+1), 'Họ và Tên': NAMES, 'Công ty': 'PVDWS', 'Chức danh': 'Kỹ sư', 'Job Detail': ''})
     for c in DATE_COLS: df[c] = ""
     st.session_state.db = df
 
-# --- 3. TIÊU ĐỀ ---
-st.markdown('<h1 style="color: #00f2ff; text-align: center;">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
+# --- 3. TIÊU ĐỀ CÓ LOGO (Cùng hàng) ---
+c_logo, c_title = st.columns([1, 4])
+with c_logo:
+    # Thử tìm file logo trong thư mục gốc (GitHub)
+    # Thay 'logo_pvd.png' bằng tên file chính xác của bạn trên GitHub
+    logo_path = "logo_pvd.png" 
+    if os.path.exists(logo_path):
+        st.image(logo_path, width=150)
+    else:
+        st.write("📌 (Logo)") # Hiện chữ nếu chưa tìm thấy file
+
+with c_title:
+    st.markdown('<br><h1 style="color: #00f2ff; text-align: left; margin-top: -10px;">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
 
 # --- 4. GIAO DIỆN TABS ---
 tabs = st.tabs(["🚀 ĐIỀU ĐỘNG", "🏗️ GIÀN KHOAN", "👤 NHÂN VIÊN", "📝 CHI TIẾT", "📥 XUẤT FILE"])
 
 with tabs[0]: # ĐIỀU ĐỘNG
-    # ĐƯA CÁC NÚT LÊN TRÊN BẢNG
     c1, c2, c3 = st.columns([2, 1, 1])
     with c1:
         with st.expander("➕ NHẬP DỮ LIỆU NHANH", expanded=False):
@@ -71,20 +80,16 @@ with tabs[0]: # ĐIỀU ĐỘNG
                             if col: st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(f_staff), col] = f_gian
                         st.session_state.editor_v += 1
                         st.rerun()
-
     with c2:
         if st.button("💾 LƯU LÊN CLOUD", use_container_width=True):
             conn.update(worksheet="Sheet1", data=st.session_state.db)
             st.success("Đã lưu!")
-
     with c3:
-        # Nút xuất file nhanh
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             st.session_state.db.to_excel(writer, index=False, sheet_name='Management')
         st.download_button("📥 TẢI EXCEL", data=buffer.getvalue(), file_name=f"PVD_Export_{date.today()}.xlsx", use_container_width=True)
 
-    # BẢNG THÔNG TIN CHÍNH
     edited_df = st.data_editor(
         st.session_state.db,
         use_container_width=True,
@@ -105,12 +110,8 @@ with tabs[1]: # GIÀN KHOAN
 
 with tabs[2]: # NHÂN VIÊN
     st.subheader("👤 Danh sách Nhân sự")
-    # Tách staffs từ db để sửa riêng nếu muốn
     staff_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh']
-    edited_staff = st.data_editor(st.session_state.db[staff_cols], num_rows="dynamic", use_container_width=True, key="staff_editor")
-    if st.button("Lưu thay đổi nhân sự"):
-        # Logic gộp lại vào db chính
-        st.success("Đã cập nhật danh sách nhân sự!")
+    st.data_editor(st.session_state.db[staff_cols], num_rows="dynamic", use_container_width=True, key="staff_editor")
 
 with tabs[3]: # CHI TIẾT
     st.subheader("📝 Ghi chú Job Detail")
@@ -123,21 +124,21 @@ with tabs[3]: # CHI TIẾT
 
 with tabs[4]: # XUẤT FILE
     st.subheader("📥 Xuất báo cáo Excel")
-    st.write("Dữ liệu sẽ được xuất chính xác theo bảng hiện tại.")
-    if st.download_button("BẮT ĐẦU TẢI FILE (.xlsx)", data=buffer.getvalue(), file_name="Bao_cao_PVD.xlsx"):
-        st.balloons()
+    st.download_button("BẮT ĐẦU TẢI FILE (.xlsx)", data=buffer.getvalue(), file_name="Bao_cao_PVD.xlsx", key="btn_download_tab")
 
 # --- 5. HỖ TRỢ CUỘN NGANG ---
 components.html("""
 <script>
-    const el = window.parent.document.querySelector('div[data-testid="stDataEditor"] [role="grid"]');
-    if (el) {
-        el.style.cursor = "grab";
-        let isDown = false; let startX; let scrollLeft;
-        el.addEventListener('mousedown', (e) => { isDown = true; startX = e.pageX - el.offsetLeft; scrollLeft = el.scrollLeft; });
-        el.addEventListener('mouseleave', () => { isDown = false; });
-        el.addEventListener('mouseup', () => { isDown = false; });
-        el.addEventListener('mousemove', (e) => { if(!isDown) return; e.preventDefault(); const x = e.pageX - el.offsetLeft; const walk = (x - startX) * 2; el.scrollLeft = scrollLeft - walk; });
-    }
+    setTimeout(() => {
+        const el = window.parent.document.querySelector('div[data-testid="stDataEditor"] [role="grid"]');
+        if (el) {
+            el.style.cursor = "grab";
+            let isDown = false; let startX; let scrollLeft;
+            el.addEventListener('mousedown', (e) => { isDown = true; startX = e.pageX - el.offsetLeft; scrollLeft = el.scrollLeft; });
+            el.addEventListener('mouseleave', () => { isDown = false; });
+            el.addEventListener('mouseup', () => { isDown = false; });
+            el.addEventListener('mousemove', (e) => { if(!isDown) return; e.preventDefault(); const x = e.pageX - el.offsetLeft; const walk = (x - startX) * 2; el.scrollLeft = scrollLeft - walk; });
+        }
+    }, 1000);
 </script>
 """, height=0)

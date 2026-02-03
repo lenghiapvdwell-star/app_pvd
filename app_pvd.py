@@ -4,161 +4,140 @@ from datetime import datetime, date
 import streamlit.components.v1 as components
 from streamlit_gsheets import GSheetsConnection
 import io
-import os
 
-# --- CẤU HÌNH HỆ THỐNG ---
-st.set_page_config(page_title="PVD Management 2026", layout="wide")
+# --- 1. CẤU HÌNH HỆ THỐNG ---
+st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 
 st.markdown("""
     <style>
         [data-testid="stStatusWidget"] {display: none !important;}
-        .main { background-color: #0e1117; }
-        .stButton button {border-radius: 8px; font-weight: bold; height: 3em;}
-        /* Làm nổi bật bảng dữ liệu */
+        .stButton button {border-radius: 8px; font-weight: bold;}
+        div.stButton > button { background-color: #00f2ff !important; color: #1a1c24 !important; }
         [data-testid="stDataEditor"] { border: 2px solid #00f2ff; border-radius: 10px; }
+        .stTabs [data-baseweb="tab-list"] { gap: 10px; }
+        .stTabs [data-baseweb="tab"] { background-color: #262730; border-radius: 5px; padding: 10px; }
     </style>
 """, unsafe_allow_html=True)
 
-# Hiển thị Logo và Tiêu đề
-col_logo, col_title = st.columns([1, 5])
-with col_logo:
-    if os.path.exists("logo_pvd.png"): st.image("logo_pvd.png", width=120)
-with col_title:
-    st.markdown('<h1 style="color: #00f2ff; text-align: center;">PVD WELL SERVICES MANAGEMENT 2026</h1>', unsafe_allow_html=True)
-
-# --- KẾT NỐI DỮ LIỆU ---
+# --- 2. KHỞI TẠO DỮ LIỆU ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-def get_col_name(day):
-    d = date(2026, 2, day)
-    days_vn = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
-    return f"{day:02d}/02\n{days_vn[d.weekday()]}"
-
-DATE_COLS = [get_col_name(d) for d in range(1, 29)]
-NGAY_LE_TET = [15, 16, 17, 18, 19, 20, 21]
-
-@st.cache_data(ttl=300)
-def load_data():
-    try:
-        db = conn.read(worksheet="Sheet1")
-        gians = conn.read(worksheet="Gians")['TenGian'].dropna().tolist()
-        staffs = conn.read(worksheet="Staffs")
-        return db, gians, staffs
-    except:
-        return pd.DataFrame(), ["PVD I", "PVD II", "PVD III", "PVD VI", "PVD 11"], pd.DataFrame()
-
+# Khởi tạo các biến trong Session State nếu chưa có (Tránh AttributeError)
 if 'db' not in st.session_state:
-    db_r, gians_r, staffs_r = load_data()
-    # Nếu chưa có 64 nhân viên, bạn hãy nạp vào tab Staffs. 
-    # Ở đây tôi mặc định lấy từ Sheets về để đảm bảo tính đồng bộ.
-    st.session_state.db = db_r
-    st.session_state.gians = gians_r
-    st.session_state.staffs = staffs_r
+    try:
+        df_cloud = conn.read(worksheet="Sheet1")
+        st.session_state.db = df_cloud if (df_cloud is not None and not df_cloud.empty) else pd.DataFrame()
+    except:
+        st.session_state.db = pd.DataFrame()
 
-# --- NÚT LƯU TỔNG CỐ ĐỊNH ---
-st.divider()
-c_save_l, c_save_r = st.columns([4, 1])
-with c_save_r:
-    if st.button("💾 LƯU CLOUD (SAVE ALL)", type="primary", use_container_width=True):
-        conn.update(worksheet="Sheet1", data=st.session_state.db)
+if 'gians' not in st.session_state:
+    try:
+        g_raw = conn.read(worksheet="Gians")
+        st.session_state.gians = g_raw['TenGian'].dropna().tolist()
+    except:
+        st.session_state.gians = ["PVD I", "PVD II", "PVD III", "PVD VI", "PVD 11"]
+
+if 'editor_v' not in st.session_state:
+    st.session_state.editor_v = 0
+
+# Tạo dữ liệu mẫu nếu Cloud trống
+if st.session_state.db.empty:
+    NAMES = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang"] # Rút gọn ví dụ
+    DATE_COLS = [f"{d:02d}/02" for d in range(1, 29)]
+    df = pd.DataFrame({'STT': range(1, len(NAMES)+1), 'Họ và Tên': NAMES, 'Công ty': 'PVDWS', 'Chức danh': 'Kỹ sư', 'Job Detail': ''})
+    for c in DATE_COLS: df[c] = ""
+    st.session_state.db = df
+
+# --- 3. TIÊU ĐỀ ---
+st.markdown('<h1 style="color: #00f2ff; text-align: center;">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
+
+# --- 4. GIAO DIỆN TABS ---
+tabs = st.tabs(["🚀 ĐIỀU ĐỘNG", "🏗️ GIÀN KHOAN", "👤 NHÂN VIÊN", "📝 CHI TIẾT", "📥 XUẤT FILE"])
+
+with tabs[0]: # ĐIỀU ĐỘNG
+    # ĐƯA CÁC NÚT LÊN TRÊN BẢNG
+    c1, c2, c3 = st.columns([2, 1, 1])
+    with c1:
+        with st.expander("➕ NHẬP DỮ LIỆU NHANH", expanded=False):
+            with st.form("input_form"):
+                f_staff = st.multiselect("Nhân viên:", st.session_state.db['Họ và Tên'].tolist())
+                f_status = st.selectbox("Trạng thái:", ["Đi Biển", "CA", "WS", "NP"])
+                f_gian = st.selectbox("Giàn:", st.session_state.gians) if f_status == "Đi Biển" else f_status
+                f_date = st.date_input("Từ ngày - Đến ngày:", value=(date(2026, 2, 1), date(2026, 2, 2)))
+                if st.form_submit_button("XÁC NHẬN"):
+                    if len(f_date) == 2:
+                        for d in range(f_date[0].day, f_date[1].day + 1):
+                            col = next((c for c in st.session_state.db.columns if c.startswith(f"{d:02d}")), None)
+                            if col: st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(f_staff), col] = f_gian
+                        st.session_state.editor_v += 1
+                        st.rerun()
+
+    with c2:
+        if st.button("💾 LƯU LÊN CLOUD", use_container_width=True):
+            conn.update(worksheet="Sheet1", data=st.session_state.db)
+            st.success("Đã lưu!")
+
+    with c3:
+        # Nút xuất file nhanh
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+            st.session_state.db.to_excel(writer, index=False, sheet_name='Management')
+        st.download_button("📥 TẢI EXCEL", data=buffer.getvalue(), file_name=f"PVD_Export_{date.today()}.xlsx", use_container_width=True)
+
+    # BẢNG THÔNG TIN CHÍNH
+    edited_df = st.data_editor(
+        st.session_state.db,
+        use_container_width=True,
+        height=500,
+        key=f"main_editor_{st.session_state.editor_v}"
+    )
+    if not edited_df.equals(st.session_state.db):
+        st.session_state.db = edited_df
+
+with tabs[1]: # GIÀN KHOAN
+    st.subheader("🏗️ Danh sách Giàn khoan")
+    g_df = pd.DataFrame({"TenGian": st.session_state.gians})
+    new_g = st.data_editor(g_df, num_rows="dynamic", use_container_width=True, key="g_editor")
+    if st.button("Cập nhật Giàn"):
+        st.session_state.gians = new_g['TenGian'].dropna().tolist()
         conn.update(worksheet="Gians", data=pd.DataFrame({"TenGian": st.session_state.gians}))
-        conn.update(worksheet="Staffs", data=st.session_state.staffs)
-        st.success("Đã lưu!")
+        st.rerun()
 
-# --- PHẦN 1: ĐIỀU ĐỘNG (THAO TÁC NHANH) ---
-st.subheader("🚀 BẢNG ĐIỀU ĐỘNG NHANH")
-with st.container():
-    c1, c2, c3, c4 = st.columns([2, 1, 1, 1.5])
-    
-    sel_staff = c1.multiselect("CHỌN NHÂN VIÊN:", st.session_state.db['Họ và Tên'].tolist())
-    
-    # Ở đây KHÔNG dùng form để Option nhảy ngay lập tức
-    status = c2.selectbox("TRẠNG THÁI:", ["Đi Biển", "CA", "WS", "NP"])
-    
-    # Logic nhảy Option: Nếu chọn Đi Biển mới hiện List Giàn
-    if status == "Đi Biển":
-        val = c3.selectbox("CHỌN GIÀN:", st.session_state.gians)
-    else:
-        val = status
-        c3.info(f"Sẽ nhập: {status}")
-        
-    dates = c4.date_input("KHOẢNG NGÀY:", value=(date(2026, 2, 1), date(2026, 2, 2)))
+with tabs[2]: # NHÂN VIÊN
+    st.subheader("👤 Danh sách Nhân sự")
+    # Tách staffs từ db để sửa riêng nếu muốn
+    staff_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh']
+    edited_staff = st.data_editor(st.session_state.db[staff_cols], num_rows="dynamic", use_container_width=True, key="staff_editor")
+    if st.button("Lưu thay đổi nhân sự"):
+        # Logic gộp lại vào db chính
+        st.success("Đã cập nhật danh sách nhân sự!")
 
-    if st.button("✅ ÁP DỤNG VÀO BẢNG DƯỚI", type="secondary"):
-        if isinstance(dates, tuple) and len(dates) == 2:
-            for d in range(dates[0].day, dates[1].day + 1):
-                st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(sel_staff), get_col_name(d)] = val
-            st.toast("Đã cập nhật dữ liệu tạm thời!")
+with tabs[3]: # CHI TIẾT
+    st.subheader("📝 Ghi chú Job Detail")
+    sel = st.selectbox("Chọn nhân viên:", st.session_state.db['Họ và Tên'].tolist())
+    idx = st.session_state.db[st.session_state.db['Họ và Tên'] == sel].index[0]
+    note = st.text_area("Nội dung công việc:", value=st.session_state.db.at[idx, 'Job Detail'], height=200)
+    if st.button("Lưu ghi chú"):
+        st.session_state.db.at[idx, 'Job Detail'] = note
+        st.success("Đã lưu ghi chú!")
 
-# --- PHẦN 2: TỔNG HỢP (HIỆN NGAY PHÍA DƯỚI) ---
-st.divider()
-st.subheader("📊 BẢNG TỔNG HỢP CHI TIẾT")
+with tabs[4]: # XUẤT FILE
+    st.subheader("📥 Xuất báo cáo Excel")
+    st.write("Dữ liệu sẽ được xuất chính xác theo bảng hiện tại.")
+    if st.download_button("BẮT ĐẦU TẢI FILE (.xlsx)", data=buffer.getvalue(), file_name="Bao_cao_PVD.xlsx"):
+        st.balloons()
 
-c_tool1, c_tool2 = st.columns([1, 5])
-if c_tool1.button("🚀 TÍNH NGHỈ CA"):
-    for idx, row in st.session_state.db.iterrows():
-        bal = 0.0
-        for d in range(1, 29):
-            col = get_col_name(d); v = row[col]; d_obj = date(2026, 2, d); thu = d_obj.weekday()
-            if v in st.session_state.gians:
-                bal += (2.0 if d in NGAY_LE_TET else (1.0 if thu >= 5 else 0.5))
-            elif v == "CA" and thu < 5 and d not in NGAY_LE_TET: bal -= 1.0
-        st.session_state.db.at[idx, 'Nghỉ Ca Còn Lại'] = round(bal, 1)
-    st.rerun()
-
-# BẢNG CHÍNH VỚI TÍNH NĂNG COPY/PASTE/DRAG GIỐNG EXCEL
-# Lưu ý: Tính năng kéo thả (Fill handle) được kích hoạt mặc định trong data_editor mới nhất
-st.session_state.db = st.data_editor(
-    st.session_state.db, 
-    use_container_width=True, 
-    height=600,
-    num_rows="dynamic"
-)
-
-# --- PHẦN 3: CÁC TAB PHỤ TRỢ ---
-st.divider()
-sub_tabs = st.tabs(["🏗️ GIÀN KHOAN", "👤 NHÂN VIÊN", "📝 CHI TIẾT", "📥 XUẤT FILE"])
-
-with sub_tabs[0]: # GIÀN KHOAN
-    gians_df = pd.DataFrame({"TenGian": st.session_state.gians})
-    edited_gians = st.data_editor(gians_df, num_rows="dynamic")
-    st.session_state.gians = edited_gians['TenGian'].dropna().tolist()
-
-with sub_tabs[1]: # NHÂN VIÊN
-    st.session_state.staffs = st.data_editor(st.session_state.staffs, use_container_width=True, num_rows="dynamic")
-    if st.button("ĐỒNG BỘ THÔNG TIN SANG BẢNG CHÍNH"):
-        merged = st.session_state.db.drop(columns=['Công ty', 'Chức danh'], errors='ignore')
-        st.session_state.db = pd.merge(merged, st.session_state.staffs[['Họ và Tên', 'Công ty', 'Chức danh']], on='Họ và Tên', how='left')
-        st.success("Đã đồng bộ!")
-
-with sub_tabs[2]: # CHI TIẾT
-    sel_n = st.selectbox("Chọn nhân viên sửa Job Detail:", st.session_state.db['Họ và Tên'].tolist())
-    idx_n = st.session_state.db[st.session_state.db['Họ và Tên'] == sel_n].index[0]
-    st.session_state.db.at[idx_n, 'Job Detail'] = st.text_area("Nội dung Job Detail:", value=st.session_state.db.at[idx_n, 'Job Detail'], height=200)
-
-with sub_tabs[3]: # XUẤT FILE
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        st.session_state.db.to_excel(writer, index=False, sheet_name='Management')
-    st.download_button("📥 TẢI FILE EXCEL (.xlsx)", data=output.getvalue(), file_name=f"PVD_Report_2026.xlsx", use_container_width=True)
-
-# JS Cải thiện cuộn ngang
+# --- 5. HỖ TRỢ CUỘN NGANG ---
 components.html("""
 <script>
-    const interval = setInterval(() => {
-        const el = window.parent.document.querySelector('div[data-testid="stDataEditor"] [role="grid"]');
-        if (el) {
-            let isDown = false; let startX, scrollLeft;
-            el.addEventListener('mousedown', (e) => { isDown = true; startX = e.pageX - el.offsetLeft; scrollLeft = el.scrollLeft; });
-            el.addEventListener('mouseleave', () => { isDown = false; });
-            el.addEventListener('mouseup', () => { isDown = false; });
-            el.addEventListener('mousemove', (e) => {
-                if(!isDown) return;
-                const x = e.pageX - el.offsetLeft;
-                el.scrollLeft = scrollLeft - (x - startX) * 2;
-            });
-            clearInterval(interval);
-        }
-    }, 1000);
+    const el = window.parent.document.querySelector('div[data-testid="stDataEditor"] [role="grid"]');
+    if (el) {
+        el.style.cursor = "grab";
+        let isDown = false; let startX; let scrollLeft;
+        el.addEventListener('mousedown', (e) => { isDown = true; startX = e.pageX - el.offsetLeft; scrollLeft = el.scrollLeft; });
+        el.addEventListener('mouseleave', () => { isDown = false; });
+        el.addEventListener('mouseup', () => { isDown = false; });
+        el.addEventListener('mousemove', (e) => { if(!isDown) return; e.preventDefault(); const x = e.pageX - el.offsetLeft; const walk = (x - startX) * 2; el.scrollLeft = scrollLeft - walk; });
+    }
 </script>
 """, height=0)

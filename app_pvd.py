@@ -6,71 +6,85 @@ from streamlit_gsheets import GSheetsConnection
 import io
 import os
 
-# --- 1. CẤU HÌNH HỆ THỐNG (GIỮ NGUYÊN GIAO DIỆN ĐẸP) ---
+# --- 1. CẤU HÌNH HỆ THỐNG ---
 st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 
 st.markdown("""
     <style>
         [data-testid="stStatusWidget"] {display: none !important;}
-        .stButton button {border-radius: 8px; font-weight: bold; height: 3em;}
+        .stButton button {border-radius: 8px; font-weight: bold;}
         div.stButton > button { background-color: #00f2ff !important; color: #1a1c24 !important; }
         [data-testid="stDataEditor"] { border: 2px solid #00f2ff; border-radius: 10px; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. DỮ LIỆU GỐC (64 NHÂN VIÊN) ---
+# --- 2. DỮ LIỆU GỐC & QUY ƯỚC ---
 NAMES_64 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung"]
 DATE_COLS = [f"{d:02d}/02" for d in range(1, 29)]
 HOLIDAYS = [15, 16, 17, 18, 19] # Ngày lễ Tết
 
-# --- 3. KHỞI TẠO DỮ LIỆU ---
+# --- 3. KHỞI TẠO KẾT NỐI ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-if 'db' not in st.session_state:
+# Hàm lấy dữ liệu sạch
+def get_data():
     try:
-        df_cloud = conn.read(worksheet="Sheet1")
-        if df_cloud is not None and not df_cloud.empty:
-            st.session_state.db = df_cloud
-        else:
-            st.session_state.db = pd.DataFrame()
+        df = conn.read(worksheet="Sheet1")
+        if df is None or df.empty:
+            raise ValueError
+        return df
     except:
-        st.session_state.db = pd.DataFrame()
+        df_init = pd.DataFrame({'STT': range(1, 65), 'Họ và Tên': NAMES_64, 'Công ty': 'PVDWS', 'Chức danh': 'Kỹ sư', 'Job Detail': ''})
+        for c in DATE_COLS: df_init[c] = ""
+        return df_init
 
-if st.session_state.db.empty:
-    df = pd.DataFrame({'STT': range(1, 65), 'Họ và Tên': NAMES_64, 'Công ty': 'PVDWS', 'Chức danh': 'Kỹ sư', 'Job Detail': '', 'Nghỉ Ca Còn Lại': 0.0})
-    for c in DATE_COLS: df[c] = ""
-    st.session_state.db = df
+if 'db' not in st.session_state:
+    st.session_state.db = get_data()
 
 if 'gians' not in st.session_state:
     st.session_state.gians = ["PVD I", "PVD II", "PVD III", "PVD VI", "PVD 11"]
 
-# --- 4. HÀM TÍNH TOÁN (VÁ LỖI TRIỆT ĐỂ) ---
-def calculate_pvd_logic(row):
-    accrued = 0.0
+# --- 4. HÀM TÍNH TOÁN QUY ƯỚC (QUAN TRỌNG NHẤT) ---
+def apply_pvd_logic(df):
     rigs = st.session_state.gians
-    for col in DATE_COLS:
-        if col in row.index:
-            val = str(row[col]).strip() if pd.notna(row[col]) else ""
-            if not val: continue
-            
-            day = int(col.split('/')[0])
-            weekday = date(2026, 2, day).weekday() # 0=T2, 5=T7, 6=CN
-            
-            if val in rigs: # ĐI BIỂN
-                if day in HOLIDAYS: accrued += 2.0
-                elif weekday >= 5: accrued += 1.0
-                else: accrued += 0.5
-            elif val == "CA": # NGHỈ CA
-                if weekday < 5 and day not in HOLIDAYS: accrued -= 1.0
-    return round(accrued, 2)
+    
+    def calc_row(row):
+        total = 0.0
+        for col in DATE_COLS:
+            if col in df.columns:
+                val = str(row[col]).strip() if pd.notna(row[col]) else ""
+                if not val: continue
+                
+                day_num = int(col.split('/')[0])
+                # Mặc định năm 2026
+                dt = date(2026, 2, day_num)
+                is_weekend = dt.weekday() >= 5 # 5 là T7, 6 là CN
+                is_holiday = day_num in HOLIDAYS
+                
+                # A. CỘNG NGÀY KHI ĐI BIỂN
+                if val in rigs:
+                    if is_holiday: total += 2.0      # Lễ: 1 biển = 2 ca
+                    elif is_weekend: total += 1.0    # T7,CN: 1 biển = 1 ca
+                    else: total += 0.5               # Ngày thường: 1 biển = 0.5 ca (2 ngày biển = 1 ca)
+                
+                # B. TRỪ NGÀY KHI NGHỈ CA
+                elif val == "CA":
+                    # Chỉ trừ nếu là ngày thường và không phải lễ
+                    if not is_weekend and not is_holiday:
+                        total -= 1.0
+        return total
 
-# Cập nhật số liệu
-st.session_state.db['Nghỉ Ca Còn Lại'] = st.session_state.db.apply(calculate_pvd_logic, axis=1)
+    df['Nghỉ Ca Còn Lại'] = df.apply(calc_row, axis=1)
+    return df
 
-# --- 5. GIAO DIỆN CHÍNH (GIỮ NGUYÊN NHƯ CŨ) ---
+# Cập nhật số liệu trước khi hiển thị
+st.session_state.db = apply_pvd_logic(st.session_state.db)
+
+# --- 5. GIAO DIỆN ---
 c_logo, c_title = st.columns([1, 4])
 with c_logo:
     if os.path.exists("logo_pvd.png"): st.image("logo_pvd.png", width=150)
+    else: st.markdown("### LOGO")
 with c_title:
     st.markdown('<br><h1 style="color: #00f2ff; text-align: left; margin-top: -10px;">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
 
@@ -102,11 +116,18 @@ with tabs[0]:
             st.session_state.db.to_excel(writer, index=False)
         st.download_button("📥 TẢI EXCEL", data=buffer.getvalue(), file_name="PVD_Export.xlsx", use_container_width=True)
 
-    st.data_editor(
+    # Hiển thị Data Editor
+    edited_df = st.data_editor(
         st.session_state.db,
-        column_config={"Nghỉ Ca Còn Lại": st.column_config.NumberColumn("Quỹ CA", disabled=True, format="%.1f")},
-        use_container_width=True, height=550, key="main_editor"
+        column_config={
+            "Nghỉ Ca Còn Lại": st.column_config.NumberColumn("Quỹ CA", disabled=True, format="%.1f 🏖️"),
+            "STT": st.column_config.NumberColumn(width="small"),
+            "Họ và Tên": st.column_config.TextColumn(width="medium")
+        },
+        use_container_width=True, height=600, key="main_editor"
     )
+    if not edited_df.equals(st.session_state.db):
+        st.session_state.db = edited_df
 
 with tabs[1]:
     st.subheader("🏗️ Danh sách Giàn khoan")

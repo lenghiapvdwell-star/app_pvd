@@ -9,47 +9,53 @@ import os
 # --- 1. CẤU HÌNH & THỜI GIAN ---
 st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 
-# CSS để căn chỉnh bố cục tuyệt đối
+# CSS Fix Header: Ép tiêu đề vào trung tâm và làm logo nổi bật
 st.markdown("""
     <style>
     .block-container {padding-top: 1rem; padding-bottom: 0rem;}
-    /* Căn giữa tiêu đề */
-    .center-title {
+    
+    /* Container chứa toàn bộ Header */
+    .header-container {
         display: flex;
         align-items: center;
-        justify-content: center;
+        justify-content:沟通;
+        padding: 10px 0px;
+        border-bottom: 2px solid #333;
+        margin-bottom: 20px;
+    }
+    
+    /* Kiểu chữ tiêu đề chính */
+    .main-title {
         color: #00f2ff;
-        font-size: 38px;
+        font-size: 42px;
         font-weight: bold;
         text-align: center;
-        height: 100%;
-        margin: 0;
+        flex-grow: 1;
+        margin: 0px;
+        text-shadow: 2px 2px 4px #000000;
     }
+    
     .stButton>button {border-radius: 5px; height: 3em;}
     </style>
     """, unsafe_allow_html=True)
 
-# --- HEADER: LOGO (TRÁI) - TIÊU ĐỀ (GIỮA) - NGÀY (PHẢI) ---
-# Chia tỷ lệ: Logo (1) - Tiêu đề (3) - Ngày (1)
-c_header_1, c_header_2, c_header_3 = st.columns([1, 3, 1])
+# --- HEADER MỚI: DÙNG COLUMNS ĐỂ CÂN BẰNG TỈ LỆ ---
+c_logo, c_title, c_date = st.columns([1.5, 5, 1.5])
 
-with c_header_1:
+with c_logo:
     if os.path.exists("logo_pvd.png"):
-        st.image("logo_pvd.png", width=180) # Logo to rõ bên trái
+        st.image("logo_pvd.png", width=200)
     else:
-        st.markdown("<h3 style='color:grey;'>LOGO</h3>", unsafe_allow_html=True)
+        st.write("### PVD LOGO")
 
-with c_header_2:
-    # Tiêu đề ép vào giữa bằng CSS class
-    st.markdown('<p class="center-title">PVD WELL SERVICES MANAGEMENT</p>', unsafe_allow_html=True)
+with c_title:
+    # Ép tiêu đề ra giữa bằng thẻ HTML
+    st.markdown('<p class="main-title">PVD WELL SERVICES MANAGEMENT</p>', unsafe_allow_html=True)
 
-with c_header_3:
-    st.write("##") # Căn chỉnh cho đều hàng ngang
-    working_date = st.date_input("📅 CHỌN THÁNG:", value=date.today())
+with c_date:
+    working_date = st.date_input("📅 THÁNG LÀM VIỆC:", value=date.today())
 
-st.write("---") # Đường kẻ ngang tách biệt header
-
-# --- 2. THUẬT TOÁN (GIỮ NGUYÊN) ---
+# --- 2. THUẬT TOÁN & DỮ LIỆU (GIỮ NGUYÊN) ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 curr_month = working_date.month
 curr_year = working_date.year
@@ -120,7 +126,7 @@ with c_act2:
         st.session_state.db.to_excel(writer, index=False, sheet_name=sheet_name)
     st.download_button("📥 XUẤT FILE EXCEL", buffer, file_name=f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
-# --- 4. CÁC TABS CHỨC NĂNG ---
+# --- 4. TABS CHỨC NĂNG ---
 tabs = st.tabs(["🚀 ĐIỀU ĐỘNG", "🏗️ GIÀN KHOAN", "👤 NHÂN VIÊN"])
 
 with tabs[0]:

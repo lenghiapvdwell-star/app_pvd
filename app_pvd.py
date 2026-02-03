@@ -9,34 +9,47 @@ import os
 # --- 1. CẤU HÌNH & THỜI GIAN ---
 st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 
+# CSS để fix lỗi hiển thị và làm đẹp giao diện
 st.markdown("""
     <style>
-    .block-container {padding-top: 0.5rem; padding-bottom: 0rem;}
+    .block-container {padding-top: 1rem; padding-bottom: 0rem;}
+    .main-title {
+        color: #00f2ff; 
+        font-size: 32px; 
+        font-weight: bold;
+        margin-bottom: 0px;
+        padding-top: 10px;
+    }
     .stButton>button {border-radius: 5px; height: 3em;}
     </style>
     """, unsafe_allow_html=True)
 
-# Khởi tạo kết nối sớm để dùng cho nút bấm ở Top Bar
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- HEADER: LOGO VÀ BỘ CHỌN NGÀY ---
-c_head1, c_head2 = st.columns([3, 2])
+# --- HEADER: LOGO VÀ TIÊU ĐỀ ---
+# Tăng tỷ lệ cột 1 để chứa cả Logo và Chữ không bị nhảy dòng
+c_head1, c_head2 = st.columns([4, 1.5]) 
+
 with c_head1:
-    if os.path.exists("logo_pvd.png"): 
-        st.image("logo_pvd.png", width=220) # Làm logo to hơn
-    else: 
-        st.markdown("<h1 style='color: #00f2ff;'>PVD WELL SERVICES</h1>", unsafe_allow_html=True)
+    c_img, c_txt = st.columns([1, 3])
+    with c_img:
+        if os.path.exists("logo_pvd.png"):
+            st.image("logo_pvd.png", width=180) # Logo kích thước vừa vặn không bị cắt
+        else:
+            st.write("🔴 LOGO")
+    with c_txt:
+        st.markdown('<p class="main-title">PVD WELL SERVICES MANAGEMENT</p>', unsafe_allow_html=True)
 
 with c_head2:
-    st.write("") # Tạo khoảng trống
-    working_date = st.date_input("📅 CHỌN THÁNG LÀM VIỆC:", value=date.today())
-    
+    st.write("##") # Tạo khoảng cách xuống dòng cho cân với logo
+    working_date = st.date_input("📅 THÁNG LÀM VIỆC:", value=date.today())
+
+# --- 2. XỬ LÝ DỮ LIỆU ---
 curr_month = working_date.month
 curr_year = working_date.year
 month_abbr = working_date.strftime("%b") 
 sheet_name = working_date.strftime("%m_%Y") 
 
-# --- 2. XỬ LÝ DỮ LIỆU ---
 if 'gians' not in st.session_state:
     st.session_state.gians = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9" , "THOR", "SDE" , "GUNNLOD"]
 
@@ -62,13 +75,11 @@ if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sh
         df_init['CA Tháng Trước'] = df_init['Họ và Tên'].map(prev_ca_data).fillna(0.0)
         st.session_state.db = df_init
 
-# Tính toán các cột ngày
 num_days = calendar.monthrange(curr_year, curr_month)[1]
 DATE_COLS = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(curr_year,curr_month,d).weekday()]})" for d in range(1, num_days+1)]
 for c in DATE_COLS: 
     if c not in st.session_state.db.columns: st.session_state.db[c] = ""
 
-# Logic Quỹ CA
 def update_logic(df):
     holidays = [date(curr_year, 1, 1), date(curr_year, 4, 30), date(curr_year, 5, 1), date(curr_year, 9, 2)]
     def calc_row(row):
@@ -91,18 +102,18 @@ st.session_state.db = update_logic(st.session_state.db)
 cols_order = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'Quỹ CA Tổng', 'CA Tháng Trước'] + DATE_COLS
 st.session_state.db = st.session_state.db.reindex(columns=cols_order)
 
-# --- 3. THANH THAO TÁC NHANH (TOP BAR) ---
+# --- 3. THANH THAO TÁC NHANH ---
 st.write("---")
-c_act1, c_act2, c_act3, c_act4 = st.columns([1, 1, 1.5, 1.5])
+c_act1, c_act2, c_act3, c_act4 = st.columns([1.2, 1.2, 1.5, 1.5])
 with c_act1:
     if st.button("📤 UPLOAD CLOUD", use_container_width=True, type="primary"):
         conn.update(worksheet=sheet_name, data=st.session_state.db)
-        st.success("Đã lưu!")
+        st.success("Đã lưu thành công!")
 with c_act2:
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
         st.session_state.db.to_excel(writer, index=False, sheet_name=sheet_name)
-    st.download_button("📥 XUẤT EXCEL", buffer, file_name=f"PVD_{sheet_name}.xlsx", use_container_width=True)
+    st.download_button("📥 XUẤT FILE EXCEL", buffer, file_name=f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
 # --- 4. CÁC TABS CHỨC NĂNG ---
 tabs = st.tabs(["🚀 ĐIỀU ĐỘNG", "🏗️ GIÀN KHOAN", "👤 NHÂN VIÊN"])

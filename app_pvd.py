@@ -23,7 +23,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. DỮ LIỆU NHÂN VIÊN ---
+# --- 2. DỮ LIỆU NHÂN VIÊN GỐC ---
 NAMES_64 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung"]
 
 def get_col_name(day):
@@ -33,7 +33,7 @@ def get_col_name(day):
 
 DATE_COLS = [get_col_name(d) for d in range(1, 29)]
 
-# --- 3. KẾT NỐI GSHEETS ---
+# --- 3. QUẢN LÝ DỮ LIỆU ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 if 'db' not in st.session_state:
@@ -42,7 +42,7 @@ if 'db' not in st.session_state:
         if df_cloud is not None and not df_cloud.empty:
             st.session_state.db = df_cloud
         else:
-            raise ValueError
+            raise Exception
     except:
         df = pd.DataFrame({'STT': range(1, 65), 'Họ và Tên': NAMES_64, 'Công ty': 'PVDWS', 'Chức danh': 'Kỹ sư', 'Job Detail': '', 'Nghỉ Ca Còn Lại': 0.0})
         for c in DATE_COLS: df[c] = ""
@@ -57,17 +57,13 @@ if 'gians' not in st.session_state:
 
 def save_data():
     try:
-        # Cập nhật db từ editor trước khi lưu
-        if "main_editor" in st.session_state and "edited_rows" in st.session_state.main_editor:
-            # Code xử lý đồng bộ nhanh nếu có thay đổi tay
-            pass
         conn.update(worksheet="Sheet1", data=st.session_state.db)
         conn.update(worksheet="Gians", data=pd.DataFrame({"TenGian": st.session_state.gians}))
         st.success("✅ DỮ LIỆU ĐÃ LƯU THÀNH CÔNG!")
     except:
         st.error("❌ LỖI KẾT NỐI CLOUD!")
 
-# --- 4. GIAO DIỆN ---
+# --- 4. GIAO DIỆN LOGO & TIÊU ĐỀ (VIẾT HOA TOÀN BỘ) ---
 c_logo, c_title = st.columns([1, 4])
 with c_logo:
     if os.path.exists("logo_pvd.png"):
@@ -75,10 +71,11 @@ with c_logo:
 with c_title:
     st.markdown('<br><h1 style="color: #00f2ff; text-align: left;">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
 
-tabs = st.tabs(["🚀 ĐIỀU ĐỘNG & TỔNG HỢP", "🏗️ GIÀN KHOAN", "👤 NHÂN VIÊN", "📝 CHI TIẾT"])
+# --- 5. HỆ THỐNG TABS ---
+tabs = st.tabs(["🚀 ĐIỀU ĐỘNG", "🏗️ GIÀN KHOAN", "👤 NHÂN VIÊN", "📝 CHI TIẾT"])
 
 with tabs[0]: 
-    with st.expander("📝 KHU VỰC THAO TÁC", expanded=True):
+    with st.expander("📝 THAO TÁC NHANH", expanded=True):
         c_in, c_sv = st.columns([4.5, 1.5])
         with c_in:
             with st.form("input_form"):
@@ -98,11 +95,12 @@ with tabs[0]:
         with c_sv:
             st.write("")
             st.write("")
-            if st.button("💾 LƯU CLOUD (SAVE ALL)", key="btn_save_main"):
+            if st.button("💾 LƯU CLOUD (SAVE)", key="btn_save_main"):
                 save_data()
 
     st.divider()
     
+    # Cấu hình cột
     col_cfg = {
         "STT": st.column_config.NumberColumn(width=50, disabled=True),
         "Họ và Tên": st.column_config.TextColumn("Họ và Tên", width=220, disabled=True),
@@ -110,21 +108,26 @@ with tabs[0]:
     }
     for c in DATE_COLS: col_cfg[c] = st.column_config.TextColumn(c, width=85)
 
-    # KHẮC PHỤC LỖI: Sử dụng st.session_state trực tiếp và key cố định
-    st.session_state.db = st.data_editor(
+    # FIX LỖI API: Tách rời dữ liệu hiển thị và dữ liệu gốc
+    # Streamlit sẽ không bị xung đột khi bạn sửa tay hoặc nhấn nút nhập nữa
+    edited_df = st.data_editor(
         st.session_state.db,
         column_config=col_cfg,
         use_container_width=True,
         height=600,
         num_rows="dynamic",
-        key="main_editor"
+        key="main_table_editor"
     )
+    
+    # Chỉ cập nhật vào session_state khi người dùng thực sự sửa trên bảng
+    if not edited_df.equals(st.session_state.db):
+        st.session_state.db = edited_df
 
 with tabs[1]: # GIÀN KHOAN
     st.subheader("🏗️ Quản lý Giàn Khoan")
     cg1, cg2 = st.columns([3, 1])
     with cg1:
-        g_df = pd.DataFrame({"TenGian": st.session_state.gians}).astype(str)
+        g_df = pd.DataFrame({"TenGian": st.session_state.gians})
         edited_g = st.data_editor(g_df, num_rows="dynamic", use_container_width=True, key="rig_ed")
     with cg2:
         if st.button("💾 LƯU CLOUD", key="btn_save_rig", use_container_width=True):
@@ -148,7 +151,7 @@ with tabs[3]: # CHI TIẾT
     pick_n = st.selectbox("Chọn nhân viên:", st.session_state.db['Họ và Tên'].tolist())
     if pick_n:
         idx = st.session_state.db[st.session_state.db['Họ và Tên'] == pick_n].index[0]
-        st.session_state.db.at[idx, 'Job Detail'] = st.text_area("Nội dung ghi chú:", value=st.session_state.db.at[idx, 'Job Detail'], height=300)
+        st.session_state.db.at[idx, 'Job Detail'] = st.text_area("Nội dung:", value=st.session_state.db.at[idx, 'Job Detail'], height=300)
         if st.button("💾 LƯU CLOUD", key="btn_save_detail"):
             save_data()
 

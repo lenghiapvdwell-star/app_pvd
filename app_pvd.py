@@ -6,7 +6,7 @@ from streamlit_gsheets import GSheetsConnection
 import io
 import os
 
-# --- 1. CẤU HÌNH & CHỌN THÁNG LÀM VIỆC ---
+# --- 1. CẤU HÌNH & THỜI GIAN ---
 st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 
 c_top1, c_top2 = st.columns([1, 4])
@@ -18,6 +18,17 @@ curr_year = working_date.year
 month_abbr = working_date.strftime("%b") 
 sheet_name = working_date.strftime("%m_%Y") 
 
+# Danh sách ngày Lễ/Tết năm 2026 (Ví dụ: Tết, Giỗ tổ, 30/4, 1/5, Quốc khánh)
+# Bạn có thể bổ sung thêm các ngày nghỉ bù nếu có
+HOLIDAYS_2026 = [
+    date(2026, 1, 1),   # Tết Dương lịch
+    date(2026, 2, 16), date(2026, 2, 17), date(2026, 2, 18), date(2026, 2, 19), # Tết Nguyên Đán
+    date(2026, 4, 26),  # Giỗ tổ Hùng Vương
+    date(2026, 4, 30),  # Giải phóng
+    date(2026, 5, 1),   # Quốc tế lao động
+    date(2026, 9, 2),   # Quốc khánh
+]
+
 def get_vi_day(dt):
     return ["T2", "T3", "T4", "T5", "T6", "T7", "CN"][dt.weekday()]
 
@@ -27,7 +38,6 @@ DATE_COLS = [f"{d:02d}/{month_abbr} ({get_vi_day(date(curr_year, curr_month, d))
 # --- 2. KHỞI TẠO DỮ LIỆU ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Khởi tạo danh sách Giàn trong session nếu chưa có
 if 'gians' not in st.session_state:
     st.session_state.gians = ["PVD I", "PVD II", "PVD III", "PVD VI", "PVD 11"]
 
@@ -44,31 +54,51 @@ if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sh
         for c in DATE_COLS: df_init[c] = ""
         st.session_state.db = df_init
 
-# --- 3. LOGIC TÍNH TOÁN QUỸ CA ---
-def apply_pvd_logic(df):
+# --- 3. THUẬT TOÁN TÍNH QUỸ CA THÔNG MINH (THEO QUY ĐỊNH MỚI) ---
+def update_logic_pvd_ws(df):
     gians = st.session_state.gians
     def calc_row(row):
-        total = 0.0
+        total_ca = 0.0
         for col in DATE_COLS:
             if col in row.index:
                 val = str(row[col]).strip()
                 if not val or val.lower() in ["nan", "none", ""]: continue
+                
                 d_num = int(col.split('/')[0])
                 dt = date(curr_year, curr_month, d_num)
                 is_weekend = dt.weekday() >= 5
+                is_holiday = dt in HOLIDAYS_2026
+                
+                # TRƯỜNG HỢP 1: ĐI GIÀN
                 if val in gians:
-                    total += 1.0 if is_weekend else 0.5
+                    if is_holiday:
+                        total_ca += 2.0  # Lễ Tết đi giàn được 2 ngày nghỉ
+                    elif is_weekend:
+                        total_ca += 1.0  # T7, CN đi giàn được 1 ngày nghỉ
+                    else:
+                        total_ca += 0.5  # Ngày thường đi giàn được 0.5 ngày nghỉ
+                
+                # TRƯỜNG HỢP 2: NGHỈ CA
                 elif val.upper() == "CA":
-                    if not is_weekend: total -= 1.0
-        return total
+                    # Chỉ trừ Quỹ CA nếu là ngày thường (không phải T7, CN) và không phải ngày Lễ
+                    if not is_weekend and not is_holiday:
+                        total_ca -= 1.0
+                
+                # TRƯỜNG HỢP 3: LÀM XƯỞNG (WS) -> Không làm gì cả, không cộng không trừ
+                elif val.upper() == "WS":
+                    pass
+                    
+        return total_ca
+
     df['Quỹ CA'] = df.apply(calc_row, axis=1)
     return df
 
-st.session_state.db = apply_pvd_logic(st.session_state.db)
+# Cập nhật số liệu
+st.session_state.db = update_logic_pvd_ws(st.session_state.db)
 main_info = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'Quỹ CA']
 st.session_state.db = st.session_state.db.reindex(columns=main_info + DATE_COLS)
 
-# --- 4. GIAO DIỆN ---
+# --- 4. GIAO DIỆN (Giữ nguyên các Tab chức năng) ---
 c_logo, c_title = st.columns([1.5, 5])
 with c_logo:
     if os.path.exists("logo_pvd.png"): st.image("logo_pvd.png", width=180)
@@ -78,7 +108,7 @@ with c_title:
 
 tabs = st.tabs(["🚀 ĐIỀU ĐỘNG", "🏗️ GIÀN KHOAN", "👤 NHÂN VIÊN", "💾 LƯU & XUẤT FILE"])
 
-# --- TAB 1: ĐIỀU ĐỘNG ---
+# TAB 1: ĐIỀU ĐỘNG (Sửa logic nhập liệu)
 with tabs[0]:
     with st.container(border=True):
         c1, c2, c3, c4 = st.columns([2, 1, 1, 1.2])
@@ -111,58 +141,34 @@ with tabs[0]:
         use_container_width=True, height=500, key=f"table_{sheet_name}"
     )
 
-# --- TAB 2: GIÀN KHOAN ---
+# Các tab khác giữ nguyên như bản chuẩn...
 with tabs[1]:
-    st.subheader("🏗️ Quản lý danh sách Giàn Khoan")
     df_gians = pd.DataFrame({"Tên Giàn": st.session_state.gians})
     edited_gians = st.data_editor(df_gians, num_rows="dynamic", use_container_width=True)
     if st.button("💾 Lưu danh sách Giàn"):
         st.session_state.gians = edited_gians["Tên Giàn"].dropna().tolist()
-        st.success("Đã cập nhật danh sách Giàn!")
         st.rerun()
 
-# --- TAB 3: NHÂN VIÊN ---
 with tabs[2]:
-    st.subheader("👤 Quản lý danh sách Nhân viên")
-    # Lọc ra 5 cột thông tin cơ bản để sửa
     staff_info_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail']
     df_staff = st.session_state.db[staff_info_cols]
-    
     edited_staff = st.data_editor(df_staff, num_rows="dynamic", use_container_width=True)
-    
     if st.button("💾 Lưu thông tin Nhân viên"):
-        # Giữ lại phần dữ liệu ngày tháng cũ
-        date_data = st.session_state.db[DATE_COLS + ['Quỹ CA']]
-        # Kết hợp thông tin mới và dữ liệu cũ
+        date_data = st.session_state.db[DATE_COLS]
         st.session_state.db = pd.concat([edited_staff.reset_index(drop=True), date_data.reset_index(drop=True)], axis=1)
-        st.success("Đã cập nhật danh sách nhân sự!")
         st.rerun()
 
-# --- TAB 4: LƯU & XUẤT FILE ---
 with tabs[3]:
     st.header(f"💾 Dữ liệu tháng {sheet_name}")
     c1, c2 = st.columns(2)
-    
     with c1:
-        st.info("Đồng bộ dữ liệu lên Google Sheets Cloud")
         if st.button("📤 UPLOAD GOOGLE SHEETS", use_container_width=True, type="primary"):
             try:
                 conn.update(worksheet=sheet_name, data=st.session_state.db)
-                st.success(f"Đã lưu thành công vào Tab {sheet_name}!")
-            except:
-                st.error(f"Lỗi: Hãy tạo Tab '{sheet_name}' trên Google Sheets trước.")
-                
+                st.success("Đã lưu thành công!")
+            except: st.error("Lỗi Tab.")
     with c2:
-        st.info("Tải bản sao Excel về máy tính cá nhân")
-        # Tạo file Excel trong bộ nhớ
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             st.session_state.db.to_excel(writer, index=False, sheet_name=sheet_name)
-        
-        st.download_button(
-            label="📥 TẢI FILE EXCEL (.xlsx)",
-            data=buffer.getvalue(),
-            file_name=f"PVD_Management_{sheet_name}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
+        st.download_button(label="📥 TẢI FILE EXCEL (.xlsx)", data=buffer.getvalue(), file_name=f"PVD_{sheet_name}.xlsx", use_container_width=True)

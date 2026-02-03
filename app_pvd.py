@@ -9,31 +9,47 @@ import os
 # --- 1. CẤU HÌNH & THỜI GIAN ---
 st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 
-# CSS tối ưu giao diện
+# CSS để căn chỉnh bố cục tuyệt đối
 st.markdown("""
     <style>
     .block-container {padding-top: 1rem; padding-bottom: 0rem;}
-    [data-testid="stHeader"] {background-color: rgba(0,0,0,0);}
+    /* Căn giữa tiêu đề */
+    .center-title {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #00f2ff;
+        font-size: 38px;
+        font-weight: bold;
+        text-align: center;
+        height: 100%;
+        margin: 0;
+    }
     .stButton>button {border-radius: 5px; height: 3em;}
     </style>
     """, unsafe_allow_html=True)
 
-# Hiển thị Logo và Tiêu đề chính ngay đầu phần mềm
-if os.path.exists("logo_pvd.png"):
-    st.logo("logo_pvd.png", icon_image="logo_pvd.png") # Hiện logo ở thanh điều hướng và góc trên
+# --- HEADER: LOGO (TRÁI) - TIÊU ĐỀ (GIỮA) - NGÀY (PHẢI) ---
+# Chia tỷ lệ: Logo (1) - Tiêu đề (3) - Ngày (1)
+c_header_1, c_header_2, c_header_3 = st.columns([1, 3, 1])
 
-# Dòng tiêu đề to và rõ nhất
-st.markdown('<h1 style="color: #00f2ff; text-align: left; margin-bottom: 0px;">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
+with c_header_1:
+    if os.path.exists("logo_pvd.png"):
+        st.image("logo_pvd.png", width=180) # Logo to rõ bên trái
+    else:
+        st.markdown("<h3 style='color:grey;'>LOGO</h3>", unsafe_allow_html=True)
 
-# Thanh ngang tách biệt phần đầu và phần điều khiển
-st.write("---")
+with c_header_2:
+    # Tiêu đề ép vào giữa bằng CSS class
+    st.markdown('<p class="center-title">PVD WELL SERVICES MANAGEMENT</p>', unsafe_allow_html=True)
 
-# Bộ chọn ngày đẩy sang bên phải
-c_top1, c_top2 = st.columns([3, 1])
-with c_top2:
-    working_date = st.date_input("📅 CHỌN THÁNG LÀM VIỆC:", value=date.today())
+with c_header_3:
+    st.write("##") # Căn chỉnh cho đều hàng ngang
+    working_date = st.date_input("📅 CHỌN THÁNG:", value=date.today())
 
-# --- GIỮ NGUYÊN THUẬT TOÁN DƯỚI ĐÂY ---
+st.write("---") # Đường kẻ ngang tách biệt header
+
+# --- 2. THUẬT TOÁN (GIỮ NGUYÊN) ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 curr_month = working_date.month
 curr_year = working_date.year
@@ -92,19 +108,19 @@ st.session_state.db = update_logic(st.session_state.db)
 cols_order = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'Quỹ CA Tổng', 'CA Tháng Trước'] + DATE_COLS
 st.session_state.db = st.session_state.db.reindex(columns=cols_order)
 
-# NÚT THAO TÁC NHANH
+# --- 3. NÚT THAO TÁC NHANH ---
 c_act1, c_act2, c_act3, c_act4 = st.columns([1.2, 1.2, 1.5, 1.5])
 with c_act1:
     if st.button("📤 UPLOAD CLOUD", use_container_width=True, type="primary"):
         conn.update(worksheet=sheet_name, data=st.session_state.db)
-        st.success("Đã lưu thành công!")
+        st.success("Đã lưu!")
 with c_act2:
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
         st.session_state.db.to_excel(writer, index=False, sheet_name=sheet_name)
     st.download_button("📥 XUẤT FILE EXCEL", buffer, file_name=f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
-# TABS CHỨC NĂNG
+# --- 4. CÁC TABS CHỨC NĂNG ---
 tabs = st.tabs(["🚀 ĐIỀU ĐỘNG", "🏗️ GIÀN KHOAN", "👤 NHÂN VIÊN"])
 
 with tabs[0]:

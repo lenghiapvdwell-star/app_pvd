@@ -33,7 +33,7 @@ def get_col_name(day):
 
 DATE_COLS = [get_col_name(d) for d in range(1, 29)]
 
-# --- 3. QUẢN LÝ KẾT NỐI ---
+# --- 3. KẾT NỐI DỮ LIỆU ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 if 'db' not in st.session_state:
@@ -57,7 +57,7 @@ if 'gians' not in st.session_state:
     except:
         st.session_state.gians = ["PVD I", "PVD II", "PVD III", "PVD VI", "PVD 11"]
 
-def save_data():
+def save_to_cloud():
     try:
         conn.update(worksheet="Sheet1", data=st.session_state.db)
         conn.update(worksheet="Gians", data=pd.DataFrame({"TenGian": st.session_state.gians}))
@@ -71,17 +71,18 @@ with c_logo:
     if os.path.exists("logo_pvd.png"):
         st.image("logo_pvd.png", width=180)
 with c_title:
+    # TIÊU ĐỀ VIẾT HOA TOÀN BỘ
     st.markdown('<br><h1 style="color: #00f2ff; text-align: left;">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
 
 # --- 5. HỆ THỐNG TABS ---
 tabs = st.tabs(["🚀 ĐIỀU ĐỘNG & TỔNG HỢP", "🏗️ GIÀN KHOAN", "👤 NHÂN VIÊN", "📝 CHI TIẾT"])
 
 with tabs[0]: 
-    exp = st.expander("📝 KHU VỰC THAO TÁC", expanded=True)
+    exp = st.expander("📝 KHU VỰC THAO TÁC NHẬP LIỆU", expanded=True)
     with exp:
         c_in, c_sv = st.columns([4.5, 1.5])
         with c_in:
-            with st.form("quick_input_form", clear_on_submit=False):
+            with st.form("quick_input_form"):
                 col1, col2, col3, col4 = st.columns([2, 1, 1, 1.5])
                 sel_staff = col1.multiselect("NHÂN VIÊN:", st.session_state.db['Họ và Tên'].tolist())
                 status = col2.selectbox("TRẠNG THÁI:", ["Đi Biển", "CA", "WS", "NP"])
@@ -99,7 +100,7 @@ with tabs[0]:
             st.write("")
             st.write("")
             if st.button("💾 LƯU CLOUD (SAVE ALL)", key="btn_save_main"):
-                save_data()
+                save_to_cloud()
 
     st.divider()
     
@@ -110,22 +111,20 @@ with tabs[0]:
     }
     for c in DATE_COLS: col_cfg[c] = st.column_config.TextColumn(c, width=85)
 
-    # Dùng bản copy để hiển thị, tránh xung đột trực tiếp với session_state
-    display_df = st.session_state.db.copy()
-    
+    # ĐÂY LÀ CHỖ SỬA LỖI: Không gán trực tiếp kết quả editor vào session_state.db
+    # Streamlit sẽ tự quản lý thay đổi qua key 'main_editor'
     edited_df = st.data_editor(
-        display_df,
+        st.session_state.db,
         column_config=col_cfg,
         use_container_width=True,
         height=600,
         num_rows="dynamic",
-        key="main_editor_v2"
+        key="main_editor"
     )
-    # Chỉ cập nhật ngược lại khi có thay đổi thực sự trong bảng
-    if not edited_df.equals(st.session_state.db):
-        st.session_state.db = edited_df
+    # Cập nhật db từ những gì đã sửa trên bảng
+    st.session_state.db = edited_df
 
-with tabs[1]: # TAB GIÀN KHOAN
+with tabs[1]: # GIÀN KHOAN
     st.subheader("🏗️ Quản lý Giàn Khoan")
     cg1, cg2 = st.columns([3, 1])
     with cg1:
@@ -134,9 +133,9 @@ with tabs[1]: # TAB GIÀN KHOAN
     with cg2:
         if st.button("💾 LƯU CLOUD", key="btn_save_rig", use_container_width=True):
             st.session_state.gians = edited_g['TenGian'].dropna().tolist()
-            save_data()
+            save_to_cloud()
 
-with tabs[2]: # TAB NHÂN VIÊN
+with tabs[2]: # NHÂN VIÊN
     st.subheader("👤 Quản lý Nhân sự")
     cs1, cs2 = st.columns([4, 1])
     with cs1:
@@ -146,17 +145,16 @@ with tabs[2]: # TAB NHÂN VIÊN
         if st.button("💾 LƯU CLOUD", key="btn_save_staff", use_container_width=True):
             others = [c for c in st.session_state.db.columns if c not in s_cols]
             st.session_state.db = pd.concat([edited_s.reset_index(drop=True), st.session_state.db[others].reset_index(drop=True)], axis=1)
-            save_data()
+            save_to_cloud()
 
-with tabs[3]: # TAB CHI TIẾT
+with tabs[3]: # CHI TIẾT
     st.subheader("📝 Ghi chú Job Detail")
     pick_n = st.selectbox("Chọn nhân viên:", st.session_state.db['Họ và Tên'].tolist())
     if pick_n:
         idx = st.session_state.db[st.session_state.db['Họ và Tên'] == pick_n].index[0]
-        new_detail = st.text_area("Nội dung ghi chú:", value=st.session_state.db.at[idx, 'Job Detail'], height=300)
-        st.session_state.db.at[idx, 'Job Detail'] = new_detail
+        st.session_state.db.at[idx, 'Job Detail'] = st.text_area("Ghi chú:", value=st.session_state.db.at[idx, 'Job Detail'], height=300)
         if st.button("💾 LƯU CLOUD", key="btn_save_detail"):
-            save_data()
+            save_to_cloud()
 
 # JS Hỗ trợ cuộn ngang
 components.html("""

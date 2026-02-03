@@ -121,13 +121,29 @@ with tabs[0]:
         else: f_val = f_status
         f_date = c4.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, 2)))
         
+        # --- ĐOẠN CODE SỬA LỖI CẬP NHẬT CHẠY XUYÊN THÁNG ---
         if st.button("✅ CẬP NHẬT VÀO BẢNG", use_container_width=True):
-            if f_staff and isinstance(f_date, tuple) and len(f_date) == 2:
-                for d in range(f_date[0].day, f_date[1].day + 1):
-                    dt_temp = date(curr_year, curr_month, d)
-                    col_target = f"{d:02d}/{month_abbr} ({get_vi_day(dt_temp)})"
-                    if col_target in st.session_state.db.columns:
-                        st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(f_staff), col_target] = f_val
+            if f_staff and isinstance(f_date, tuple):
+                # Xác định ngày bắt đầu và ngày kết thúc từ Widget
+                start_d = f_date[0]
+                # Nếu người dùng mới chọn 1 ngày, end_d = start_d. Nếu chọn khoảng thì lấy ngày thứ 2.
+                end_d = f_date[1] if len(f_date) > 1 else f_date[0]
+                
+                # Tạo danh sách tất cả các ngày trong khoảng đã chọn
+                delta = end_d - start_d
+                for i in range(delta.days + 1):
+                    day_to_update = start_d + timedelta(days=i)
+                    
+                    # KIỂM TRA: Chỉ cập nhật nếu ngày đó thuộc về Tháng/Năm đang hiển thị trên bảng
+                    if day_to_update.month == curr_month and day_to_update.year == curr_year:
+                        d_num = day_to_update.day
+                        col_target = f"{d_num:02d}/{month_abbr} ({get_vi_day(day_to_update)})"
+                        
+                        if col_target in st.session_state.db.columns:
+                            st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(f_staff), col_target] = f_val
+                
+                # Sau khi cập nhật xong thì tính toán lại Quỹ CA và Refresh
+                st.session_state.db = update_logic_pvd_ws(st.session_state.db)
                 st.rerun()
 
     st.data_editor(

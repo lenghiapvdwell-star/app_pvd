@@ -107,7 +107,7 @@ with tabs[0]:
                     dt_temp = date(curr_year, curr_month, d)
                     col_target = f"{d:02d}/{month_abbr} ({get_vi_day(dt_temp)})"
                     if col_target in st.session_state.db.columns:
-                        st.session_state.db.loc[st.session_state.db['Hên'].isin(f_staff), col_target] = f_val
+                        st.session_state.db.loc[st.session_state.db['HỌ'].isin(f_staff), col_target] = f_val
                 st.rerun()
 
     st.data_editor(

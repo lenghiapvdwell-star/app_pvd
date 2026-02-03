@@ -6,50 +6,44 @@ from streamlit_gsheets import GSheetsConnection
 import io
 import os
 
-# --- 1. CẤU HÌNH & THỜI GIAN ---
+# --- 1. CẤU HÌNH TRANG ---
 st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 
-# CSS để ép tiêu đề hiển thị tuyệt đẹp
+# CSS Chốt: Ép hiển thị tiêu đề và căn chỉnh layout
 st.markdown("""
     <style>
-    .block-container {padding-top: 0.5rem; padding-bottom: 0rem;}
-    
-    /* Thiết lập tiêu đề cực lớn và nằm giữa */
-    .super-title {
-        color: #00f2ff;
-        font-size: 48px;
-        font-weight: bold;
+    /* Làm tiêu đề st.title nằm giữa và có màu xanh */
+    h1 {
         text-align: center;
-        margin-top: 10px;
-        margin-bottom: 5px;
-        text-shadow: 3px 3px 5px #000;
-        width: 100%;
+        color: #00f2ff !important;
+        font-family: 'Arial';
+        font-weight: bold;
+        text-shadow: 2px 2px 4px #000;
+        margin-top: -50px; /* Đẩy lên sát đỉnh */
     }
+    .block-container {padding-top: 2rem;}
     .stButton>button {border-radius: 5px; height: 3em;}
     </style>
     """, unsafe_allow_html=True)
 
-# --- PHẦN 1: TIÊU ĐỀ (CHIẾM TRỌN HÀNG ĐẦU) ---
-st.markdown('<p class="super-title">PVD WELL SERVICES MANAGEMENT</p>', unsafe_allow_html=True)
+# --- PHẦN TIÊU ĐỀ CHỐT (HIỆN TRÊN CÙNG) ---
+st.title("PVD WELL SERVICES MANAGEMENT")
 
-# --- PHẦN 2: LOGO VÀ CHỌN NGÀY (HÀNG THỨ 2) ---
-c_head_left, c_head_right = st.columns([1, 1])
+# --- PHẦN LOGO VÀ CHỌN NGÀY ---
+col_logo, col_mid, col_date = st.columns([2, 2, 2])
 
-with c_head_left:
+with col_logo:
     if os.path.exists("logo_pvd.png"):
-        st.image("logo_pvd.png", width=220)
+        st.image("logo_pvd.png", width=250)
     else:
-        st.write("### PVD LOGO")
+        st.subheader("PVD LOGO")
 
-with c_head_right:
-    # Đẩy bộ chọn ngày về phía bên phải
-    st.write("<div style='text-align: right;'>", unsafe_allow_html=True)
+with col_date:
     working_date = st.date_input("📅 CHỌN THÁNG LÀM VIỆC:", value=date.today())
-    st.write("</div>", unsafe_allow_html=True)
 
 st.write("---")
 
-# --- 2. THUẬT TOÁN & DỮ LIỆU (GIỮ NGUYÊN) ---
+# --- 2. THUẬT TOÁN & DỮ LIỆU (GIỮ NGUYÊN 100%) ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 curr_month = working_date.month
 curr_year = working_date.year
@@ -76,7 +70,7 @@ if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sh
             st.session_state.db['CA Tháng Trước'] = st.session_state.db['Họ và Tên'].map(prev_ca_data).fillna(0.0)
         else: raise Exception
     except:
-        NAMES_64 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung"]
+        NAMES_64 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung"]
         df_init = pd.DataFrame({'STT': range(1, 65), 'Họ và Tên': NAMES_64, 'Công ty': 'PVDWS', 'Chức danh': 'Kỹ sư', 'Job Detail': ''})
         df_init['CA Tháng Trước'] = df_init['Họ và Tên'].map(prev_ca_data).fillna(0.0)
         st.session_state.db = df_init
@@ -105,28 +99,26 @@ def update_logic(df):
     return df
 
 st.session_state.db = update_logic(st.session_state.db)
-
-# THỨ TỰ CỘT YÊU CẦU: STT > Họ Tên > Công ty > Chức danh > Job > T ca > Tồn cũ
 cols_order = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'Quỹ CA Tổng', 'CA Tháng Trước'] + DATE_COLS
 st.session_state.db = st.session_state.db.reindex(columns=cols_order)
 
 # --- 3. NÚT THAO TÁC NHANH ---
-c_act1, c_act2, c_act3, c_act4 = st.columns([1.2, 1.2, 1.5, 1.5])
-with c_act1:
+btn1, btn2, _ = st.columns([1.5, 1.5, 4])
+with btn1:
     if st.button("📤 UPLOAD CLOUD", use_container_width=True, type="primary"):
         conn.update(worksheet=sheet_name, data=st.session_state.db)
         st.success("Đã lưu!")
-with c_act2:
+with btn2:
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
         st.session_state.db.to_excel(writer, index=False, sheet_name=sheet_name)
-    st.download_button("📥 XUẤT FILE EXCEL", buffer, file_name=f"PVD_{sheet_name}.xlsx", use_container_width=True)
+    st.download_button("📥 XUẤT EXCEL", buffer, file_name=f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
-# --- 4. TABS CHỨC NĂNG (GIỮ NGUYÊN) ---
+# --- 4. TABS CHỨC NĂNG ---
 tabs = st.tabs(["🚀 ĐIỀU ĐỘNG", "🏗️ GIÀN KHOAN", "👤 NHÂN VIÊN"])
 
 with tabs[0]:
-    with st.expander("🛠️ Cập nhật nhanh"):
+    with st.expander("🛠️ Công cụ cập nhật nhanh"):
         c1, c2, c3, c4 = st.columns([2, 1, 1, 1.2])
         f_staff = c1.multiselect("Nhân sự:", st.session_state.db['Họ và Tên'].tolist())
         f_status = c2.selectbox("Trạng thái:", ["Đi Biển", "CA", "WS", "NP", "Ốm"])

@@ -43,7 +43,7 @@ DATE_COLS = [f"{d:02d}/{month_abbr} ({get_vi_day(date(curr_year, curr_month, d))
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 if 'gians' not in st.session_state:
-    st.session_state.gians = ["PVD I", "PVD II", "PVD III", "PVD VI", "PVD 11"]
+    st.session_state.gians = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9" , "THOR", "SDE" , "GUNNLOD"]
 
 # Hàm lấy quỹ CA tháng trước
 def get_prev_ca():

@@ -81,8 +81,8 @@ def update_logic_pvd_ws(df):
 
 st.session_state.db = update_logic_pvd_ws(st.session_state.db)
 
-# SẮP XẾP THỨ TỰ CỘT THEO YÊU CẦU: STT -> Họ và Tên -> ...
-main_info = ['Họ và Tên', 'STT', 'Công ty', 'Chức danh', 'Job Detail', 'Quỹ CA']
+# ĐÃ SỬA LẠI THỨ TỰ: STT ĐỨNG ĐẦU
+main_info = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'Quỹ CA']
 st.session_state.db = st.session_state.db.reindex(columns=main_info + DATE_COLS)
 
 # --- 4. GIAO DIỆN ---
@@ -114,12 +114,13 @@ with tabs[0]:
                         st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(f_staff), col_target] = f_val
                 st.rerun()
 
+    # ĐÃ CẬP NHẬT PINNED CHO CẢ STT VÀ HỌ TÊN ĐỂ ĐÚNG THỨ TỰ
     st.data_editor(
         st.session_state.db,
         column_config={
-            "Họ và Tên": st.column_config.TextColumn(pinned=True, width="medium"),
+            "STT": st.column_config.NumberColumn("STT", width="small", disabled=True, pinned=True),
+            "Họ và Tên": st.column_config.TextColumn("Họ và Tên", pinned=True, width="medium"),
             "Quỹ CA": st.column_config.NumberColumn("Quỹ CA", format="%.1f", disabled=True),
-            "STT": st.column_config.NumberColumn("STT", width="small", disabled=True),
         },
         use_container_width=True, height=550, key=f"table_{sheet_name}", hide_index=True
     )

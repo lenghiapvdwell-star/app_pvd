@@ -82,7 +82,7 @@ def update_logic_pvd_ws(df):
 st.session_state.db = update_logic_pvd_ws(st.session_state.db)
 
 # SẮP XẾP THỨ TỰ CỘT THEO YÊU CẦU: STT -> Họ và Tên -> ...
-main_info = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'Quỹ CA']
+main_info = ['Họ và Tên', 'STT', 'Công ty', 'Chức danh', 'Job Detail', 'Quỹ CA']
 st.session_state.db = st.session_state.db.reindex(columns=main_info + DATE_COLS)
 
 # --- 4. GIAO DIỆN ---

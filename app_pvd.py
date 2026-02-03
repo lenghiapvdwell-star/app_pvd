@@ -23,29 +23,26 @@ NAMES_64 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung
 DATE_COLS = [f"{d:02d}/02" for d in range(1, 29)]
 HOLIDAYS = [15, 16, 17, 18, 19] # Ngày lễ Tết
 
-# --- 3. KHỞI TẠO KẾT NỐI ---
+# --- 3. KHỞI TẠO KẾT NỐI & DỮ LIỆU ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Hàm lấy dữ liệu sạch
-def get_data():
+if 'db' not in st.session_state:
     try:
         df = conn.read(worksheet="Sheet1")
         if df is None or df.empty:
-            raise ValueError
-        return df
+            df = pd.DataFrame({'STT': range(1, 65), 'Họ và Tên': NAMES_64, 'Công ty': 'PVDWS', 'Chức danh': 'Kỹ sư', 'Job Detail': ''})
+            for c in DATE_COLS: df[c] = ""
+        st.session_state.db = df
     except:
-        df_init = pd.DataFrame({'STT': range(1, 65), 'Họ và Tên': NAMES_64, 'Công ty': 'PVDWS', 'Chức danh': 'Kỹ sư', 'Job Detail': ''})
-        for c in DATE_COLS: df_init[c] = ""
-        return df_init
-
-if 'db' not in st.session_state:
-    st.session_state.db = get_data()
+        df = pd.DataFrame({'STT': range(1, 65), 'Họ và Tên': NAMES_64, 'Công ty': 'PVDWS', 'Chức danh': 'Kỹ sư', 'Job Detail': ''})
+        for c in DATE_COLS: df[c] = ""
+        st.session_state.db = df
 
 if 'gians' not in st.session_state:
     st.session_state.gians = ["PVD I", "PVD II", "PVD III", "PVD VI", "PVD 11"]
 
-# --- 4. HÀM TÍNH TOÁN QUY ƯỚC (QUAN TRỌNG NHẤT) ---
-def apply_pvd_logic(df):
+# --- 4. HÀM TÍNH TOÁN QUY ƯỚC (ÉP HIỂN THỊ SỐ) ---
+def update_quay_ca(df):
     rigs = st.session_state.gians
     
     def calc_row(row):
@@ -53,23 +50,22 @@ def apply_pvd_logic(df):
         for col in DATE_COLS:
             if col in df.columns:
                 val = str(row[col]).strip() if pd.notna(row[col]) else ""
-                if not val: continue
+                if val == "" or val == "nan": continue
                 
                 day_num = int(col.split('/')[0])
-                # Mặc định năm 2026
+                # Năm mặc định 2026
                 dt = date(2026, 2, day_num)
-                is_weekend = dt.weekday() >= 5 # 5 là T7, 6 là CN
+                is_weekend = dt.weekday() >= 5 # Thứ 7, CN
                 is_holiday = day_num in HOLIDAYS
                 
-                # A. CỘNG NGÀY KHI ĐI BIỂN
+                # CỘNG NGÀY ĐI BIỂN
                 if val in rigs:
-                    if is_holiday: total += 2.0      # Lễ: 1 biển = 2 ca
-                    elif is_weekend: total += 1.0    # T7,CN: 1 biển = 1 ca
-                    else: total += 0.5               # Ngày thường: 1 biển = 0.5 ca (2 ngày biển = 1 ca)
+                    if is_holiday: total += 2.0
+                    elif is_weekend: total += 1.0
+                    else: total += 0.5
                 
-                # B. TRỪ NGÀY KHI NGHỈ CA
+                # TRỪ NGÀY NGHỈ CA (Chỉ trừ ngày thường)
                 elif val == "CA":
-                    # Chỉ trừ nếu là ngày thường và không phải lễ
                     if not is_weekend and not is_holiday:
                         total -= 1.0
         return total
@@ -77,8 +73,8 @@ def apply_pvd_logic(df):
     df['Nghỉ Ca Còn Lại'] = df.apply(calc_row, axis=1)
     return df
 
-# Cập nhật số liệu trước khi hiển thị
-st.session_state.db = apply_pvd_logic(st.session_state.db)
+# LUÔN CẬP NHẬT TRƯỚC KHI HIỂN THỊ
+st.session_state.db = update_quay_ca(st.session_state.db)
 
 # --- 5. GIAO DIỆN ---
 c_logo, c_title = st.columns([1, 4])
@@ -109,25 +105,28 @@ with tabs[0]:
     with c2:
         if st.button("💾 LƯU LÊN CLOUD", use_container_width=True):
             conn.update(worksheet="Sheet1", data=st.session_state.db)
-            st.success("Đã lưu!")
+            st.success("Đã lưu dữ liệu thành công!")
     with c3:
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             st.session_state.db.to_excel(writer, index=False)
-        st.download_button("📥 TẢI EXCEL", data=buffer.getvalue(), file_name="PVD_Export.xlsx", use_container_width=True)
+        st.download_button("📥 TẢI EXCEL", data=buffer.getvalue(), file_name="PVD_Management.xlsx", use_container_width=True)
 
-    # Hiển thị Data Editor
-    edited_df = st.data_editor(
+    # Hiển thị bảng - Cột Quỹ CA chỉ hiện số thuần
+    st.data_editor(
         st.session_state.db,
         column_config={
-            "Nghỉ Ca Còn Lại": st.column_config.NumberColumn("Quỹ CA", disabled=True, format="%.1f 🏖️"),
-            "STT": st.column_config.NumberColumn(width="small"),
-            "Họ và Tên": st.column_config.TextColumn(width="medium")
+            "Nghỉ Ca Còn Lại": st.column_config.NumberColumn(
+                "Quỹ CA", 
+                help="Số ngày nghỉ ca còn lại",
+                disabled=True, 
+                format="%.1f" # Chỉ hiện số, không icon
+            )
         },
-        use_container_width=True, height=600, key="main_editor"
+        use_container_width=True, 
+        height=600, 
+        key="pvd_main_editor"
     )
-    if not edited_df.equals(st.session_state.db):
-        st.session_state.db = edited_df
 
 with tabs[1]:
     st.subheader("🏗️ Danh sách Giàn khoan")

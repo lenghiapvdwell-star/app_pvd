@@ -18,12 +18,27 @@ curr_year = working_date.year
 month_abbr = working_date.strftime("%b") 
 sheet_name = working_date.strftime("%m_%Y") 
 
-# Danh sách ngày Lễ/Tết năm 2026
-HOLIDAYS_2026 = [
-    date(2026, 1, 1), date(2026, 2, 16), date(2026, 2, 17), 
-    date(2026, 2, 18), date(2026, 2, 19), date(2026, 4, 26), 
-    date(2026, 4, 30), date(2026, 5, 1), date(2026, 9, 2),
-]
+# --- HÀM TÍNH NGÀY LỄ TỰ ĐỘNG (2026 - 2030) ---
+def get_holidays(year):
+    # Các ngày lễ cố định dương lịch hàng năm
+    holidays = [
+        date(year, 1, 1),   # Tết Dương lịch
+        date(year, 4, 30),  # Giải phóng
+        date(year, 5, 1),   # Quốc tế lao động
+        date(year, 9, 2),   # Quốc khánh
+    ]
+    # Cập nhật ngày lễ Âm lịch (Tết Nguyên Đán & Giỗ Tổ) biến động theo từng năm
+    if year == 2026:
+        holidays += [date(2026, 2, 16), date(2026, 2, 17), date(2026, 2, 18), date(2026, 2, 19), date(2026, 4, 26)]
+    elif year == 2027:
+        holidays += [date(2027, 2, 5), date(2027, 2, 6), date(2027, 2, 7), date(2027, 2, 8), date(2027, 2, 9), date(2027, 4, 16)]
+    elif year == 2028:
+        holidays += [date(2028, 1, 25), date(2028, 1, 26), date(2028, 1, 27), date(2028, 1, 28), date(2028, 1, 29), date(2028, 4, 5)]
+    elif year == 2029:
+        holidays += [date(2029, 2, 12), date(2029, 2, 13), date(2029, 2, 14), date(2029, 2, 15), date(2029, 2, 16), date(2029, 4, 23)]
+    elif year == 2030:
+        holidays += [date(2030, 2, 2), date(2030, 2, 3), date(2030, 2, 4), date(2030, 2, 5), date(2030, 2, 6), date(2030, 4, 12)]
+    return holidays
 
 def get_vi_day(dt):
     return ["T2", "T3", "T4", "T5", "T6", "T7", "CN"][dt.weekday()]
@@ -46,19 +61,14 @@ if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sh
         else: raise Exception
     except:
         NAMES_64 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung"]
-        df_init = pd.DataFrame({
-            'STT': range(1, 65), 
-            'Họ và Tên': NAMES_64, 
-            'Công ty': 'PVDWS', 
-            'Chức danh': 'Kỹ sư', 
-            'Job Detail': ''
-        })
+        df_init = pd.DataFrame({'STT': range(1, 65), 'Họ và Tên': NAMES_64, 'Công ty': 'PVDWS', 'Chức danh': 'Kỹ sư', 'Job Detail': ''})
         for c in DATE_COLS: df_init[c] = ""
         st.session_state.db = df_init
 
-# --- 3. LOGIC TÍNH QUỸ CA ---
+# --- 3. LOGIC TÍNH QUỸ CA THÔNG MINH ---
 def update_logic_pvd_ws(df):
     gians = st.session_state.gians
+    current_year_holidays = get_holidays(curr_year)
     def calc_row(row):
         total_ca = 0.0
         for col in DATE_COLS:
@@ -68,7 +78,8 @@ def update_logic_pvd_ws(df):
                 d_num = int(col.split('/')[0])
                 dt = date(curr_year, curr_month, d_num)
                 is_weekend = dt.weekday() >= 5
-                is_holiday = dt in HOLIDAYS_2026
+                is_holiday = dt in current_year_holidays
+                
                 if val in gians:
                     if is_holiday: total_ca += 2.0
                     elif is_weekend: total_ca += 1.0
@@ -80,8 +91,6 @@ def update_logic_pvd_ws(df):
     return df
 
 st.session_state.db = update_logic_pvd_ws(st.session_state.db)
-
-# ĐÃ SỬA LẠI THỨ TỰ: STT ĐỨNG ĐẦU
 main_info = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'Quỹ CA']
 st.session_state.db = st.session_state.db.reindex(columns=main_info + DATE_COLS)
 
@@ -114,7 +123,6 @@ with tabs[0]:
                         st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(f_staff), col_target] = f_val
                 st.rerun()
 
-    # ĐÃ CẬP NHẬT PINNED CHO CẢ STT VÀ HỌ TÊN ĐỂ ĐÚNG THỨ TỰ
     st.data_editor(
         st.session_state.db,
         column_config={

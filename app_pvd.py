@@ -4,16 +4,20 @@ from datetime import datetime, date
 import streamlit.components.v1 as components
 from streamlit_gsheets import GSheetsConnection
 import io
-import os
 
 # --- 1. CẤU HÌNH & GIAO DIỆN ---
 st.set_page_config(page_title="PVD Management 2026", layout="wide")
+
+# Link Logo từ GitHub (Thay link raw của bạn vào đây)
+LOGO_URL = "https://raw.githubusercontent.com/YourGitHubUsername/YourRepo/main/logo_pvd.png" 
 
 st.markdown("""
     <style>
         [data-testid="stStatusWidget"] {display: none !important;}
         .stButton button {border-radius: 8px; font-weight: bold; height: 3em; border: 1px solid #00f2ff;}
-        [data-testid="stDataEditor"] { border: 2px solid #00f2ff; border-radius: 10px; }
+        [data-testid="stDataEditor"] { border: 1px solid #00f2ff; border-radius: 10px; }
+        /* Giảm font size cho bảng để gọn hơn */
+        .stDataFrame { font-size: 12px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -26,9 +30,9 @@ def get_col_name(day):
     return f"{day:02d}/02\n{days_vn[d.weekday()]}"
 
 DATE_COLS = [get_col_name(d) for d in range(1, 29)]
-REQUIRED_COLS = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'Nghỉ Ca Còn Lại'] + DATE_COLS
+INFO_COLS = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'Nghỉ Ca Còn Lại']
 
-# --- 3. KẾT NỐI & KHỞI TẠO DỮ LIỆU AN TOÀN ---
+# --- 3. KẾT NỐI & KHỞI TẠO DỮ LIỆU ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def create_default_db():
@@ -47,43 +51,57 @@ def create_default_db():
 def load_data():
     try:
         db = conn.read(worksheet="Sheet1")
-        # Kiểm tra nếu thiếu cột quan trọng thì reset về mặc định để tránh crash
         if db.empty or 'Họ và Tên' not in db.columns:
             db = create_default_db()
-    except Exception:
+    except:
         db = create_default_db()
     
     try:
         gians = conn.read(worksheet="Gians")['TenGian'].dropna().tolist()
-    except Exception:
+    except:
         gians = ["PVD I", "PVD II", "PVD III", "PVD VI", "PVD 11"]
     return db, gians
 
 if 'db' not in st.session_state:
     st.session_state.db, st.session_state.gians = load_data()
 
-# --- 4. GIAO DIỆN CHÍNH ---
-col_logo, col_title, col_save = st.columns([1, 4, 1])
+# --- 4. CẤU HÌNH ĐỘ RỘNG CỘT (SHRINK COLUMNS) ---
+column_config = {
+    "STT": st.column_config.NumberColumn("STT", width=40),
+    "Họ và Tên": st.column_config.TextColumn("Họ và Tên", width=180),
+    "Công ty": st.column_config.TextColumn("Cty", width=70),
+    "Chức danh": st.column_config.TextColumn("Chức danh", width=100),
+    "Job Detail": st.column_config.TextColumn("Job Detail", width=150),
+    "Nghỉ Ca Còn Lại": st.column_config.NumberColumn("Nghỉ", width=60),
+}
+# Thu nhỏ các cột ngày tháng
+for col in DATE_COLS:
+    column_config[col] = st.column_config.TextColumn(col, width=55)
+
+# --- 5. GIAO DIỆN CHÍNH ---
+col_logo, col_title, col_save = st.columns([1, 4, 1.2])
+with col_logo:
+    # Hiển thị Logo từ link GitHub
+    st.image(LOGO_URL, width=100)
 with col_title:
-    st.markdown('<h1 style="color: #00f2ff; text-align: center; margin:0;">PVD MANAGEMENT 2026</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 style="color: #00f2ff; text-align: center; margin-top: 10px;">PVD MANAGEMENT 2026</h1>', unsafe_allow_html=True)
 with col_save:
+    st.write("") # Căn chỉnh
     if st.button("💾 LƯU CLOUD", type="primary", use_container_width=True):
         conn.update(worksheet="Sheet1", data=st.session_state.db)
         conn.update(worksheet="Gians", data=pd.DataFrame({"TenGian": st.session_state.gians}))
         st.success("Đã lưu!")
 
-# TABS CHÍNH
 tabs = st.tabs(["🚀 ĐIỀU ĐỘNG & TỔNG HỢP", "🏗️ GIÀN KHOAN", "👤 NHÂN VIÊN", "📝 CHI TIẾT"])
 
 with tabs[0]: 
     st.subheader("🚀 THAO TÁC NHANH")
     c1, c2, c3, c4 = st.columns([2, 1, 1, 1.5])
     
-    # Kiểm tra an toàn trước khi lấy danh sách tên
     names_list = st.session_state.db['Họ và Tên'].dropna().tolist() if 'Họ và Tên' in st.session_state.db.columns else NAMES_64
     sel_staff = c1.multiselect("CHỌN NHÂN VIÊN:", names_list)
-    
     status = c2.selectbox("TRẠNG THÁI:", ["Đi Biển", "CA", "WS", "NP"])
+    
     if status == "Đi Biển":
         val = c3.selectbox("CHỌN GIÀN:", st.session_state.gians)
     else:
@@ -95,47 +113,44 @@ with tabs[0]:
     if st.button("✅ NHẬP DỮ LIỆU", use_container_width=True):
         if isinstance(dates, tuple) and len(dates) == 2:
             for d in range(dates[0].day, dates[1].day + 1):
-                st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(sel_staff), get_col_name(d)] = val
-            st.toast("Đã cập nhật!")
+                col_target = get_col_name(d)
+                st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(sel_staff), col_target] = val
+            st.toast("Đã cập nhật lịch trình!")
 
     st.divider()
-    st.subheader("📊 BẢNG TỔNG HỢP")
-    # Cho phép kéo/thả/copy như Excel
-    st.session_state.db = st.data_editor(st.session_state.db, use_container_width=True, height=500, num_rows="dynamic")
+    # BẢNG CHÍNH VỚI CẤU HÌNH THU NHỎ CỘT
+    st.session_state.db = st.data_editor(
+        st.session_state.db, 
+        column_config=column_config,
+        use_container_width=True, 
+        height=550, 
+        num_rows="dynamic"
+    )
 
 with tabs[1]: # GIÀN KHOAN
-    st.subheader("🏗️ Quản lý danh sách Giàn")
     edited_g = st.data_editor(pd.DataFrame({"TenGian": st.session_state.gians}), num_rows="dynamic", use_container_width=True)
     st.session_state.gians = edited_g['TenGian'].dropna().tolist()
 
 with tabs[2]: # NHÂN VIÊN
-    st.subheader("👤 Quản lý Nhân sự (Thêm/Xóa/Sửa)")
     staff_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail']
-    # Lọc lấy các cột nhân sự để sửa nhanh
-    if all(col in st.session_state.db.columns for col in staff_cols):
-        edited_staff_df = st.data_editor(st.session_state.db[staff_cols], num_rows="dynamic", use_container_width=True)
-        
-        if st.button("XÁC NHẬN THAY ĐỔI"):
-            # Cập nhật thông tin nhân sự và giữ nguyên các cột ngày tháng
-            other_cols = [c for c in st.session_state.db.columns if c not in staff_cols]
-            updated_db = pd.concat([edited_staff_df.reset_index(drop=True), st.session_state.db[other_cols].reset_index(drop=True)], axis=1)
-            # Tự động điền PVDWS nếu cột Công ty bị bỏ trống
-            updated_db['Công ty'] = updated_db['Công ty'].fillna('PVDWS').replace('', 'PVDWS')
-            st.session_state.db = updated_db
-            st.success("Đã đồng bộ danh sách!")
-    else:
-        st.error("Dữ liệu cột không hợp lệ. Vui lòng nhấn Lưu Cloud để khởi tạo lại.")
+    edited_staff_df = st.data_editor(st.session_state.db[staff_cols], num_rows="dynamic", use_container_width=True)
+    
+    if st.button("XÁC NHẬN THAY ĐỔI NHÂN VIÊN"):
+        other_cols = [c for c in st.session_state.db.columns if c not in staff_cols]
+        updated_db = pd.concat([edited_staff_df.reset_index(drop=True), st.session_state.db[other_cols].reset_index(drop=True)], axis=1)
+        updated_db['Công ty'] = updated_db['Công ty'].fillna('PVDWS').replace('', 'PVDWS')
+        st.session_state.db = updated_db
+        st.success("Đã đồng bộ danh sách nhân sự!")
 
 with tabs[3]: # CHI TIẾT
-    st.subheader("📝 Ghi chú chi tiết")
-    pick_n = st.selectbox("Chọn nhân viên:", names_list)
+    pick_n = st.selectbox("Chọn nhân viên sửa Job Detail:", names_list)
     if pick_n:
         idx_list = st.session_state.db[st.session_state.db['Họ và Tên'] == pick_n].index
         if not idx_list.empty:
             idx = idx_list[0]
-            st.session_state.db.at[idx, 'Job Detail'] = st.text_area("Nội dung:", value=st.session_state.db.at[idx, 'Job Detail'], height=250)
+            st.session_state.db.at[idx, 'Job Detail'] = st.text_area("Nội dung:", value=st.session_state.db.at[idx, 'Job Detail'], height=300)
 
-# --- 5. HỖ TRỢ CUỘN NGANG ---
+# --- 6. HỖ TRỢ CUỘN NGANG ---
 components.html("""
 <script>
     const interval = setInterval(() => {

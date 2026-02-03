@@ -45,7 +45,7 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 if 'gians' not in st.session_state:
     st.session_state.gians = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9" , "THOR", "SDE" , "GUNNLOD"]
 
-# Hàm lấy quỹ CA tháng trước
+# Hàm lấy quỹ CA từ sheet của tháng trước
 def get_prev_ca():
     try:
         df_prev = conn.read(worksheet=prev_sheet_name)
@@ -57,15 +57,19 @@ def get_prev_ca():
 
 if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sheet_name:
     st.session_state.active_sheet = sheet_name
-    prev_ca_data = get_prev_ca()
+    prev_ca_data = get_prev_ca() # Lấy dữ liệu tồn cũ
+    
     try:
         df_load = conn.read(worksheet=sheet_name)
         if df_load is not None and not df_load.empty:
             st.session_state.db = df_load
+            # Cập nhật lại cột Tồn cũ từ tháng trước để dữ liệu luôn mới nhất
+            st.session_state.db['CA Tháng Trước'] = st.session_state.db['Họ và Tên'].map(prev_ca_data).fillna(0.0)
         else: raise Exception
     except:
         NAMES_64 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung"]
         df_init = pd.DataFrame({'STT': range(1, 65), 'Họ và Tên': NAMES_64, 'Công ty': 'PVDWS', 'Chức danh': 'Kỹ sư', 'Job Detail': ''})
+        # Áp dụng tồn cũ cho bảng mới tạo
         df_init['CA Tháng Trước'] = df_init['Họ và Tên'].map(prev_ca_data).fillna(0.0)
         for c in DATE_COLS: df_init[c] = ""
         st.session_state.db = df_init
@@ -95,6 +99,7 @@ def update_logic_pvd_ws(df):
 
     df['Phát sinh trong tháng'] = df.apply(calc_in_month, axis=1)
     if 'CA Tháng Trước' not in df.columns: df['CA Tháng Trước'] = 0.0
+    # CÔNG THỨC CỘNG DỒN: TỔNG = TỒN CŨ + PHÁT SINH
     df['Quỹ CA Tổng'] = df['CA Tháng Trước'] + df['Phát sinh trong tháng']
     return df
 
@@ -121,28 +126,18 @@ with tabs[0]:
         else: f_val = f_status
         f_date = c4.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, 2)))
         
-        # --- ĐOẠN CODE SỬA LỖI CẬP NHẬT CHẠY XUYÊN THÁNG ---
         if st.button("✅ CẬP NHẬT VÀO BẢNG", use_container_width=True):
             if f_staff and isinstance(f_date, tuple):
-                # Xác định ngày bắt đầu và ngày kết thúc từ Widget
                 start_d = f_date[0]
-                # Nếu người dùng mới chọn 1 ngày, end_d = start_d. Nếu chọn khoảng thì lấy ngày thứ 2.
                 end_d = f_date[1] if len(f_date) > 1 else f_date[0]
-                
-                # Tạo danh sách tất cả các ngày trong khoảng đã chọn
                 delta = end_d - start_d
                 for i in range(delta.days + 1):
                     day_to_update = start_d + timedelta(days=i)
-                    
-                    # KIỂM TRA: Chỉ cập nhật nếu ngày đó thuộc về Tháng/Năm đang hiển thị trên bảng
                     if day_to_update.month == curr_month and day_to_update.year == curr_year:
                         d_num = day_to_update.day
                         col_target = f"{d_num:02d}/{month_abbr} ({get_vi_day(day_to_update)})"
-                        
                         if col_target in st.session_state.db.columns:
                             st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(f_staff), col_target] = f_val
-                
-                # Sau khi cập nhật xong thì tính toán lại Quỹ CA và Refresh
                 st.session_state.db = update_logic_pvd_ws(st.session_state.db)
                 st.rerun()
 

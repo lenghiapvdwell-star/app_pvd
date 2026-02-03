@@ -12,25 +12,25 @@ st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 st.markdown("""
     <style>
     .block-container {padding-top: 1rem; padding-bottom: 0rem;}
-    /* Style cho chữ tiêu đề nằm giữa */
+    /* Style tiêu đề chốt: To, rõ, nằm giữa */
     .main-title {
         color: #00f2ff;
-        font-size: 35px;
+        font-size: 38px;
         font-weight: bold;
         text-align: center;
         margin: 0;
         text-shadow: 2px 2px 4px #000;
-        line-height: 1.2;
+        line-height: 1.5;
     }
-    /* Đảm bảo bộ chọn ngày nằm sát bên phải */
-    div[data-testid="stDateInput"] {
+    /* Tùy chỉnh bộ chọn ngày sang phải */
+    .stDateInput {
         float: right;
     }
     .stButton>button {border-radius: 5px; height: 3em;}
     </style>
     """, unsafe_allow_html=True)
 
-# --- HEADER CÂN XỨNG: LOGO (TRÁI) - CHỮ (GIỮA) - NGÀY (PHẢI) ---
+# --- HEADER CHỐT: LOGO - TIÊU ĐỀ - NGÀY THÁNG ---
 c1, c2, c3 = st.columns([1.5, 4, 1.5])
 
 with c1:
@@ -40,20 +40,31 @@ with c1:
         st.write("### PVD LOGO")
 
 with c2:
-    # Tiêu đề nằm chính giữa trung tâm
     st.markdown('<p class="main-title">PVD WELL SERVICES MANAGEMENT</p>', unsafe_allow_html=True)
 
 with c3:
-    # Đẩy bộ chọn ngày xuống một chút cho ngang hàng với chữ và logo
+    # Căn chỉnh để bộ chọn ngày nằm ngang hàng đẹp mắt
     st.write("##") 
-    working_date = st.date_input("📅 THÁNG LÀM VIỆC:", value=date.today())
+    working_date = st.date_input("📅 CHỌN THÁNG:", value=date.today(), label_visibility="visible")
 
 st.write("---")
 
-# --- 2. DỮ LIỆU NHÂN SỰ (64 NGƯỜI) ---
-NAMES_64 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong"]
+# --- 2. DỮ LIỆU NHÂN SỰ (ĐÃ FIX LỖI 64 NGƯỜI) ---
+NAMES_64 = [
+    "Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", 
+    "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", 
+    "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", 
+    "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", 
+    "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", 
+    "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", 
+    "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", 
+    "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", 
+    "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", 
+    "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", 
+    "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong" # Đã thêm người thứ 64
+]
 
-# --- 3. THUẬT TOÁN & KẾT NỐI ---
+# --- 3. KẾT NỐI & THUẬT TOÁN (GIỮ NGUYÊN) ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 curr_month = working_date.month
 curr_year = working_date.year

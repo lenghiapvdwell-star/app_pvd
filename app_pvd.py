@@ -29,8 +29,6 @@ def get_holidays(year):
     if year == 2026: holidays += [date(2026, 2, 16), date(2026, 2, 17), date(2026, 2, 18), date(2026, 2, 19), date(2026, 4, 26)]
     elif year == 2027: holidays += [date(2027, 2, 5), date(2027, 2, 6), date(2027, 2, 7), date(2027, 2, 8), date(2027, 2, 9), date(2027, 4, 16)]
     elif year == 2028: holidays += [date(2028, 1, 25), date(2028, 1, 26), date(2028, 1, 27), date(2028, 1, 28), date(2028, 1, 29), date(2028, 4, 5)]
-    elif year == 2029: holidays += [date(2029, 2, 12), date(2029, 2, 13), date(2029, 2, 14), date(2029, 2, 15), date(2029, 2, 16), date(2029, 4, 23)]
-    elif year == 2030: holidays += [date(2030, 2, 2), date(2030, 2, 3), date(2030, 2, 4), date(2030, 2, 5), date(2030, 2, 6), date(2030, 4, 12)]
     return holidays
 
 def get_vi_day(dt):
@@ -45,10 +43,9 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 if 'gians' not in st.session_state:
     st.session_state.gians = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9" , "THOR", "SDE" , "GUNNLOD"]
 
-# --- HÀM LẤY QUỸ CA TỪ CLOUD (DÙNG TTL=0 ĐỂ LUÔN MỚI) ---
 def get_prev_ca():
     try:
-        # Quan trọng: ttl=0 buộc thư viện đọc file thật trên GSheets, không lấy cache cũ
+        # ttl=0 giúp lấy dữ liệu mới nhất từ Google Sheets ngay lập tức
         df_prev = conn.read(worksheet=prev_sheet_name, ttl=0)
         if df_prev is not None and 'Quỹ CA Tổng' in df_prev.columns:
             return df_prev.set_index('Họ và Tên')['Quỹ CA Tổng'].to_dict()
@@ -58,13 +55,12 @@ def get_prev_ca():
 
 if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sheet_name:
     st.session_state.active_sheet = sheet_name
-    prev_ca_data = get_prev_ca() # Gọi hàm lấy tồn cũ
+    prev_ca_data = get_prev_ca() 
     
     try:
         df_load = conn.read(worksheet=sheet_name, ttl=0)
         if df_load is not None and not df_load.empty:
             st.session_state.db = df_load
-            # Luôn cập nhật lại cột Tồn cũ từ GSheets tháng trước
             st.session_state.db['CA Tháng Trước'] = st.session_state.db['Họ và Tên'].map(prev_ca_data).fillna(0.0)
         else: raise Exception
     except:
@@ -74,7 +70,7 @@ if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sh
         for c in DATE_COLS: df_init[c] = ""
         st.session_state.db = df_init
 
-# --- 3. LOGIC TÍNH QUỸ CA CỘNG DỒN ---
+# --- 3. LOGIC TÍNH QUỸ CA ---
 def update_logic_pvd_ws(df):
     gians = st.session_state.gians
     current_year_holidays = get_holidays(curr_year)
@@ -97,12 +93,7 @@ def update_logic_pvd_ws(df):
                     if not is_weekend and not is_holiday: total -= 1.0
         return total
 
-    # Ép kiểu dữ liệu tồn cũ về số để tránh lỗi cộng chuỗi
-    if 'CA Tháng Trước' in df.columns:
-        df['CA Tháng Trước'] = pd.to_numeric(df['CA Tháng Trước'], errors='coerce').fillna(0.0)
-    else:
-        df['CA Tháng Trước'] = 0.0
-
+    df['CA Tháng Trước'] = pd.to_numeric(df['CA Tháng Trước'], errors='coerce').fillna(0.0)
     df['Phát sinh trong tháng'] = df.apply(calc_in_month, axis=1)
     df['Quỹ CA Tổng'] = df['CA Tháng Trước'] + df['Phát sinh trong tháng']
     return df
@@ -121,6 +112,7 @@ with c_title:
 
 tabs = st.tabs(["🚀 ĐIỀU ĐỘNG", "🏗️ GIÀN KHOAN", "👤 NHÂN VIÊN", "💾 LƯU & XUẤT FILE"])
 
+# TAB 1: ĐIỀU ĐỘNG
 with tabs[0]:
     with st.container(border=True):
         c1, c2, c3, c4 = st.columns([2, 1, 1, 1.2])
@@ -128,7 +120,6 @@ with tabs[0]:
         f_status = c2.selectbox("Trạng thái:", ["Đi Biển", "CA", "WS", "NP", "Ốm"])
         if f_status == "Đi Biển": f_val = c3.selectbox("Chọn Giàn:", st.session_state.gians)
         else: f_val = f_status
-        # Mặc định chọn từ ngày 1 đến cuối tháng
         f_date = c4.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, num_days)))
         
         if st.button("✅ CẬP NHẬT VÀO BẢNG", use_container_width=True):
@@ -145,29 +136,31 @@ with tabs[0]:
                 st.session_state.db = update_logic_pvd_ws(st.session_state.db)
                 st.rerun()
 
-    st.data_editor(
-        st.session_state.db,
-        column_config={
-            "STT": st.column_config.NumberColumn("STT", width="small", disabled=True, pinned=True),
-            "Họ và Tên": st.column_config.TextColumn("Họ và Tên", pinned=True, width="medium"),
-            "CA Tháng Trước": st.column_config.NumberColumn("Tồn cũ", format="%.1f", help="Dư nợ CA từ tháng trước chuyển sang"),
-            "Phát sinh trong tháng": st.column_config.NumberColumn("Trong tháng", format="%.1f", disabled=True),
-            "Quỹ CA Tổng": st.column_config.NumberColumn("TỔNG CỘNG", format="%.1f", disabled=True, pinned=True),
-        },
-        use_container_width=True, height=550, key=f"table_{sheet_name}", hide_index=True
-    )
+    st.data_editor(st.session_state.db, use_container_width=True, height=500, key=f"editor_{sheet_name}", hide_index=True)
 
+# TAB 2: GIÀN KHOAN
+with tabs[1]:
+    st.subheader("🏗️ Quản lý danh sách Giàn")
+    new_gian = st.text_input("Thêm giàn mới:")
+    if st.button("Thêm"):
+        if new_gian and new_gian not in st.session_state.gians:
+            st.session_state.gians.append(new_gian)
+            st.rerun()
+    st.write("Danh sách giàn hiện tại:", st.session_state.gians)
+
+# TAB 3: NHÂN VIÊN
+with tabs[2]:
+    st.subheader("👤 Thông tin nhân sự")
+    st.dataframe(st.session_state.db[['STT', 'Họ và Tên', 'Công ty', 'Chức danh']], use_container_width=True)
+
+# TAB 4: LƯU & XUẤT FILE
 with tabs[3]:
     st.header(f"💾 Dữ liệu tháng {sheet_name}")
     if st.button("📤 UPLOAD GOOGLE SHEETS (CHỐT SỔ THÁNG)", use_container_width=True, type="primary"):
         try:
-            # Ghi dữ liệu lên Cloud
             conn.update(worksheet=sheet_name, data=st.session_state.db)
             st.success(f"Đã lưu thành công tháng {sheet_name}!")
-            # Sau khi upload, xóa cache để tháng sau nhận diện được số mới ngay lập tức
-            st.cache_data.clear()
-        except Exception as e: 
-            st.error(f"Lỗi: {e}")
+        except Exception as e: st.error(f"Lỗi: {e}")
     
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:

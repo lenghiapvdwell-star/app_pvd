@@ -18,15 +18,11 @@ curr_year = working_date.year
 month_abbr = working_date.strftime("%b") 
 sheet_name = working_date.strftime("%m_%Y") 
 
-# Danh sách ngày Lễ/Tết năm 2026 (Ví dụ: Tết, Giỗ tổ, 30/4, 1/5, Quốc khánh)
-# Bạn có thể bổ sung thêm các ngày nghỉ bù nếu có
+# Danh sách ngày Lễ/Tết năm 2026
 HOLIDAYS_2026 = [
-    date(2026, 1, 1),   # Tết Dương lịch
-    date(2026, 2, 16), date(2026, 2, 17), date(2026, 2, 18), date(2026, 2, 19), # Tết Nguyên Đán
-    date(2026, 4, 26),  # Giỗ tổ Hùng Vương
-    date(2026, 4, 30),  # Giải phóng
-    date(2026, 5, 1),   # Quốc tế lao động
-    date(2026, 9, 2),   # Quốc khánh
+    date(2026, 1, 1), date(2026, 2, 16), date(2026, 2, 17), 
+    date(2026, 2, 18), date(2026, 2, 19), date(2026, 4, 26), 
+    date(2026, 4, 30), date(2026, 5, 1), date(2026, 9, 2),
 ]
 
 def get_vi_day(dt):
@@ -50,11 +46,17 @@ if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sh
         else: raise Exception
     except:
         NAMES_64 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung"]
-        df_init = pd.DataFrame({'STT': range(1, 65), 'Họ và Tên': NAMES_64, 'Công ty': 'PVDWS', 'Chức danh': 'Kỹ sư', 'Job Detail': ''})
+        df_init = pd.DataFrame({
+            'STT': range(1, 65), 
+            'Họ và Tên': NAMES_64, 
+            'Công ty': 'PVDWS', 
+            'Chức danh': 'Kỹ sư', 
+            'Job Detail': ''
+        })
         for c in DATE_COLS: df_init[c] = ""
         st.session_state.db = df_init
 
-# --- 3. THUẬT TOÁN TÍNH QUỸ CA THÔNG MINH (THEO QUY ĐỊNH MỚI) ---
+# --- 3. LOGIC TÍNH QUỸ CA ---
 def update_logic_pvd_ws(df):
     gians = st.session_state.gians
     def calc_row(row):
@@ -63,42 +65,27 @@ def update_logic_pvd_ws(df):
             if col in row.index:
                 val = str(row[col]).strip()
                 if not val or val.lower() in ["nan", "none", ""]: continue
-                
                 d_num = int(col.split('/')[0])
                 dt = date(curr_year, curr_month, d_num)
                 is_weekend = dt.weekday() >= 5
                 is_holiday = dt in HOLIDAYS_2026
-                
-                # TRƯỜNG HỢP 1: ĐI GIÀN
                 if val in gians:
-                    if is_holiday:
-                        total_ca += 2.0  # Lễ Tết đi giàn được 2 ngày nghỉ
-                    elif is_weekend:
-                        total_ca += 1.0  # T7, CN đi giàn được 1 ngày nghỉ
-                    else:
-                        total_ca += 0.5  # Ngày thường đi giàn được 0.5 ngày nghỉ
-                
-                # TRƯỜNG HỢP 2: NGHỈ CA
+                    if is_holiday: total_ca += 2.0
+                    elif is_weekend: total_ca += 1.0
+                    else: total_ca += 0.5
                 elif val.upper() == "CA":
-                    # Chỉ trừ Quỹ CA nếu là ngày thường (không phải T7, CN) và không phải ngày Lễ
-                    if not is_weekend and not is_holiday:
-                        total_ca -= 1.0
-                
-                # TRƯỜNG HỢP 3: LÀM XƯỞNG (WS) -> Không làm gì cả, không cộng không trừ
-                elif val.upper() == "WS":
-                    pass
-                    
+                    if not is_weekend and not is_holiday: total_ca -= 1.0
         return total_ca
-
     df['Quỹ CA'] = df.apply(calc_row, axis=1)
     return df
 
-# Cập nhật số liệu
 st.session_state.db = update_logic_pvd_ws(st.session_state.db)
+
+# SẮP XẾP THỨ TỰ CỘT THEO YÊU CẦU: STT -> Họ và Tên -> ...
 main_info = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'Quỹ CA']
 st.session_state.db = st.session_state.db.reindex(columns=main_info + DATE_COLS)
 
-# --- 4. GIAO DIỆN (Giữ nguyên các Tab chức năng) ---
+# --- 4. GIAO DIỆN ---
 c_logo, c_title = st.columns([1.5, 5])
 with c_logo:
     if os.path.exists("logo_pvd.png"): st.image("logo_pvd.png", width=180)
@@ -108,21 +95,16 @@ with c_title:
 
 tabs = st.tabs(["🚀 ĐIỀU ĐỘNG", "🏗️ GIÀN KHOAN", "👤 NHÂN VIÊN", "💾 LƯU & XUẤT FILE"])
 
-# TAB 1: ĐIỀU ĐỘNG (Sửa logic nhập liệu)
 with tabs[0]:
     with st.container(border=True):
         c1, c2, c3, c4 = st.columns([2, 1, 1, 1.2])
         f_staff = c1.multiselect("Nhân viên:", st.session_state.db['Họ và Tên'].tolist())
         f_status = c2.selectbox("Trạng thái:", ["Đi Biển", "CA", "WS", "NP", "Ốm"])
-        
-        if f_status == "Đi Biển":
-            f_val = c3.selectbox("Chọn Giàn:", st.session_state.gians)
+        if f_status == "Đi Biển": f_val = c3.selectbox("Chọn Giàn:", st.session_state.gians)
         else:
             f_val = f_status
             c3.text_input("Ghi chú:", value=f_status, disabled=True)
-            
         f_date = c4.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, 2)))
-        
         if st.button("✅ CẬP NHẬT VÀO BẢNG", use_container_width=True):
             if f_staff and isinstance(f_date, tuple) and len(f_date) == 2:
                 for d in range(f_date[0].day, f_date[1].day + 1):
@@ -135,13 +117,13 @@ with tabs[0]:
     st.data_editor(
         st.session_state.db,
         column_config={
+            "STT": st.column_config.NumberColumn("STT", width="small", disabled=True),
             "Quỹ CA": st.column_config.NumberColumn("Quỹ CA", format="%.1f", disabled=True),
             "Họ và Tên": st.column_config.TextColumn(pinned=True, width="medium"),
         },
-        use_container_width=True, height=500, key=f"table_{sheet_name}"
+        use_container_width=True, height=550, key=f"table_{sheet_name}", hide_index=True
     )
 
-# Các tab khác giữ nguyên như bản chuẩn...
 with tabs[1]:
     df_gians = pd.DataFrame({"Tên Giàn": st.session_state.gians})
     edited_gians = st.data_editor(df_gians, num_rows="dynamic", use_container_width=True)
@@ -152,7 +134,7 @@ with tabs[1]:
 with tabs[2]:
     staff_info_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail']
     df_staff = st.session_state.db[staff_info_cols]
-    edited_staff = st.data_editor(df_staff, num_rows="dynamic", use_container_width=True)
+    edited_staff = st.data_editor(df_staff, num_rows="dynamic", use_container_width=True, hide_index=True)
     if st.button("💾 Lưu thông tin Nhân viên"):
         date_data = st.session_state.db[DATE_COLS]
         st.session_state.db = pd.concat([edited_staff.reset_index(drop=True), date_data.reset_index(drop=True)], axis=1)
@@ -166,7 +148,7 @@ with tabs[3]:
             try:
                 conn.update(worksheet=sheet_name, data=st.session_state.db)
                 st.success("Đã lưu thành công!")
-            except: st.error("Lỗi Tab.")
+            except: st.error("Lỗi: Kiểm tra Tab trên Google Sheets.")
     with c2:
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:

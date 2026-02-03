@@ -9,7 +9,6 @@ import os
 # --- 1. CẤU HÌNH & CHỌN THÁNG LÀM VIỆC ---
 st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 
-# Cho phép người dùng chọn Tháng/Năm muốn làm việc
 c_top1, c_top2 = st.columns([1, 4])
 with c_top1:
     working_date = st.date_input("📅 Chọn Tháng làm việc:", value=date.today())
@@ -17,41 +16,37 @@ with c_top1:
 curr_month = working_date.month
 curr_year = working_date.year
 month_abbr = working_date.strftime("%b") 
-sheet_name = working_date.strftime("%m_%Y") # Ví dụ: 03_2026
+sheet_name = working_date.strftime("%m_%Y") 
 
 def get_vi_day(dt):
     return ["T2", "T3", "T4", "T5", "T6", "T7", "CN"][dt.weekday()]
 
-# Tạo danh sách cột ngày động theo tháng đã chọn
 num_days = calendar.monthrange(curr_year, curr_month)[1]
 DATE_COLS = [f"{d:02d}/{month_abbr} ({get_vi_day(date(curr_year, curr_month, d))})" for d in range(1, num_days + 1)]
 
-# --- 2. DANH SÁCH 64 NHÂN SỰ ---
-NAMES_64 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung"]
-
-# --- 3. KHỞI TẠO DỮ LIỆU THEO THÁNG ĐÃ CHỌN ---
+# --- 2. KHỞI TẠO DỮ LIỆU ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Nếu đổi tháng trên date_input, reset lại db trong session để load tháng mới
-if 'last_sheet' not in st.session_state or st.session_state.last_sheet != sheet_name:
-    st.session_state.last_sheet = sheet_name
+# Khởi tạo danh sách Giàn trong session nếu chưa có
+if 'gians' not in st.session_state:
+    st.session_state.gians = ["PVD I", "PVD II", "PVD III", "PVD VI", "PVD 11"]
+
+if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sheet_name:
+    st.session_state.active_sheet = sheet_name
     try:
         df_load = conn.read(worksheet=sheet_name)
         if df_load is not None and not df_load.empty:
             st.session_state.db = df_load
         else: raise Exception
     except:
+        NAMES_64 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung"]
         df_init = pd.DataFrame({'STT': range(1, 65), 'Họ và Tên': NAMES_64, 'Công ty': 'PVDWS', 'Chức danh': 'Kỹ sư', 'Job Detail': ''})
         for c in DATE_COLS: df_init[c] = ""
         st.session_state.db = df_init
 
-if 'gians' not in st.session_state:
-    st.session_state.gians = ["PVD I", "PVD II", "PVD III", "PVD VI", "PVD 11"]
-
-# --- 4. LOGIC TÍNH TOÁN QUỸ CA ---
+# --- 3. LOGIC TÍNH TOÁN QUỸ CA ---
 def apply_pvd_logic(df):
     gians = st.session_state.gians
-    # Có thể thêm logic ngày lễ riêng cho từng tháng ở đây
     def calc_row(row):
         total = 0.0
         for col in DATE_COLS:
@@ -62,8 +57,7 @@ def apply_pvd_logic(df):
                 dt = date(curr_year, curr_month, d_num)
                 is_weekend = dt.weekday() >= 5
                 if val in gians:
-                    if is_weekend: total += 1.0
-                    else: total += 0.5
+                    total += 1.0 if is_weekend else 0.5
                 elif val.upper() == "CA":
                     if not is_weekend: total -= 1.0
         return total
@@ -72,18 +66,17 @@ def apply_pvd_logic(df):
 
 st.session_state.db = apply_pvd_logic(st.session_state.db)
 main_info = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'Quỹ CA']
-# Đảm bảo bảng luôn hiển thị đúng số ngày của tháng đã chọn
 st.session_state.db = st.session_state.db.reindex(columns=main_info + DATE_COLS)
 
-# --- 5. GIAO DIỆN ---
+# --- 4. GIAO DIỆN ---
 c_logo, c_title = st.columns([1.5, 5])
 with c_logo:
     if os.path.exists("logo_pvd.png"): st.image("logo_pvd.png", width=180)
     else: st.markdown("### PVD LOGO")
 with c_title:
-    st.markdown(f'<h1 style="color: #00f2ff; margin-top: 15px;">PVD WELL SERVICES MANAGEMENT - THÁNG {curr_month}</h1>', unsafe_allow_html=True)
+    st.markdown(f'<h1 style="color: #00f2ff; margin-top: 15px;">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
 
-tabs = st.tabs(["🚀 ĐIỀU ĐỘNG", "🏗️ GIÀN KHOAN", "👤 NHÂN VIÊN", "💾 LƯU GG SHEETS"])
+tabs = st.tabs(["🚀 ĐIỀU ĐỘNG", "🏗️ GIÀN KHOAN", "👤 NHÂN VIÊN", "💾 LƯU & XUẤT FILE"])
 
 # --- TAB 1: ĐIỀU ĐỘNG ---
 with tabs[0]:
@@ -96,10 +89,9 @@ with tabs[0]:
             f_val = c3.selectbox("Chọn Giàn:", st.session_state.gians)
         else:
             f_val = f_status
-            c3.text_input("Trạng thái:", value=f_status, disabled=True)
+            c3.text_input("Ghi chú:", value=f_status, disabled=True)
             
-        # Mặc định chọn ngày trong tháng đang làm việc
-        f_date = c4.date_input("Khoảng thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, 2)))
+        f_date = c4.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, 2)))
         
         if st.button("✅ CẬP NHẬT VÀO BẢNG", use_container_width=True):
             if f_staff and isinstance(f_date, tuple) and len(f_date) == 2:
@@ -116,15 +108,61 @@ with tabs[0]:
             "Quỹ CA": st.column_config.NumberColumn("Quỹ CA", format="%.1f", disabled=True),
             "Họ và Tên": st.column_config.TextColumn(pinned=True, width="medium"),
         },
-        use_container_width=True, height=550, key="main_table"
+        use_container_width=True, height=500, key=f"table_{sheet_name}"
     )
 
-# --- TAB 4: LƯU TRỮ ---
+# --- TAB 2: GIÀN KHOAN ---
+with tabs[1]:
+    st.subheader("🏗️ Quản lý danh sách Giàn Khoan")
+    df_gians = pd.DataFrame({"Tên Giàn": st.session_state.gians})
+    edited_gians = st.data_editor(df_gians, num_rows="dynamic", use_container_width=True)
+    if st.button("💾 Lưu danh sách Giàn"):
+        st.session_state.gians = edited_gians["Tên Giàn"].dropna().tolist()
+        st.success("Đã cập nhật danh sách Giàn!")
+        st.rerun()
+
+# --- TAB 3: NHÂN VIÊN ---
+with tabs[2]:
+    st.subheader("👤 Quản lý danh sách Nhân viên")
+    # Lọc ra 5 cột thông tin cơ bản để sửa
+    staff_info_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail']
+    df_staff = st.session_state.db[staff_info_cols]
+    
+    edited_staff = st.data_editor(df_staff, num_rows="dynamic", use_container_width=True)
+    
+    if st.button("💾 Lưu thông tin Nhân viên"):
+        # Giữ lại phần dữ liệu ngày tháng cũ
+        date_data = st.session_state.db[DATE_COLS + ['Quỹ CA']]
+        # Kết hợp thông tin mới và dữ liệu cũ
+        st.session_state.db = pd.concat([edited_staff.reset_index(drop=True), date_data.reset_index(drop=True)], axis=1)
+        st.success("Đã cập nhật danh sách nhân sự!")
+        st.rerun()
+
+# --- TAB 4: LƯU & XUẤT FILE ---
 with tabs[3]:
-    st.header(f"💾 ĐỒNG BỘ THÁNG {sheet_name}")
-    if st.button("📤 UPLOAD GOOGLE SHEETS", use_container_width=True, type="primary"):
-        try:
-            conn.update(worksheet=sheet_name, data=st.session_state.db)
-            st.success(f"Đã lưu thành công vào Tab {sheet_name} trên Google Sheets!")
-        except:
-            st.error(f"Lỗi: Không tìm thấy Tab '{sheet_name}'. Hãy chắc chắn bạn đã nhấn (+) trên Google Sheets và đặt tên tab là '{sheet_name}'")
+    st.header(f"💾 Dữ liệu tháng {sheet_name}")
+    c1, c2 = st.columns(2)
+    
+    with c1:
+        st.info("Đồng bộ dữ liệu lên Google Sheets Cloud")
+        if st.button("📤 UPLOAD GOOGLE SHEETS", use_container_width=True, type="primary"):
+            try:
+                conn.update(worksheet=sheet_name, data=st.session_state.db)
+                st.success(f"Đã lưu thành công vào Tab {sheet_name}!")
+            except:
+                st.error(f"Lỗi: Hãy tạo Tab '{sheet_name}' trên Google Sheets trước.")
+                
+    with c2:
+        st.info("Tải bản sao Excel về máy tính cá nhân")
+        # Tạo file Excel trong bộ nhớ
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+            st.session_state.db.to_excel(writer, index=False, sheet_name=sheet_name)
+        
+        st.download_button(
+            label="📥 TẢI FILE EXCEL (.xlsx)",
+            data=buffer.getvalue(),
+            file_name=f"PVD_Management_{sheet_name}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )

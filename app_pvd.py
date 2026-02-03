@@ -66,20 +66,18 @@ def save_data():
     except:
         st.error("❌ Lỗi: Hãy đảm bảo File Google Sheets có Sheet1 và Gians.")
 
-# --- 4. GIAO DIỆN LOGO & TIÊU ĐỀ ---
+# --- 4. GIAO DIỆN LOGO & TIÊU ĐỀ (ĐÃ VIẾT HOA HẾT) ---
 c_logo, c_title = st.columns([1, 4])
 with c_logo:
-    # Logo to hơn 1.5 lần (180px)
     if os.path.exists("logo_pvd.png"):
         st.image("logo_pvd.png", width=180)
 with c_title:
-    st.markdown('<br><h1 style="color: #00f2ff; text-align: left;">PVD WELL SERVICES management</h1>', unsafe_allow_html=True)
+    st.markdown('<br><h1 style="color: #00f2ff; text-align: left;">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
 
 # --- 5. HỆ THỐNG TABS ---
 tabs = st.tabs(["🚀 ĐIỀU ĐỘNG & TỔNG HỢP", "🏗️ GIÀN KHOAN", "👤 NHÂN VIÊN", "📝 CHI TIẾT"])
 
 with tabs[0]: 
-    # Khung nhập liệu tích hợp nút Lưu
     with st.expander("📝 KHU VỰC THAO TÁC", expanded=True):
         with st.form("input_form"):
             c1, c2, c3, c4 = st.columns([2, 1, 1, 1.5])
@@ -88,12 +86,10 @@ with tabs[0]:
             gian_val = c3.selectbox("CHỌN GIÀN:", st.session_state.gians) if status == "Đi Biển" else status
             dates = c4.date_input("KHOẢNG NGÀY:", value=(date(2026, 2, 1), date(2026, 2, 2)))
             
-            # Hai nút nằm ngang cuối form
             cb1, cb2 = st.columns([1, 1])
             with cb1:
                 submitted = st.form_submit_button("✅ XÁC NHẬN NHẬP", use_container_width=True)
             with cb2:
-                # Nút lưu Cloud đặt ngay đây cho tiện
                 save_btn = st.form_submit_button("💾 LƯU CLOUD (SAVE ALL)", use_container_width=True)
             
             if submitted:
@@ -133,7 +129,6 @@ with tabs[1]: # GIÀN KHOAN
         if st.button("💾 LƯU CLOUD", key="btn_save_2", use_container_width=True):
             st.session_state.gians = edited_g['TenGian'].dropna().tolist()
             save_data()
-        st.info("Nhập tên giàn mới vào bảng rồi nhấn Lưu.")
 
 with tabs[2]: # NHÂN VIÊN
     st.subheader("👤 Quản lý Nhân sự")

@@ -7,7 +7,7 @@ from streamlit_gsheets import GSheetsConnection
 import io
 import os
 
-# --- 1. CẤU HÌNH ---
+# --- 1. CẤU HÌNH & THỜI GIAN ---
 st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 
 now = datetime.now()
@@ -27,20 +27,27 @@ if 'gians' not in st.session_state:
 
 if 'db' not in st.session_state:
     try:
-        # Thử đọc tab tháng hiện tại, nếu lỗi thì đọc Sheet1 mặc định
+        # Thử đọc tab tháng hiện tại
         df_load = conn.read(worksheet=current_month_year)
         if df_load is None or df_load.empty:
-            df_load = conn.read(worksheet="Sheet1")
+            raise ValueError
         st.session_state.db = df_load
     except:
-        df_init = pd.DataFrame({'STT': range(1, 65), 'Họ và Tên': NAMES_64, 'Công ty': 'PVDWS', 'Chức danh': 'Kỹ sư', 'Job Detail': ''})
+        # Nếu lỗi hoặc không thấy tab, tạo mới 64 người
+        df_init = pd.DataFrame({
+            'STT': range(1, 65), 
+            'Họ và Tên': NAMES_64, 
+            'Công ty': 'PVDWS', 
+            'Chức danh': 'Kỹ sư', 
+            'Job Detail': ''
+        })
         for c in DATE_COLS: df_init[c] = ""
         st.session_state.db = df_init
 
 if 'v_key' not in st.session_state:
     st.session_state.v_key = 0
 
-# --- 4. HÀM TÍNH TOÁN QUY ƯỚC ---
+# --- 4. HÀM TÍNH TOÁN QUỸ CA ---
 def apply_pvd_logic(df):
     gians = st.session_state.gians
     def calc_row(row):
@@ -65,13 +72,17 @@ def apply_pvd_logic(df):
 
 st.session_state.db = apply_pvd_logic(st.session_state.db)
 
-# --- 5. GIAO DIỆN (LOGO TO 1.5) ---
+# --- 5. GIAO DIỆN ---
 c_logo, c_title = st.columns([1.5, 5])
 with c_logo:
-    if os.path.exists("logo_pvd.png"): st.image("logo_pvd.png", width=180)
-    else: st.subheader("PVD LOGO")
+    if os.path.exists("logo_pvd.png"):
+        st.image("logo_pvd.png", width=180)
+    else:
+        st.write("### PVD LOGO")
+
 with c_title:
-    st.markdown(f'<h1 style="color: #00f2ff; margin-top: 15px;">PVD WELLSERVICES MANAGEMENT 
+    header_html = f'''<h1 style="color: #00f2ff; margin-top: 15px; font-family: sans-serif;">PVD WELL SERVICES MANAGEMENT - {now.strftime("%m/%Y")}</h1>'''
+    st.markdown(header_html, unsafe_allow_html=True)
 
 tabs = st.tabs(["🚀 ĐIỀU ĐỘNG", "🏗️ QUẢN LÝ GIÀN", "👤 NHÂN VIÊN", "⚙️ HỆ THỐNG"])
 
@@ -94,42 +105,47 @@ with tabs[0]:
                 st.rerun()
 
     cols = ['STT', 'Họ và Tên', 'Nghỉ Ca Còn Lại'] + [c for c in st.session_state.db.columns if c not in ['STT', 'Họ và Tên', 'Nghỉ Ca Còn Lại']]
-    edited_df = st.data_editor(st.session_state.db[cols], column_config={"Nghỉ Ca Còn Lại": st.column_config.NumberColumn("Quỹ CA", format="%.1f", disabled=True), "Họ và Tên": st.column_config.TextColumn(pinned=True)}, use_container_width=True, height=500, key=f"pvd_ed_{st.session_state.v_key}")
+    edited_df = st.data_editor(st.session_state.db[cols], column_config={"Nghỉ Ca Còn Lại": st.column_config.NumberColumn("Quỹ CA", format="%.1f", disabled=True), "Họ và Tên": st.column_config.TextColumn(pinned=True)}, use_container_width=True, height=550, key=f"pvd_ed_{st.session_state.v_key}")
     if not edited_df.equals(st.session_state.db[cols]):
         st.session_state.db.update(edited_df)
         st.rerun()
 
 # --- TAB 2: QUẢN LÝ GIÀN ---
 with tabs[1]:
+    st.subheader("🏗️ Cấu hình Giàn khoan")
     df_g = pd.DataFrame({"Tên Giàn": st.session_state.gians})
     new_gians = st.data_editor(df_g, num_rows="dynamic", use_container_width=True)
     if st.button("Lưu cấu hình Giàn"):
         st.session_state.gians = new_gians["Tên Giàn"].dropna().tolist()
-        st.success("Đã cập nhật!")
+        st.success("Đã cập nhật danh sách giàn!")
 
 # --- TAB 3: NHÂN VIÊN ---
 with tabs[2]:
+    st.subheader("👤 Quản lý nhân sự")
     staff_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail']
     df_staff_edit = st.data_editor(st.session_state.db[staff_cols], num_rows="dynamic", use_container_width=True)
-    if st.button("Cập nhật Nhân sự"):
+    if st.button("Cập nhật danh sách Nhân viên"):
         st.session_state.db.update(df_staff_edit)
-        st.success("Đã lưu!")
+        st.success("Đã lưu danh sách!")
 
 # --- TAB 4: HỆ THỐNG ---
 with tabs[3]:
-    target_sheet = st.text_input("Tên Tab trên Google Sheets (Phải trùng tên Tab có sẵn):", value="Sheet1")
-    if st.button("💾 LƯU LÊN GOOGLE SHEETS", use_container_width=True):
+    st.subheader("⚙️ Lưu trữ Google Sheets")
+    target_sheet = st.text_input("Tên Tab muốn lưu (Ví dụ: Sheet1 hoặc 02_2026):", value=current_month_year)
+    st.warning("Lưu ý: Bạn phải tạo sẵn Tab này trên Google Sheets trước khi bấm lưu.")
+    
+    if st.button("💾 LƯU LÊN CLOUD", use_container_width=True):
         try:
             conn.update(worksheet=target_sheet, data=st.session_state.db)
-            st.success(f"Đã lưu vào tab {target_sheet}!")
+            st.success(f"Đã lưu thành công vào tab {target_sheet}!")
         except Exception as e:
-            st.error(f"Lỗi: Hãy chắc chắn bạn đã tạo tab tên '{target_sheet}' trên Google Sheets.")
+            st.error(f"Lỗi: Không tìm thấy tab '{target_sheet}'. Hãy tạo tab mới trên Google Sheets với tên này.")
 
     buffer = io.BytesIO()
     st.session_state.db.to_excel(buffer, index=False)
     st.download_button("📥 TẢI EXCEL", data=buffer.getvalue(), file_name=f"PVD_{current_month_year}.xlsx", use_container_width=True)
 
-# Cuộn ngang
+# Script cuộn ngang
 components.html("""
 <script>
     setTimeout(() => {

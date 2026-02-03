@@ -117,9 +117,9 @@ with tabs[0]:
     st.data_editor(
         st.session_state.db,
         column_config={
-            "STT": st.column_config.NumberColumn("STT", width="small", disabled=True),
-            "Quỹ CA": st.column_config.NumberColumn("Quỹ CA", format="%.1f", disabled=True),
             "Họ và Tên": st.column_config.TextColumn(pinned=True, width="medium"),
+            "Quỹ CA": st.column_config.NumberColumn("Quỹ CA", format="%.1f", disabled=True),
+            "STT": st.column_config.NumberColumn("STT", width="small", disabled=True),
         },
         use_container_width=True, height=550, key=f"table_{sheet_name}", hide_index=True
     )

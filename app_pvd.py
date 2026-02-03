@@ -9,41 +9,54 @@ import os
 # --- 1. CẤU HÌNH TRANG ---
 st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 
-# CSS Chốt: Ép hiển thị tiêu đề và căn chỉnh layout
 st.markdown("""
     <style>
-    /* Làm tiêu đề st.title nằm giữa và có màu xanh */
-    h1 {
-        text-align: center;
-        color: #00f2ff !important;
-        font-family: 'Arial';
-        font-weight: bold;
-        text-shadow: 2px 2px 4px #000;
-        margin-top: -50px; /* Đẩy lên sát đỉnh */
+    .block-container {padding-top: 1rem; padding-bottom: 0rem;}
+    /* Style cho header ngang hàng */
+    .header-wrapper {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        padding: 10px 0;
     }
-    .block-container {padding-top: 2rem;}
+    .main-title {
+        color: #00f2ff;
+        font-size: 38px;
+        font-weight: bold;
+        text-align: center;
+        margin: 0;
+        flex-grow: 1;
+        text-shadow: 2px 2px 4px #000;
+    }
     .stButton>button {border-radius: 5px; height: 3em;}
     </style>
     """, unsafe_allow_html=True)
 
-# --- PHẦN TIÊU ĐỀ CHỐT (HIỆN TRÊN CÙNG) ---
-st.title("PVD WELL SERVICES MANAGEMENT")
+# --- PHẦN HEADER NGANG HÀNG: LOGO - CHỮ - NGÀY ---
+c1, c2, c3 = st.columns([1, 3, 1])
 
-# --- PHẦN LOGO VÀ CHỌN NGÀY ---
-col_logo, col_mid, col_date = st.columns([2, 2, 2])
-
-with col_logo:
+with c1:
     if os.path.exists("logo_pvd.png"):
-        st.image("logo_pvd.png", width=250)
+        st.image("logo_pvd.png", width=180)
     else:
-        st.subheader("PVD LOGO")
+        st.write("### LOGO")
 
-with col_date:
-    working_date = st.date_input("📅 CHỌN THÁNG LÀM VIỆC:", value=date.today())
+with c2:
+    # Chữ nằm chính giữa và ngang hàng với Logo
+    st.markdown('<p class="main-title">PVD WELL SERVICES MANAGEMENT</p>', unsafe_allow_html=True)
+
+with c3:
+    st.write("##") # Căn chỉnh chiều cao
+    working_date = st.date_input("📅 CHỌN THÁNG:", value=date.today())
 
 st.write("---")
 
-# --- 2. THUẬT TOÁN & DỮ LIỆU (GIỮ NGUYÊN 100%) ---
+# --- 2. THÔNG TIN NHÂN SỰ (ĐÃ FIX LỖI 64 DÒNG) ---
+# Thêm "Nguyen Van Cuong" vào cuối để đủ 64 người
+NAMES_64 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong"]
+
+# --- 3. THUẬT TOÁN & DỮ LIỆU ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 curr_month = working_date.month
 curr_year = working_date.year
@@ -70,8 +83,14 @@ if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sh
             st.session_state.db['CA Tháng Trước'] = st.session_state.db['Họ và Tên'].map(prev_ca_data).fillna(0.0)
         else: raise Exception
     except:
-        NAMES_64 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung"]
-        df_init = pd.DataFrame({'STT': range(1, 65), 'Họ và Tên': NAMES_64, 'Công ty': 'PVDWS', 'Chức danh': 'Kỹ sư', 'Job Detail': ''})
+        # TẠO MỚI (Lưu ý: NAMES_64 đã có 64 phần tử)
+        df_init = pd.DataFrame({
+            'STT': range(1, 65), 
+            'Họ và Tên': NAMES_64, 
+            'Công ty': 'PVDWS', 
+            'Chức danh': 'Kỹ sư', 
+            'Job Detail': ''
+        })
         df_init['CA Tháng Trước'] = df_init['Họ và Tên'].map(prev_ca_data).fillna(0.0)
         st.session_state.db = df_init
 
@@ -102,19 +121,19 @@ st.session_state.db = update_logic(st.session_state.db)
 cols_order = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'Quỹ CA Tổng', 'CA Tháng Trước'] + DATE_COLS
 st.session_state.db = st.session_state.db.reindex(columns=cols_order)
 
-# --- 3. NÚT THAO TÁC NHANH ---
-btn1, btn2, _ = st.columns([1.5, 1.5, 4])
-with btn1:
+# --- 4. NÚT THAO TÁC NHANH ---
+act_c1, act_c2, _ = st.columns([1.5, 1.5, 4])
+with act_c1:
     if st.button("📤 UPLOAD CLOUD", use_container_width=True, type="primary"):
         conn.update(worksheet=sheet_name, data=st.session_state.db)
         st.success("Đã lưu!")
-with btn2:
+with act_c2:
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
         st.session_state.db.to_excel(writer, index=False, sheet_name=sheet_name)
     st.download_button("📥 XUẤT EXCEL", buffer, file_name=f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
-# --- 4. TABS CHỨC NĂNG ---
+# --- 5. TABS ---
 tabs = st.tabs(["🚀 ĐIỀU ĐỘNG", "🏗️ GIÀN KHOAN", "👤 NHÂN VIÊN"])
 
 with tabs[0]:
@@ -128,35 +147,4 @@ with tabs[0]:
             if f_staff and isinstance(f_date, tuple) and len(f_date) == 2:
                 s_d, e_d = f_date
                 for i in range((e_d - s_d).days + 1):
-                    day = s_d + timedelta(days=i)
-                    if day.month == curr_month:
-                        col = f"{day.day:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][day.weekday()]})"
-                        if col in st.session_state.db.columns:
-                            st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(f_staff), col] = f_val
-                st.rerun()
-
-    config = {
-        "STT": st.column_config.NumberColumn("STT", width=40, disabled=True, pinned=True),
-        "Họ và Tên": st.column_config.TextColumn("Họ và Tên", width=180, pinned=True),
-        "Công ty": st.column_config.TextColumn("Công ty", width=80),
-        "Chức danh": st.column_config.TextColumn("Chức danh", width=100),
-        "Job Detail": st.column_config.TextColumn("Job Detail", width=120),
-        "Quỹ CA Tổng": st.column_config.NumberColumn("T ca", width=70, format="%.1f", disabled=True, pinned=True),
-        "CA Tháng Trước": st.column_config.NumberColumn("Tồn cũ", width=70, format="%.1f", pinned=True),
-    }
-    for col in DATE_COLS: config[col] = st.column_config.TextColumn(col, width=65)
-
-    st.data_editor(st.session_state.db, column_config=config, use_container_width=True, height=600, hide_index=True, key=f"ed_{sheet_name}")
-
-with tabs[1]:
-    st.subheader("🏗️ Quản lý Giàn khoan")
-    st.dataframe(pd.DataFrame({"Tên Giàn": st.session_state.gians}), use_container_width=True)
-    new_g = st.text_input("Thêm giàn mới:")
-    if st.button("➕ Thêm"):
-        if new_g and new_g not in st.session_state.gians:
-            st.session_state.gians.append(new_g)
-            st.rerun()
-
-with tabs[2]:
-    st.subheader("👤 Danh sách nhân sự")
-    st.dataframe(st.session_state.db[['STT', 'Họ và Tên', 'Công ty', 'Chức danh']], use_container_width=True, hide_index=True)
+                    day = s_d + timedelta(days

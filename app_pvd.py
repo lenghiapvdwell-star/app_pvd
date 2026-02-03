@@ -9,51 +9,45 @@ import os
 # --- 1. CẤU HÌNH & THỜI GIAN ---
 st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 
-# CSS Fix Header: Ép tiêu đề vào trung tâm và làm logo nổi bật
+# CSS để ép tiêu đề hiển thị tuyệt đẹp
 st.markdown("""
     <style>
-    .block-container {padding-top: 1rem; padding-bottom: 0rem;}
+    .block-container {padding-top: 0.5rem; padding-bottom: 0rem;}
     
-    /* Container chứa toàn bộ Header */
-    .header-container {
-        display: flex;
-        align-items: center;
-        justify-content:沟通;
-        padding: 10px 0px;
-        border-bottom: 2px solid #333;
-        margin-bottom: 20px;
-    }
-    
-    /* Kiểu chữ tiêu đề chính */
-    .main-title {
+    /* Thiết lập tiêu đề cực lớn và nằm giữa */
+    .super-title {
         color: #00f2ff;
-        font-size: 42px;
+        font-size: 48px;
         font-weight: bold;
         text-align: center;
-        flex-grow: 1;
-        margin: 0px;
-        text-shadow: 2px 2px 4px #000000;
+        margin-top: 10px;
+        margin-bottom: 5px;
+        text-shadow: 3px 3px 5px #000;
+        width: 100%;
     }
-    
     .stButton>button {border-radius: 5px; height: 3em;}
     </style>
     """, unsafe_allow_html=True)
 
-# --- HEADER MỚI: DÙNG COLUMNS ĐỂ CÂN BẰNG TỈ LỆ ---
-c_logo, c_title, c_date = st.columns([1.5, 5, 1.5])
+# --- PHẦN 1: TIÊU ĐỀ (CHIẾM TRỌN HÀNG ĐẦU) ---
+st.markdown('<p class="super-title">PVD WELL SERVICES MANAGEMENT</p>', unsafe_allow_html=True)
 
-with c_logo:
+# --- PHẦN 2: LOGO VÀ CHỌN NGÀY (HÀNG THỨ 2) ---
+c_head_left, c_head_right = st.columns([1, 1])
+
+with c_head_left:
     if os.path.exists("logo_pvd.png"):
-        st.image("logo_pvd.png", width=200)
+        st.image("logo_pvd.png", width=220)
     else:
         st.write("### PVD LOGO")
 
-with c_title:
-    # Ép tiêu đề ra giữa bằng thẻ HTML
-    st.markdown('<p class="main-title">PVD WELL SERVICES MANAGEMENT</p>', unsafe_allow_html=True)
+with c_head_right:
+    # Đẩy bộ chọn ngày về phía bên phải
+    st.write("<div style='text-align: right;'>", unsafe_allow_html=True)
+    working_date = st.date_input("📅 CHỌN THÁNG LÀM VIỆC:", value=date.today())
+    st.write("</div>", unsafe_allow_html=True)
 
-with c_date:
-    working_date = st.date_input("📅 THÁNG LÀM VIỆC:", value=date.today())
+st.write("---")
 
 # --- 2. THUẬT TOÁN & DỮ LIỆU (GIỮ NGUYÊN) ---
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -111,6 +105,8 @@ def update_logic(df):
     return df
 
 st.session_state.db = update_logic(st.session_state.db)
+
+# THỨ TỰ CỘT YÊU CẦU: STT > Họ Tên > Công ty > Chức danh > Job > T ca > Tồn cũ
 cols_order = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'Quỹ CA Tổng', 'CA Tháng Trước'] + DATE_COLS
 st.session_state.db = st.session_state.db.reindex(columns=cols_order)
 
@@ -126,11 +122,11 @@ with c_act2:
         st.session_state.db.to_excel(writer, index=False, sheet_name=sheet_name)
     st.download_button("📥 XUẤT FILE EXCEL", buffer, file_name=f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
-# --- 4. TABS CHỨC NĂNG ---
+# --- 4. TABS CHỨC NĂNG (GIỮ NGUYÊN) ---
 tabs = st.tabs(["🚀 ĐIỀU ĐỘNG", "🏗️ GIÀN KHOAN", "👤 NHÂN VIÊN"])
 
 with tabs[0]:
-    with st.expander("🛠️ Công cụ cập nhật nhanh"):
+    with st.expander("🛠️ Cập nhật nhanh"):
         c1, c2, c3, c4 = st.columns([2, 1, 1, 1.2])
         f_staff = c1.multiselect("Nhân sự:", st.session_state.db['Họ và Tên'].tolist())
         f_status = c2.selectbox("Trạng thái:", ["Đi Biển", "CA", "WS", "NP", "Ốm"])

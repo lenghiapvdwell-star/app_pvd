@@ -103,7 +103,7 @@ st.session_state.db = st.session_state.db.reindex(columns=[c for c in cols_order
 # --- 4. GIAO DIỆN ---
 c_logo, c_title = st.columns([1, 5])
 with c_logo:
-    if os.path.exists("logo_pvd.png"): st.image("logo_pvd.png", width=120)
+    if os.path.exists("logo_pvd.png"): st.image("logo_pvd.png", width=150)
     else: st.write("🔴 Logo PVD")
 
 with c_title:

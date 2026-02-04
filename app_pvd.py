@@ -12,52 +12,60 @@ st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 st.markdown("""
     <style>
     .block-container {padding-top: 1rem; padding-bottom: 0rem;}
-    /* Tiêu đề chính nằm riêng một hàng, to và rõ */
+    /* Tiêu đề Độc lập - Không bị chèn ép */
+    .header-container {
+        width: 100%;
+        text-align: center;
+        padding: 10px 0;
+        background-color: transparent;
+    }
     .main-title {
         color: #00f2ff; 
         font-size: 45px; 
         font-weight: bold;
-        text-align: center; 
-        margin-top: 10px;
-        margin-bottom: 20px;
-        text-shadow: 4px 4px 8px #000;
+        text-shadow: 3px 3px 6px #000;
         font-family: 'Arial Black', sans-serif;
-        width: 100%;
+        margin: 0;
+        padding: 0;
     }
     .stButton>button {border-radius: 5px; height: 3em; font-weight: bold;}
-    /* Căn chỉnh khung chọn tháng */
-    div[data-testid="stDateInput"] label { font-weight: bold; color: #f0f2f6; }
+    /* Tùy chỉnh input chọn ngày */
+    .date-box {
+        background: #1e1e1e;
+        padding: 10px;
+        border-radius: 10px;
+        border: 1px solid #333;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. BỐ CỤC HEADER ---
-# Hàng 1: Chỉ dành cho Tiêu đề
-st.markdown('<p class="main-title">PVD WELL SERVICES MANAGEMENT</p>', unsafe_allow_html=True)
+# --- 2. BỐ CỤC HEADER MỚI ---
+# Hàng 1: Tiêu đề đứng một mình (Đảm bảo luôn hiện)
+st.markdown('<div class="header-container"><p class="main-title">PVD WELL SERVICES MANAGEMENT</p></div>', unsafe_allow_html=True)
 
-# Hàng 2: Logo và Chọn tháng (Dưới tiêu đề)
+# Hàng 2: Logo bên trái và Chọn ngày bên phải (Nằm dưới tiêu đề)
 c_logo, c_empty, c_date = st.columns([2, 4, 2])
 with c_logo:
     if os.path.exists("logo_pvd.png"): 
-        st.image("logo_pvd.png", width=200)
+        st.image("logo_pvd.png", width=180)
     else: 
-        st.markdown("### 🔴 PVD LOGO")
+        st.markdown("### [LOGO]")
 
 with c_date:
-    working_date = st.date_input("📅 CHỌN THÁNG LÀM VIỆC:", value=date.today())
+    # Đặt chọn ngày vào một box nhỏ cho gọn
+    working_date = st.date_input("📅 THÁNG LÀM VIỆC:", value=date.today())
 
 st.write("---")
 
-# --- 3. KẾT NỐI DỮ LIỆU ---
+# --- 3. KẾT NỐI & KHỞI TẠO ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 curr_month, curr_year = working_date.month, working_date.year
 month_abbr = working_date.strftime("%b") 
 sheet_name = working_date.strftime("%m_%Y") 
 
-# Danh sách giàn
 if 'gians' not in st.session_state:
     st.session_state.gians = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9" , "THOR", "SDE" , "GUNNLOD"]
 
-# Danh sách nhân sự (64 người)
 NAMES_64 = [
     "Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", 
     "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", 
@@ -72,7 +80,7 @@ NAMES_64 = [
     "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong"
 ]
 
-# --- 4. XỬ LÝ LOAD DỮ LIỆU ---
+# --- 4. XỬ LÝ DỮ LIỆU ---
 def get_prev_ca():
     prev_date = date(curr_year, curr_month, 1) - timedelta(days=1)
     prev_sheet = prev_date.strftime("%m_%Y")
@@ -96,13 +104,11 @@ if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sh
         df_init['CA Tháng Trước'] = df_init['Họ và Tên'].map(prev_ca_data).fillna(0.0)
         st.session_state.db = df_init
 
-# Cột ngày
 num_days = calendar.monthrange(curr_year, curr_month)[1]
 DATE_COLS = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(curr_year,curr_month,d).weekday()]})" for d in range(1, num_days+1)]
 for c in DATE_COLS:
     if c not in st.session_state.db.columns: st.session_state.db[c] = ""
 
-# Logic tính CA (Ép kiểu float mạnh để chống crash)
 def apply_calculation(df):
     holidays = [date(curr_year, 1, 1), date(curr_year, 4, 30), date(curr_year, 5, 1), date(curr_year, 9, 2)]
     if curr_year == 2026: holidays += [date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19)]
@@ -129,14 +135,14 @@ def apply_calculation(df):
 
 st.session_state.db = apply_calculation(st.session_state.db)
 
-# Sắp xếp cột: STT phải ở đầu tiên
+# Sắp xếp cột: STT ĐẦU TIÊN
 main_cols = ['STT', 'Họ và Tên', 'Quỹ CA Tổng', 'CA Tháng Trước', 'Công ty', 'Chức danh', 'Job Detail']
 st.session_state.db = st.session_state.db.reindex(columns=main_cols + DATE_COLS)
 
 # --- 5. NÚT CHỨC NĂNG ---
 bc1, bc2, _ = st.columns([1.5, 1.5, 5])
 with bc1:
-    if st.button("📤 UPLOAD CLOUD", use_container_width=True, type="primary"):
+    if st.button("📤 LƯU CLOUD", use_container_width=True, type="primary"):
         conn.update(worksheet=sheet_name, data=st.session_state.db)
         st.success("Đã lưu!")
 with bc2:
@@ -148,7 +154,7 @@ with bc2:
 t1, t2, t3 = st.tabs(["🚀 ĐIỀU ĐỘNG", "🏗️ GIÀN KHOAN", "👤 NHÂN VIÊN"])
 
 with t1:
-    with st.expander("🛠️ Công cụ cập nhật nhanh"):
+    with st.expander("🛠️ Cập nhật nhanh (Đi biển, Nghỉ ca, Nghỉ phép...)"):
         c1, c2, c3, c4 = st.columns([2, 1, 1, 1.2])
         f_staff = c1.multiselect("Nhân sự:", st.session_state.db['Họ và Tên'].tolist())
         f_status = c2.selectbox("Trạng thái:", ["Đi Biển", "CA", "NP", "Ốm", "WS"])
@@ -175,14 +181,14 @@ with t1:
     }
     for col in DATE_COLS: config[col] = st.column_config.TextColumn(col, width=70)
 
-    st.data_editor(st.session_state.db, column_config=config, use_container_width=True, height=600, hide_index=True, key=f"final_v7_{sheet_name}")
+    st.data_editor(st.session_state.db, column_config=config, use_container_width=True, height=600, hide_index=True, key=f"final_v8_{sheet_name}")
 
 with t2:
-    st.subheader("🏗️ Quản lý danh sách Giàn khoan")
+    st.subheader("🏗️ Danh sách Giàn khoan")
     st.dataframe(pd.DataFrame({"Tên Giàn": st.session_state.gians}), use_container_width=True)
-    c_g1, c_g2 = st.columns([3, 1])
-    new_g = c_g1.text_input("Thêm giàn mới:")
-    if c_g2.button("➕ Thêm"):
+    cg1, cg2 = st.columns([3, 1])
+    new_g = cg1.text_input("Thêm giàn mới:")
+    if cg2.button("➕ Thêm"):
         if new_g and new_g not in st.session_state.gians:
             st.session_state.gians.append(new_g)
             st.rerun()

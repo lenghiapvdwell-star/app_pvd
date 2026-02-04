@@ -11,46 +11,56 @@ st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 
 st.markdown("""
     <style>
-    .block-container {padding-top: 1rem; padding-bottom: 0rem;}
+    .block-container {padding-top: 0.5rem; padding-bottom: 0rem;}
     
-    /* Logo nằm bên trái */
-    .logo-container {
+    /* Logo cố định ở góc trái trên cùng */
+    .logo-fixed {
         position: absolute;
-        top: 0px;
+        top: -10px;
         left: 0px;
+        z-index: 1000;
     }
     
-    /* Tiêu đề nằm ngay giữa */
+    /* Tiêu đề chính căn giữa tuyệt đối, to và rõ */
     .main-title {
         color: #00f2ff; 
-        font-size: 40px; 
+        font-size: 42px; 
         font-weight: bold;
         text-align: center; 
+        width: 100%;
         margin-top: 10px;
-        margin-bottom: 5px;
+        margin-bottom: 10px;
         text-shadow: 3px 3px 6px #000;
         font-family: 'Arial Black', sans-serif;
+        letter-spacing: 1px;
+    }
+    
+    /* Căn chỉnh khung chọn ngày */
+    .date-container {
+        display: flex;
+        justify-content: center;
+        margin-bottom: 10px;
     }
     
     .stButton>button {border-radius: 5px; height: 3em; font-weight: bold;}
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. BỐ CỤC HEADER ---
-# Tạo 3 cột để căn giữa tiêu đề, Logo nằm cột trái
-c_left, c_center, c_right = st.columns([1, 4, 1])
+# --- 2. HIỂN THỊ HEADER ---
 
-with c_left:
+# Hiển thị Logo (Dùng cột rộng hơn để không mất góc)
+c_logo, _ = st.columns([1, 4])
+with c_logo:
     if os.path.exists("logo_pvd.png"): 
-        st.image("logo_pvd.png", width=150)
+        st.image("logo_pvd.png", width=220) # Tăng width để không bị cắt
     else: 
-        st.markdown("### PVD")
+        st.markdown("### 🔴 PVD")
 
-with c_center:
-    st.markdown('<p class="main-title">PVD WELL SERVICES MANAGEMENT</p>', unsafe_allow_html=True)
+# Hiển thị Tiêu đề (Nằm riêng, tự do căn giữa)
+st.markdown('<p class="main-title">PVD WELL SERVICES MANAGEMENT</p>', unsafe_allow_html=True)
 
-# Hàng chọn ngày nằm dưới tiêu đề và ngay trên các Tab
-_, c_mid_date, _ = st.columns([3, 2, 3])
+# Hiển thị Ô chọn ngày (Căn giữa)
+_, c_mid_date, _ = st.columns([3.5, 2, 3.5])
 with c_mid_date:
     working_date = st.date_input("📅 CHỌN THÁNG LÀM VIỆC:", value=date.today())
 
@@ -142,7 +152,7 @@ bc1, bc2, _ = st.columns([1.5, 1.5, 5])
 with bc1:
     if st.button("📤 LƯU CLOUD", use_container_width=True, type="primary"):
         conn.update(worksheet=sheet_name, data=st.session_state.db)
-        st.success("Lưu thành công!")
+        st.success("Đã lưu dữ liệu!")
 with bc2:
     buffer = io.BytesIO()
     st.session_state.db.to_excel(buffer, index=False)
@@ -176,9 +186,9 @@ with t1:
         "Quỹ CA Tổng": st.column_config.NumberColumn("T ca", width=65, format="%.1f", disabled=True, pinned=True),
         "CA Tháng Trước": st.column_config.NumberColumn("Tồn cũ", width=65, format="%.1f", pinned=True),
     }
-    for col in DATE_COLS: config[col] = st.column_config.TextColumn(col, width=70)
+    for col in DATE_COLS: config[col] = st.column_config.TextColumn(col, width=75)
 
-    st.data_editor(st.session_state.db, column_config=config, use_container_width=True, height=600, hide_index=True, key=f"final_v9_{sheet_name}")
+    st.data_editor(st.session_state.db, column_config=config, use_container_width=True, height=600, hide_index=True, key=f"fixed_v10_{sheet_name}")
 
 with t2:
     st.subheader("🏗️ Quản lý danh sách Giàn khoan")

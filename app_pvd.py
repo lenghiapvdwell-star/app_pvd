@@ -6,33 +6,36 @@ from streamlit_gsheets import GSheetsConnection
 import io
 import os
 
-# --- 1. CẤU HÌNH GIAO DIỆN ---
+# --- 1. CẤU HÌNH GIAO DIỆN & TIÊU ĐỀ ---
 st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 
 st.markdown("""
     <style>
     .block-container {padding-top: 1rem; padding-bottom: 0rem;}
+    /* Chỉnh chữ PVD Well Services Management */
     .main-title {
-        color: #00f2ff; font-size: 32px; font-weight: bold;
-        text-align: center; margin: 0; text-shadow: 2px 2px 4px #000; line-height: 1.5;
+        color: #00f2ff; 
+        font-size: 42px; 
+        font-weight: bold;
+        text-align: center; 
+        margin-bottom: 10px;
+        text-shadow: 3px 3px 6px #000;
+        font-family: 'Arial Black', Gadget, sans-serif;
     }
     .stButton>button {border-radius: 5px; height: 3em; font-weight: bold;}
-    div[data-testid="stDateInput"] {float: right;}
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. HEADER ---
-c1, c2, c3 = st.columns([1.5, 4, 1.5])
-with c1:
+# --- 2. HEADER: LOGO & TIÊU ĐỀ CHÍNH ---
+st.markdown('<p class="main-title">PVD WELL SERVICES MANAGEMENT</p>', unsafe_allow_html=True)
+
+c_logo, c_empty, c_date = st.columns([1.5, 3, 1.5])
+with c_logo:
     if os.path.exists("logo_pvd.png"): st.image("logo_pvd.png", width=180)
-    else: st.write("### PVD LOGO")
+    else: st.subheader("🔴 PVD LOGO")
 
-with c2:
-    st.markdown('<p class="main-title">PVD WELL SERVICES MANAGEMENT</p>', unsafe_allow_html=True)
-
-with c3:
-    st.write("##") 
-    working_date = st.date_input("📅 THÁNG LÀM VIỆC:", value=date.today())
+with c_date:
+    working_date = st.date_input("📅 CHỌN THÁNG:", value=date.today())
 
 st.write("---")
 
@@ -59,7 +62,7 @@ NAMES_64 = [
     "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong"
 ]
 
-# --- 4. LOAD DỮ LIỆU & TÍNH TOÁN TỒN CŨ ---
+# --- 4. LOAD DỮ LIỆU ---
 def get_prev_ca():
     prev_date = date(curr_year, curr_month, 1) - timedelta(days=1)
     prev_sheet = prev_date.strftime("%m_%Y")
@@ -83,13 +86,13 @@ if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sh
         df_init['CA Tháng Trước'] = df_init['Họ và Tên'].map(prev_ca_data).fillna(0.0)
         st.session_state.db = df_init
 
-# Cột ngày
+# Chuẩn hóa cột ngày
 num_days = calendar.monthrange(curr_year, curr_month)[1]
 DATE_COLS = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(curr_year,curr_month,d).weekday()]})" for d in range(1, num_days+1)]
 for c in DATE_COLS:
     if c not in st.session_state.db.columns: st.session_state.db[c] = ""
 
-# Logic tính CA
+# Logic tính toán CA
 def apply_calculation(df):
     holidays = [date(curr_year, 1, 1), date(curr_year, 4, 30), date(curr_year, 5, 1), date(curr_year, 9, 2)]
     if curr_year == 2026: holidays += [date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19)]
@@ -116,23 +119,27 @@ def apply_calculation(df):
 
 st.session_state.db = apply_calculation(st.session_state.db)
 
-# --- 5. NÚT BẤM ĐƯA RA NGOÀI ---
+# --- THỨ TỰ CỘT: STT ĐẦU TIÊN ---
+main_cols = ['STT', 'Họ và Tên', 'Quỹ CA Tổng', 'CA Tháng Trước', 'Công ty', 'Chức danh', 'Job Detail']
+all_cols = main_cols + DATE_COLS
+st.session_state.db = st.session_state.db.reindex(columns=[c for c in all_cols if c in st.session_state.db.columns])
+
+# --- 5. NÚT CHỨC NĂNG ---
 bc1, bc2, _ = st.columns([1.5, 1.5, 4])
 with bc1:
     if st.button("📤 UPLOAD CLOUD", use_container_width=True, type="primary"):
         conn.update(worksheet=sheet_name, data=st.session_state.db)
-        st.success("Đã lưu dữ liệu lên Cloud!")
+        st.success(f"Đã lưu tháng {sheet_name}")
 with bc2:
     buffer = io.BytesIO()
     st.session_state.db.to_excel(buffer, index=False)
     st.download_button("📥 XUẤT EXCEL", buffer, file_name=f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
-# --- 6. TABS CHỨC NĂNG ---
+# --- 6. TABS ---
 t1, t2, t3 = st.tabs(["🚀 ĐIỀU ĐỘNG", "🏗️ GIÀN KHOAN", "👤 NHÂN VIÊN"])
 
 with t1:
-    # CÔNG CỤ CẬP NHẬT NHANH
-    with st.expander("🛠️ Công cụ cập nhật nhanh (Nghỉ ca, Nghỉ phép, Đi biển...)"):
+    with st.expander("🛠️ Cập nhật nhanh"):
         c1, c2, c3, c4 = st.columns([2, 1, 1, 1.2])
         f_staff = c1.multiselect("Nhân sự:", st.session_state.db['Họ và Tên'].tolist())
         f_status = c2.selectbox("Trạng thái:", ["Đi Biển", "CA", "NP", "Ốm", "WS"])
@@ -150,25 +157,21 @@ with t1:
                             st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(f_staff), col] = f_val
                 st.rerun()
 
-    # BẢNG DỮ LIỆU CHÍNH
     config = {
-        "STT": st.column_config.NumberColumn("STT", width=40, disabled=True),
+        "STT": st.column_config.NumberColumn("STT", width=50, disabled=True, pinned=True),
         "Họ và Tên": st.column_config.TextColumn("Họ và Tên", width=200, pinned=True),
         "Quỹ CA Tổng": st.column_config.NumberColumn("T ca", width=70, format="%.1f", disabled=True, pinned=True),
         "CA Tháng Trước": st.column_config.NumberColumn("Tồn cũ", width=70, format="%.1f", pinned=True),
     }
     for col in DATE_COLS: config[col] = st.column_config.TextColumn(col, width=70)
 
-    st.data_editor(st.session_state.db, column_config=config, use_container_width=True, height=600, hide_index=True, key=f"v5_{sheet_name}")
+    st.data_editor(st.session_state.db, column_config=config, use_container_width=True, height=600, hide_index=True, key=f"fixed_v6_{sheet_name}")
 
 with t2:
     st.subheader("🏗️ Quản lý danh sách Giàn khoan")
-    # Hiển thị dạng bảng cho đẹp
-    df_gians = pd.DataFrame({"Tên Giàn Hiện Có": st.session_state.gians})
-    st.table(df_gians)
-    
+    st.dataframe(pd.DataFrame({"Tên Giàn": st.session_state.gians}), use_container_width=True)
     c_g1, c_g2 = st.columns([3, 1])
-    new_g = c_g1.text_input("Nhập tên giàn mới muốn thêm:")
+    new_g = c_g1.text_input("Thêm giàn mới:")
     if c_g2.button("➕ Thêm Giàn"):
         if new_g and new_g not in st.session_state.gians:
             st.session_state.gians.append(new_g)
@@ -176,4 +179,4 @@ with t2:
 
 with t3:
     st.subheader("👤 Danh sách nhân sự")
-    st.dataframe(st.session_state.db[['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail']], use_container_width=True, hide_index=True)
+    st.dataframe(st.session_state.db[['STT', 'Họ và Tên', 'Công ty', 'Chức danh']], use_container_width=True, hide_index=True)

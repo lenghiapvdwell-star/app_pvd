@@ -6,14 +6,14 @@ from streamlit_gsheets import GSheetsConnection
 import io
 import os
 
-# --- 1. CẤU HÌNH ---
+# --- 1. CẤU HÌNH GIAO DIỆN ---
 st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 
 st.markdown("""
     <style>
     .block-container {padding-top: 1rem; padding-bottom: 0rem;}
     .main-title {
-        color: #00f2ff; font-size: 36px; font-weight: bold;
+        color: #00f2ff; font-size: 32px; font-weight: bold;
         text-align: center; margin: 0; text-shadow: 2px 2px 4px #000; line-height: 1.5;
     }
     .stButton>button {border-radius: 5px; height: 3em; font-weight: bold;}
@@ -36,13 +36,15 @@ with c3:
 
 st.write("---")
 
-# --- 3. KHỞI TẠO BIẾN ---
+# --- 3. BIẾN CỐ ĐỊNH & KẾT NỐI ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 curr_month, curr_year = working_date.month, working_date.year
 month_abbr = working_date.strftime("%b") 
 sheet_name = working_date.strftime("%m_%Y") 
 
-# Danh sách nhân viên (Đảm bảo đủ 65 phần tử cho range 1-65)
+if 'gians' not in st.session_state:
+    st.session_state.gians = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9" , "THOR", "SDE" , "GUNNLOD"]
+
 NAMES_64 = [
     "Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", 
     "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", 
@@ -57,107 +59,121 @@ NAMES_64 = [
     "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong"
 ]
 
-if 'gians' not in st.session_state:
-    st.session_state.gians = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9" , "THOR", "SDE" , "GUNNLOD"]
-
-# --- 4. LOAD DỮ LIỆU ---
-@st.cache_data(ttl=60)
-def load_data_from_gsheets(s_name):
+# --- 4. LOAD DỮ LIỆU & TÍNH TOÁN TỒN CŨ ---
+def get_prev_ca():
+    prev_date = date(curr_year, curr_month, 1) - timedelta(days=1)
+    prev_sheet = prev_date.strftime("%m_%Y")
     try:
-        return conn.read(worksheet=s_name, ttl=0)
-    except:
-        return None
+        df_prev = conn.read(worksheet=prev_sheet, ttl=0)
+        series = df_prev.set_index('Họ và Tên')['Quỹ CA Tổng']
+        return pd.to_numeric(series, errors='coerce').fillna(0.0).to_dict()
+    except: return {}
 
-# Xử lý Logic Load
 if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sheet_name:
     st.session_state.active_sheet = sheet_name
-    df_load = load_data_from_gsheets(sheet_name)
-    
-    if df_load is not None and not df_load.empty:
-        st.session_state.db = df_load
-    else:
-        # Tạo mới hoàn toàn nếu không thấy sheet
-        df_init = pd.DataFrame({
-            'STT': range(1, 65),
-            'Họ và Tên': NAMES_64,
-            'Công ty': 'PVDWS',
-            'Chức danh': 'Kỹ sư',
-            'Job Detail': '',
-            'CA Tháng Trước': 0.0
-        })
+    prev_ca_data = get_prev_ca()
+    try:
+        df_load = conn.read(worksheet=sheet_name, ttl=0)
+        if df_load is not None and not df_load.empty:
+            st.session_state.db = df_load
+            st.session_state.db['CA Tháng Trước'] = st.session_state.db['Họ và Tên'].map(prev_ca_data).fillna(0.0)
+        else: raise Exception
+    except:
+        df_init = pd.DataFrame({'STT': range(1, 66), 'Họ và Tên': NAMES_64, 'Công ty': 'PVDWS', 'Chức danh': 'Kỹ sư', 'Job Detail': '', 'CA Tháng Trước': 0.0})
+        df_init['CA Tháng Trước'] = df_init['Họ và Tên'].map(prev_ca_data).fillna(0.0)
         st.session_state.db = df_init
 
-# Đảm bảo các cột ngày tồn tại
+# Cột ngày
 num_days = calendar.monthrange(curr_year, curr_month)[1]
 DATE_COLS = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(curr_year,curr_month,d).weekday()]})" for d in range(1, num_days+1)]
 for c in DATE_COLS:
     if c not in st.session_state.db.columns: st.session_state.db[c] = ""
 
-# --- 5. TÍNH TOÁN & ÉP KIỂU "SẠCH" ---
-def finalize_data(df):
+# Logic tính CA
+def apply_calculation(df):
     holidays = [date(curr_year, 1, 1), date(curr_year, 4, 30), date(curr_year, 5, 1), date(curr_year, 9, 2)]
+    if curr_year == 2026: holidays += [date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19)]
     
     def calc_row(row):
         total = 0.0
         for col in DATE_COLS:
             val = str(row.get(col, "")).strip()
+            if not val or val.lower() in ["nan", ""]: continue
+            d = int(col[:2])
+            dt = date(curr_year, curr_month, d)
             if val in st.session_state.gians:
-                d = int(col[:2])
-                dt = date(curr_year, curr_month, d)
                 if dt in holidays: total += 2.0
                 elif dt.weekday() >= 5: total += 1.0
                 else: total += 0.5
-            elif val.upper() == "CA":
+            elif val.upper() == "CA" and dt.weekday() < 5 and dt not in holidays:
                 total -= 1.0
         return total
 
-    # Ép kiểu dứt điểm cho các cột số
-    for col in ['CA Tháng Trước', 'Quỹ CA Tổng']:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0).astype(float)
-    
+    df['CA Tháng Trước'] = pd.to_numeric(df['CA Tháng Trước'], errors='coerce').fillna(0.0).astype(float)
     df['Phát sinh trong tháng'] = df.apply(calc_row, axis=1).astype(float)
     df['Quỹ CA Tổng'] = df['CA Tháng Trước'] + df['Phát sinh trong tháng']
     return df
 
-st.session_state.db = finalize_data(st.session_state.db)
+st.session_state.db = apply_calculation(st.session_state.db)
 
-# --- 6. GIAO DIỆN NÚT BẤM ---
+# --- 5. NÚT BẤM ĐƯA RA NGOÀI ---
 bc1, bc2, _ = st.columns([1.5, 1.5, 4])
 with bc1:
     if st.button("📤 UPLOAD CLOUD", use_container_width=True, type="primary"):
         conn.update(worksheet=sheet_name, data=st.session_state.db)
-        st.success("Đã lưu thành công!")
+        st.success("Đã lưu dữ liệu lên Cloud!")
 with bc2:
     buffer = io.BytesIO()
     st.session_state.db.to_excel(buffer, index=False)
     st.download_button("📥 XUẤT EXCEL", buffer, file_name=f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
-# --- 7. BẢNG DỮ LIỆU ---
+# --- 6. TABS CHỨC NĂNG ---
 t1, t2, t3 = st.tabs(["🚀 ĐIỀU ĐỘNG", "🏗️ GIÀN KHOAN", "👤 NHÂN VIÊN"])
 
 with t1:
-    # Cấu hình Column Config
-    column_config = {
-        "STT": st.column_config.NumberColumn("STT", disabled=True, width=40),
-        "Họ và Tên": st.column_config.TextColumn("Họ và Tên", width=200, pinned=True),
-        "Quỹ CA Tổng": st.column_config.NumberColumn("Tổng CA", format="%.1f", disabled=True),
-        "CA Tháng Trước": st.column_config.NumberColumn("Tồn cũ", format="%.1f"),
-    }
+    # CÔNG CỤ CẬP NHẬT NHANH
+    with st.expander("🛠️ Công cụ cập nhật nhanh (Nghỉ ca, Nghỉ phép, Đi biển...)"):
+        c1, c2, c3, c4 = st.columns([2, 1, 1, 1.2])
+        f_staff = c1.multiselect("Nhân sự:", st.session_state.db['Họ và Tên'].tolist())
+        f_status = c2.selectbox("Trạng thái:", ["Đi Biển", "CA", "NP", "Ốm", "WS"])
+        f_val = c3.selectbox("Chọn Giàn:", st.session_state.gians) if f_status == "Đi Biển" else f_status
+        f_date = c4.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, num_days)))
+        
+        if st.button("✅ ÁP DỤNG", use_container_width=True):
+            if f_staff and isinstance(f_date, tuple) and len(f_date) == 2:
+                s_d, e_d = f_date
+                for i in range((e_d - s_d).days + 1):
+                    day = s_d + timedelta(days=i)
+                    if day.month == curr_month:
+                        col = f"{day.day:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][day.weekday()]})"
+                        if col in st.session_state.db.columns:
+                            st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(f_staff), col] = f_val
+                st.rerun()
 
-    # Hiển thị với Key động để tránh lỗi Cache Type
-    # Sử dụng key chứa sheet_name để khi đổi tháng nó reset lại hoàn toàn bảng
-    st.data_editor(
-        st.session_state.db,
-        column_config=column_config,
-        use_container_width=True,
-        hide_index=True,
-        height=600,
-        key=f"editor_v1_{sheet_name}" 
-    )
+    # BẢNG DỮ LIỆU CHÍNH
+    config = {
+        "STT": st.column_config.NumberColumn("STT", width=40, disabled=True),
+        "Họ và Tên": st.column_config.TextColumn("Họ và Tên", width=200, pinned=True),
+        "Quỹ CA Tổng": st.column_config.NumberColumn("T ca", width=70, format="%.1f", disabled=True, pinned=True),
+        "CA Tháng Trước": st.column_config.NumberColumn("Tồn cũ", width=70, format="%.1f", pinned=True),
+    }
+    for col in DATE_COLS: config[col] = st.column_config.TextColumn(col, width=70)
+
+    st.data_editor(st.session_state.db, column_config=config, use_container_width=True, height=600, hide_index=True, key=f"v5_{sheet_name}")
 
 with t2:
-    st.write("Danh sách giàn:", st.session_state.gians)
+    st.subheader("🏗️ Quản lý danh sách Giàn khoan")
+    # Hiển thị dạng bảng cho đẹp
+    df_gians = pd.DataFrame({"Tên Giàn Hiện Có": st.session_state.gians})
+    st.table(df_gians)
+    
+    c_g1, c_g2 = st.columns([3, 1])
+    new_g = c_g1.text_input("Nhập tên giàn mới muốn thêm:")
+    if c_g2.button("➕ Thêm Giàn"):
+        if new_g and new_g not in st.session_state.gians:
+            st.session_state.gians.append(new_g)
+            st.rerun()
 
 with t3:
-    st.dataframe(st.session_state.db[['STT', 'Họ và Tên', 'Công ty']], use_container_width=True)
+    st.subheader("👤 Danh sách nhân sự")
+    st.dataframe(st.session_state.db[['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail']], use_container_width=True, hide_index=True)

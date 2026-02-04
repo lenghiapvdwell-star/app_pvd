@@ -6,13 +6,13 @@ from streamlit_gsheets import GSheetsConnection
 import io
 import os
 
-# --- 1. CẤU HÌNH & CSS ---
+# --- 1. CẤU HÌNH & GIAO DIỆN ---
 st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 
 st.markdown("""
     <style>
     .block-container {padding-top: 1rem; padding-bottom: 0rem;}
-    /* Style Tiêu đề to, nằm giữa */
+    /* Tiêu đề căn giữa, to, rõ */
     .main-title {
         color: #00f2ff;
         font-size: 36px;
@@ -22,13 +22,13 @@ st.markdown("""
         text-shadow: 2px 2px 4px #000;
         line-height: 1.5;
     }
-    /* Style Nút bấm */
+    /* Nút bấm to, dễ nhấn */
     .stButton>button {border-radius: 5px; height: 3em; font-weight: bold;}
     div[data-testid="stDateInput"] {float: right;}
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. BỐ CỤC HEADER (Logo - Chữ - Ngày) ---
+# --- 2. HEADER: LOGO - TIÊU ĐỀ - CHỌN THÁNG ---
 c1, c2, c3 = st.columns([1.5, 4, 1.5])
 
 with c1:
@@ -41,21 +41,22 @@ with c2:
     st.markdown('<p class="main-title">PVD WELL SERVICES MANAGEMENT</p>', unsafe_allow_html=True)
 
 with c3:
-    st.write("##") # Căn lề trên
+    st.write("##") 
     working_date = st.date_input("📅 THÁNG LÀM VIỆC:", value=date.today())
 
-# --- 3. CÁC NÚT THAO TÁC (Đưa ra ngoài Header) ---
 st.write("---")
+
+# --- 3. NÚT CHỨC NĂNG (ĐƯA RA NGOÀI) ---
 btn_col1, btn_col2, _ = st.columns([1.5, 1.5, 4])
 
-# --- 4. KHỞI TẠO DỮ LIỆU ---
+# --- 4. XỬ LÝ DỮ LIỆU ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 curr_month = working_date.month
 curr_year = working_date.year
 month_abbr = working_date.strftime("%b") 
 sheet_name = working_date.strftime("%m_%Y") 
 
-# Danh sách nhân sự chuẩn (64 người)
+# Danh sách nhân sự đầy đủ 64 người
 NAMES_64 = [
     "Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", 
     "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", 
@@ -73,43 +74,40 @@ NAMES_64 = [
 if 'gians' not in st.session_state:
     st.session_state.gians = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9" , "THOR", "SDE" , "GUNNLOD"]
 
-# Hàm lấy tồn tháng trước
 def get_prev_ca():
     prev_date = date(curr_year, curr_month, 1) - timedelta(days=1)
     prev_sheet = prev_date.strftime("%m_%Y")
     try:
         df_prev = conn.read(worksheet=prev_sheet, ttl=0)
-        return df_prev.set_index('Họ và Tên')['Quỹ CA Tổng'].to_dict()
+        # Đảm bảo dữ liệu đọc về là số
+        return df_prev.set_index('Họ và Tên')['Quỹ CA Tổng'].apply(pd.to_numeric, errors='coerce').fillna(0.0).to_dict()
     except: return {}
 
-# Logic Load dữ liệu thông minh
+# Logic Load dữ liệu (Đã thêm xử lý chống lỗi type)
 if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sheet_name:
     st.session_state.active_sheet = sheet_name
     prev_ca_data = get_prev_ca()
     try:
-        # 1. Thử tải từ Cloud trước
         df_load = conn.read(worksheet=sheet_name, ttl=0)
         if df_load is not None and not df_load.empty:
             st.session_state.db = df_load
-            # Cập nhật lại tồn cũ để đảm bảo chính xác
+            # Cập nhật tồn cũ
             st.session_state.db['CA Tháng Trước'] = st.session_state.db['Họ và Tên'].map(prev_ca_data).fillna(0.0)
         else: raise Exception
     except:
-        # 2. Nếu chưa có trên Cloud, tạo mới
         df_init = pd.DataFrame({'STT': range(1, 65), 'Họ và Tên': NAMES_64, 'Công ty': 'PVDWS', 'Chức danh': 'Kỹ sư', 'Job Detail': ''})
         df_init['CA Tháng Trước'] = df_init['Họ và Tên'].map(prev_ca_data).fillna(0.0)
         st.session_state.db = df_init
 
-# Chuẩn bị cột ngày tháng
+# Tạo cột ngày
 num_days = calendar.monthrange(curr_year, curr_month)[1]
 DATE_COLS = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(curr_year,curr_month,d).weekday()]})" for d in range(1, num_days+1)]
 for c in DATE_COLS: 
     if c not in st.session_state.db.columns: st.session_state.db[c] = ""
 
-# --- 5. LOGIC TÍNH TOÁN & XỬ LÝ LỖI SỐ HỌC ---
+# --- 5. TÍNH TOÁN (CORE) ---
 def update_logic(df):
     holidays = [date(curr_year, 1, 1), date(curr_year, 4, 30), date(curr_year, 5, 1), date(curr_year, 9, 2)]
-    
     def calc_row(row):
         total = 0.0
         for col in DATE_COLS:
@@ -126,10 +124,13 @@ def update_logic(df):
             except: continue
         return total
 
-    # Ép kiểu số thực (float) để tránh lỗi data_editor
-    df['CA Tháng Trước'] = pd.to_numeric(df.get('CA Tháng Trước', 0), errors='coerce').fillna(0.0)
     df['Phát sinh trong tháng'] = df.apply(calc_row, axis=1)
+    
+    # --- BƯỚC QUAN TRỌNG NHẤT: ÉP KIỂU SỐ ---
+    # Chuyển đổi toàn bộ cột số về float, lỗi biến thành 0.0
+    df['CA Tháng Trước'] = pd.to_numeric(df['CA Tháng Trước'], errors='coerce').fillna(0.0)
     df['Quỹ CA Tổng'] = df['CA Tháng Trước'] + df['Phát sinh trong tháng']
+    
     return df
 
 st.session_state.db = update_logic(st.session_state.db)
@@ -138,9 +139,10 @@ st.session_state.db = update_logic(st.session_state.db)
 cols_order = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'Quỹ CA Tổng', 'CA Tháng Trước'] + DATE_COLS
 st.session_state.db = st.session_state.db.reindex(columns=[c for c in cols_order if c in st.session_state.db.columns])
 
-# --- 6. GẮN CHỨC NĂNG CHO NÚT BẤM ---
+# --- 6. GẮN NÚT BẤM VÀO HÀNH ĐỘNG ---
 with btn_col1:
     if st.button("📤 UPLOAD CLOUD", use_container_width=True, type="primary"):
+        # Chuyển đổi dữ liệu trước khi lưu để đảm bảo sạch
         conn.update(worksheet=sheet_name, data=st.session_state.db)
         st.success(f"Đã lưu dữ liệu tháng {working_date.strftime('%m/%Y')} thành công!")
 
@@ -150,7 +152,7 @@ with btn_col2:
         st.session_state.db.to_excel(writer, index=False, sheet_name=sheet_name)
     st.download_button("📥 XUẤT EXCEL", buffer, file_name=f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
-# --- 7. HIỂN THỊ BẢNG (TABS) ---
+# --- 7. HIỂN THỊ BẢNG (FIX LỖI STREAMLIT API) ---
 tabs = st.tabs(["🚀 ĐIỀU ĐỘNG", "🏗️ GIÀN KHOAN", "👤 NHÂN VIÊN"])
 
 with tabs[0]:
@@ -171,20 +173,28 @@ with tabs[0]:
                             st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(f_staff), col] = f_val
                 st.rerun()
 
+    # Cấu hình hiển thị bảng
     config = {
         "STT": st.column_config.NumberColumn("STT", width=40, disabled=True, pinned=True),
         "Họ và Tên": st.column_config.TextColumn("Họ và Tên", width=180, pinned=True),
         "Công ty": st.column_config.TextColumn("Công ty", width=80),
         "Chức danh": st.column_config.TextColumn("Chức danh", width=100),
         "Job Detail": st.column_config.TextColumn("Job Detail", width=120),
-        # QUAN TRỌNG: Cột số phải đi với dữ liệu số (đã xử lý ở trên)
+        # Đã xử lý ép kiểu float ở trên, giờ hiển thị an toàn
         "Quỹ CA Tổng": st.column_config.NumberColumn("T ca", width=70, format="%.1f", disabled=True, pinned=True),
         "CA Tháng Trước": st.column_config.NumberColumn("Tồn cũ", width=70, format="%.1f", pinned=True),
     }
     for col in DATE_COLS: config[col] = st.column_config.TextColumn(col, width=65)
 
-    # Hiển thị bảng
-    st.data_editor(st.session_state.db, column_config=config, use_container_width=True, height=600, hide_index=True, key=f"ed_{sheet_name}")
+    # Hiển thị bảng an toàn
+    st.data_editor(
+        st.session_state.db, 
+        column_config=config, 
+        use_container_width=True, 
+        height=600, 
+        hide_index=True, 
+        key=f"ed_{sheet_name}"
+    )
 
 with tabs[1]:
     st.subheader("🏗️ Quản lý Giàn khoan")

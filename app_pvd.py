@@ -12,52 +12,51 @@ st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 st.markdown("""
     <style>
     .block-container {padding-top: 1rem; padding-bottom: 0rem;}
-    /* Tiêu đề Độc lập - Không bị chèn ép */
-    .header-container {
-        width: 100%;
-        text-align: center;
-        padding: 10px 0;
-        background-color: transparent;
+    
+    /* Logo nằm bên trái */
+    .logo-container {
+        position: absolute;
+        top: 0px;
+        left: 0px;
     }
+    
+    /* Tiêu đề nằm ngay giữa */
     .main-title {
         color: #00f2ff; 
-        font-size: 45px; 
+        font-size: 40px; 
         font-weight: bold;
+        text-align: center; 
+        margin-top: 10px;
+        margin-bottom: 5px;
         text-shadow: 3px 3px 6px #000;
         font-family: 'Arial Black', sans-serif;
-        margin: 0;
-        padding: 0;
     }
+    
     .stButton>button {border-radius: 5px; height: 3em; font-weight: bold;}
-    /* Tùy chỉnh input chọn ngày */
-    .date-box {
-        background: #1e1e1e;
-        padding: 10px;
-        border-radius: 10px;
-        border: 1px solid #333;
-    }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. BỐ CỤC HEADER MỚI ---
-# Hàng 1: Tiêu đề đứng một mình (Đảm bảo luôn hiện)
-st.markdown('<div class="header-container"><p class="main-title">PVD WELL SERVICES MANAGEMENT</p></div>', unsafe_allow_html=True)
+# --- 2. BỐ CỤC HEADER ---
+# Tạo 3 cột để căn giữa tiêu đề, Logo nằm cột trái
+c_left, c_center, c_right = st.columns([1, 4, 1])
 
-# Hàng 2: Logo bên trái và Chọn ngày bên phải (Nằm dưới tiêu đề)
-c_logo, c_empty, c_date = st.columns([2, 4, 2])
-with c_logo:
+with c_left:
     if os.path.exists("logo_pvd.png"): 
-        st.image("logo_pvd.png", width=180)
+        st.image("logo_pvd.png", width=150)
     else: 
-        st.markdown("### [LOGO]")
+        st.markdown("### PVD")
 
-with c_date:
-    # Đặt chọn ngày vào một box nhỏ cho gọn
-    working_date = st.date_input("📅 THÁNG LÀM VIỆC:", value=date.today())
+with c_center:
+    st.markdown('<p class="main-title">PVD WELL SERVICES MANAGEMENT</p>', unsafe_allow_html=True)
+
+# Hàng chọn ngày nằm dưới tiêu đề và ngay trên các Tab
+_, c_mid_date, _ = st.columns([3, 2, 3])
+with c_mid_date:
+    working_date = st.date_input("📅 CHỌN THÁNG LÀM VIỆC:", value=date.today())
 
 st.write("---")
 
-# --- 3. KẾT NỐI & KHỞI TẠO ---
+# --- 3. DỮ LIỆU & KẾT NỐI ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 curr_month, curr_year = working_date.month, working_date.year
 month_abbr = working_date.strftime("%b") 
@@ -80,7 +79,6 @@ NAMES_64 = [
     "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong"
 ]
 
-# --- 4. XỬ LÝ DỮ LIỆU ---
 def get_prev_ca():
     prev_date = date(curr_year, curr_month, 1) - timedelta(days=1)
     prev_sheet = prev_date.strftime("%m_%Y")
@@ -139,22 +137,22 @@ st.session_state.db = apply_calculation(st.session_state.db)
 main_cols = ['STT', 'Họ và Tên', 'Quỹ CA Tổng', 'CA Tháng Trước', 'Công ty', 'Chức danh', 'Job Detail']
 st.session_state.db = st.session_state.db.reindex(columns=main_cols + DATE_COLS)
 
-# --- 5. NÚT CHỨC NĂNG ---
+# --- 4. NÚT CHỨC NĂNG ---
 bc1, bc2, _ = st.columns([1.5, 1.5, 5])
 with bc1:
     if st.button("📤 LƯU CLOUD", use_container_width=True, type="primary"):
         conn.update(worksheet=sheet_name, data=st.session_state.db)
-        st.success("Đã lưu!")
+        st.success("Lưu thành công!")
 with bc2:
     buffer = io.BytesIO()
     st.session_state.db.to_excel(buffer, index=False)
     st.download_button("📥 XUẤT EXCEL", buffer, file_name=f"PVD_WS_{sheet_name}.xlsx", use_container_width=True)
 
-# --- 6. TABS ---
+# --- 5. TABS ---
 t1, t2, t3 = st.tabs(["🚀 ĐIỀU ĐỘNG", "🏗️ GIÀN KHOAN", "👤 NHÂN VIÊN"])
 
 with t1:
-    with st.expander("🛠️ Cập nhật nhanh (Đi biển, Nghỉ ca, Nghỉ phép...)"):
+    with st.expander("🛠️ Công cụ cập nhật nhanh"):
         c1, c2, c3, c4 = st.columns([2, 1, 1, 1.2])
         f_staff = c1.multiselect("Nhân sự:", st.session_state.db['Họ và Tên'].tolist())
         f_status = c2.selectbox("Trạng thái:", ["Đi Biển", "CA", "NP", "Ốm", "WS"])
@@ -172,7 +170,6 @@ with t1:
                             st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(f_staff), col] = f_val
                 st.rerun()
 
-    # Cấu hình hiển thị bảng
     config = {
         "STT": st.column_config.NumberColumn("STT", width=40, disabled=True, pinned=True),
         "Họ và Tên": st.column_config.TextColumn("Họ và Tên", width=180, pinned=True),
@@ -181,10 +178,10 @@ with t1:
     }
     for col in DATE_COLS: config[col] = st.column_config.TextColumn(col, width=70)
 
-    st.data_editor(st.session_state.db, column_config=config, use_container_width=True, height=600, hide_index=True, key=f"final_v8_{sheet_name}")
+    st.data_editor(st.session_state.db, column_config=config, use_container_width=True, height=600, hide_index=True, key=f"final_v9_{sheet_name}")
 
 with t2:
-    st.subheader("🏗️ Danh sách Giàn khoan")
+    st.subheader("🏗️ Quản lý danh sách Giàn khoan")
     st.dataframe(pd.DataFrame({"Tên Giàn": st.session_state.gians}), use_container_width=True)
     cg1, cg2 = st.columns([3, 1])
     new_g = cg1.text_input("Thêm giàn mới:")

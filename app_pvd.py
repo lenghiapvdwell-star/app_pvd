@@ -38,7 +38,7 @@ sheet_name = working_date.strftime("%m_%Y")
 curr_month, curr_year = working_date.month, working_date.year
 month_abbr = working_date.strftime("%b") 
 
-# Tính tháng trước để lấy tồn
+# Tính tháng trước để lấy tồn chính xác
 prev_date = working_date.replace(day=1) - timedelta(days=1)
 prev_sheet_name = prev_date.strftime("%m_%Y")
 
@@ -59,6 +59,7 @@ NAMES_64 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung
 
 def get_prev_ton_dau():
     try:
+        # Đọc sheet tháng trước để lấy cột 'Quỹ CA Tổng'
         df_prev = conn.read(worksheet=prev_sheet_name, ttl=0)
         if df_prev is not None:
             return df_prev.set_index('Họ và Tên')['Quỹ CA Tổng'].to_dict()
@@ -72,6 +73,7 @@ if 'db' not in st.session_state:
             st.session_state.db = df_load
         else: raise Exception
     except:
+        # NẾU LÀ THÁNG MỚI: Tự động lấy tồn từ Quỹ CA Tổng của tháng trước
         prev_map = get_prev_ton_dau()
         st.session_state.db = pd.DataFrame({
             'STT': range(1, 66), 'Họ và Tên': NAMES_64, 'Công ty': 'PVDWS', 
@@ -85,7 +87,7 @@ DATE_COLS = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(
 for col in DATE_COLS:
     if col not in st.session_state.db.columns: st.session_state.db[col] = ""
 
-# --- 5. LOGIC TÍNH CA (GIỮ NGUYÊN YÊU CẦU LỊCH SỬ) ---
+# --- 5. LOGIC TÍNH CA ---
 def calculate_pvd_logic(df):
     hols = [date(2026,1,1), date(2026,4,30), date(2026,5,1), date(2026,9,2),
             date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19)]
@@ -97,18 +99,14 @@ def calculate_pvd_logic(df):
             if not v or v == "NAN": continue
             try:
                 dt = date(curr_year, curr_month, int(col[:2]))
-                is_we = dt.weekday() >= 5 # Thứ 7, CN
-                is_ho = dt in hols         # Lễ Tết
-                
-                # CỘNG CA KHI ĐI BIỂN
+                is_we = dt.weekday() >= 5
+                is_ho = dt in hols
                 if any(g.upper() in v for g in GIANS):
                     if is_ho: accrued += 2.0
                     elif is_we: accrued += 1.0
                     else: accrued += 0.5
-                # TRỪ CA (CHỈ TRỪ NGÀY THƯỜNG VÀ KHÔNG LỄ)
                 elif v == "CA":
                     if not is_we and not is_ho: accrued -= 1.0
-                # CÁC TRƯỜNG HỢP KHÁC: WS, NP, ỐM -> KHÔNG TRỪ
             except: continue
         return accrued
 
@@ -118,7 +116,7 @@ def calculate_pvd_logic(df):
 
 st.session_state.db = calculate_pvd_logic(st.session_state.db)
 
-# --- 6. GIAO DIỆN CHÍNH ---
+# --- 6. GIAO DIỆN ---
 t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ 12 THÁNG"])
 
 with t1:
@@ -126,18 +124,16 @@ with t1:
     with bc1:
         if st.button("📤 LƯU CLOUD", type="primary", use_container_width=True):
             try:
-                # Sửa lỗi API: Sử dụng hàm update trực tiếp và bắt lỗi chi tiết
                 conn.update(worksheet=sheet_name, data=st.session_state.db)
                 st.success("Đã lưu thành công!")
-            except Exception as e:
-                st.error("Lỗi kết nối Google Sheets. Vui lòng kiểm tra quyền truy cập của Service Account.")
+            except Exception:
+                st.error("Lỗi kết nối. Vui lòng kiểm tra quyền chia sẻ Sheet.")
 
     with bc2:
         buf = io.BytesIO()
         st.session_state.db.to_excel(buf, index=False)
         st.download_button("📥 XUẤT EXCEL", buf, f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
-    # CẬP NHẬT NHANH
     with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH"):
         c1, c2 = st.columns([2, 1])
         f_staff = c1.multiselect("Nhân sự:", NAMES_64)
@@ -161,7 +157,6 @@ with t1:
                                 if col_n in st.session_state.db.columns: st.session_state.db.at[idx, col_n] = f_val
                 st.rerun()
 
-    # Bảng Editor
     config = {
         "STT": st.column_config.NumberColumn(disabled=True),
         "Họ và Tên": st.column_config.TextColumn(disabled=True),
@@ -194,11 +189,8 @@ with t2:
             except: continue
     if recs:
         pdf = pd.DataFrame(recs)
-        
         fig = px.bar(pdf, x="Tháng", y="Ngày", color="Loại", barmode="stack",
                      color_discrete_map={"Đi Biển": "#00CC96", "CA": "#EF553B", "WS": "#FECB52", "NP": "#636EFA", "ỐM": "#AB63FA"},
                      category_orders={"Tháng": [f"T{i}" for i in range(1, 13)]})
         fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="white")
         st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("Chưa có dữ liệu hoạt động năm nay của nhân sự này.")

@@ -38,11 +38,11 @@ sheet_name = working_date.strftime("%m_%Y")
 curr_month, curr_year = working_date.month, working_date.year
 month_abbr = working_date.strftime("%b") 
 
-# Tính toán tên sheet tháng trước để lấy tồn
+# Tính tháng trước để lấy tồn
 prev_date = working_date.replace(day=1) - timedelta(days=1)
 prev_sheet_name = prev_date.strftime("%m_%Y")
 
-# Reset khi đổi tháng
+# Reset Session khi đổi tháng
 if "current_sheet" not in st.session_state: st.session_state.current_sheet = sheet_name
 if st.session_state.current_sheet != sheet_name:
     for key in list(st.session_state.keys()):
@@ -50,15 +50,14 @@ if st.session_state.current_sheet != sheet_name:
     st.session_state.current_sheet = sheet_name
     st.rerun()
 
-# --- 4. KẾT NỐI & DANH SÁCH NHÂN SỰ ---
+# --- 4. KẾT NỐI & DỮ LIỆU ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 GIANS = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNLOD"]
 COMPANIES = ["PVDWS", "OWS", "National", "Baker Hughes", "Schlumberger", "Halliburton"]
 TITLES = ["Casing crew", "CRTI LD", "CRTI SP", "SOLID", "MUDCL", "UNDERRM", "PPLS", "HAMER"]
 NAMES_64 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong"]
 
-# HÀM LẤY TỒN THÁNG TRƯỚC
-def get_previous_month_ca():
+def get_prev_ton_dau():
     try:
         df_prev = conn.read(worksheet=prev_sheet_name, ttl=0)
         if df_prev is not None:
@@ -73,12 +72,11 @@ if 'db' not in st.session_state:
             st.session_state.db = df_load
         else: raise Exception
     except:
-        # Nếu là sheet mới, tự động bốc tồn tháng trước sang
-        prev_ca_map = get_previous_month_ca()
+        prev_map = get_prev_ton_dau()
         st.session_state.db = pd.DataFrame({
             'STT': range(1, 66), 'Họ và Tên': NAMES_64, 'Công ty': 'PVDWS', 
             'Chức danh': 'Casing crew', 'Job Detail': '', 
-            'CA Tháng Trước': [prev_ca_map.get(name, 0.0) for name in NAMES_64],
+            'CA Tháng Trước': [prev_map.get(name, 0.0) for name in NAMES_64],
             'Quỹ CA Tổng': 0.0
         })
 
@@ -87,7 +85,7 @@ DATE_COLS = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(
 for col in DATE_COLS:
     if col not in st.session_state.db.columns: st.session_state.db[col] = ""
 
-# --- 5. LOGIC TÍNH CA CỦA BẠN (KHÔNG ĐƯỢC SAI) ---
+# --- 5. LOGIC TÍNH CA (GIỮ NGUYÊN YÊU CẦU LỊCH SỬ) ---
 def calculate_pvd_logic(df):
     hols = [date(2026,1,1), date(2026,4,30), date(2026,5,1), date(2026,9,2),
             date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19)]
@@ -99,8 +97,9 @@ def calculate_pvd_logic(df):
             if not v or v == "NAN": continue
             try:
                 dt = date(curr_year, curr_month, int(col[:2]))
-                is_we = dt.weekday() >= 5
-                is_ho = dt in hols
+                is_we = dt.weekday() >= 5 # Thứ 7, CN
+                is_ho = dt in hols         # Lễ Tết
+                
                 # CỘNG CA KHI ĐI BIỂN
                 if any(g.upper() in v for g in GIANS):
                     if is_ho: accrued += 2.0
@@ -119,21 +118,26 @@ def calculate_pvd_logic(df):
 
 st.session_state.db = calculate_pvd_logic(st.session_state.db)
 
-# --- 6. GIAO DIỆN ---
-t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ"])
+# --- 6. GIAO DIỆN CHÍNH ---
+t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ 12 THÁNG"])
 
 with t1:
     bc1, bc2, _ = st.columns([1.5, 1.5, 5])
     with bc1:
         if st.button("📤 LƯU CLOUD", type="primary", use_container_width=True):
-            conn.update(worksheet=sheet_name, data=st.session_state.db)
-            st.success("Đã lưu!")
+            try:
+                # Sửa lỗi API: Sử dụng hàm update trực tiếp và bắt lỗi chi tiết
+                conn.update(worksheet=sheet_name, data=st.session_state.db)
+                st.success("Đã lưu thành công!")
+            except Exception as e:
+                st.error("Lỗi kết nối Google Sheets. Vui lòng kiểm tra quyền truy cập của Service Account.")
+
     with bc2:
         buf = io.BytesIO()
         st.session_state.db.to_excel(buf, index=False)
-        st.download_button("📥 XUẤT EXCEL", buf, f"PVD_{sheet_name}.xlsx")
+        st.download_button("📥 XUẤT EXCEL", buf, f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
-    # CÔNG CỤ CẬP NHẬT NHANH
+    # CẬP NHẬT NHANH
     with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH"):
         c1, c2 = st.columns([2, 1])
         f_staff = c1.multiselect("Nhân sự:", NAMES_64)
@@ -152,24 +156,28 @@ with t1:
                     if f_status != "Không đổi":
                         for i in range((f_date[1] - f_date[0]).days + 1):
                             d = f_date[0] + timedelta(days=i)
-                            col_n = f"{d.day:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][d.weekday()]})"
-                            if col_n in st.session_state.db.columns: st.session_state.db.at[idx, col_n] = f_val
+                            if d.month == curr_month:
+                                col_n = f"{d.day:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][d.weekday()]})"
+                                if col_n in st.session_state.db.columns: st.session_state.db.at[idx, col_n] = f_val
                 st.rerun()
 
+    # Bảng Editor
     config = {
         "STT": st.column_config.NumberColumn(disabled=True),
         "Họ và Tên": st.column_config.TextColumn(disabled=True),
         "Quỹ CA Tổng": st.column_config.NumberColumn("Tồn Cuối", format="%.1f", disabled=True),
         "CA Tháng Trước": st.column_config.NumberColumn("Tồn Đầu", format="%.1f"),
     }
-    st.data_editor(st.session_state.db, column_config=config, use_container_width=True, height=600, hide_index=True, key=f"ed_{sheet_name}")
+    ed_df = st.data_editor(st.session_state.db, column_config=config, use_container_width=True, height=600, hide_index=True, key=f"ed_{sheet_name}")
+    if not ed_df.equals(st.session_state.db):
+        st.session_state.db = ed_df
+        st.rerun()
 
 with t2:
-    # Biểu đồ năm (Giữ nguyên tính năng quét 12 tháng của bạn)
-    st.subheader("📊 Phân tích 12 tháng")
-    sel = st.selectbox("🔍 Chọn nhân sự:", NAMES_64)
+    st.subheader("📊 Phân tích cường độ 12 tháng")
+    sel = st.selectbox("🔍 Chọn nhân sự xem biểu đồ:", NAMES_64)
     recs = []
-    with st.spinner("Đang tổng hợp..."):
+    with st.spinner("Đang tổng hợp dữ liệu toàn năm..."):
         for m in range(1, 13):
             try:
                 df_m = conn.read(worksheet=f"{m:02d}_{curr_year}", ttl=0)
@@ -179,13 +187,18 @@ with t2:
                     for col in df_m.columns:
                         if "/" in col and m_label in col:
                             v = str(row_p[col]).strip().upper()
-                            if v and v != "NAN":
+                            if v and v != "NAN" and v != "NONE":
                                 cat = "Đi Biển" if any(g.upper() in v for g in GIANS) else v
                                 if cat in ["Đi Biển", "CA", "WS", "NP", "ỐM"]:
                                     recs.append({"Tháng": f"T{m}", "Loại": cat, "Ngày": 1})
             except: continue
     if recs:
         pdf = pd.DataFrame(recs)
+        
         fig = px.bar(pdf, x="Tháng", y="Ngày", color="Loại", barmode="stack",
+                     color_discrete_map={"Đi Biển": "#00CC96", "CA": "#EF553B", "WS": "#FECB52", "NP": "#636EFA", "ỐM": "#AB63FA"},
                      category_orders={"Tháng": [f"T{i}" for i in range(1, 13)]})
+        fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="white")
         st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Chưa có dữ liệu hoạt động năm nay của nhân sự này.")

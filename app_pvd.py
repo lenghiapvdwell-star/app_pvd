@@ -39,8 +39,8 @@ st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_a
 
 _, c_mid_date, _ = st.columns([3.5, 2, 3.5])
 with c_mid_date:
-    # Quan trọng: Thêm key cho date_input để theo dõi thay đổi
-    working_date = st.date_input("📅 CHỌN THÁNG LÀM VIỆC:", value=date.today(), key="month_selector")
+    # Thêm key để theo dõi sự thay đổi tháng
+    working_date = st.date_input("📅 CHỌN THÁNG LÀM VIỆC:", value=date.today(), key="main_date_input")
 
 st.write("---")
 
@@ -50,18 +50,20 @@ curr_month, curr_year = working_date.month, working_date.year
 month_abbr = working_date.strftime("%b") 
 sheet_name = working_date.strftime("%m_%Y") 
 
-# --- FIX LỖI CHUYỂN THÁNG: Xóa cache editor khi đổi tháng ---
-if "last_sheet" not in st.session_state:
-    st.session_state.last_sheet = sheet_name
+# --- CHIẾN THUẬT FIX LỖI: RESET SESSION KHI ĐỔI THÁNG ---
+if "current_active_month" not in st.session_state:
+    st.session_state.current_active_month = sheet_name
 
-if st.session_state.last_sheet != sheet_name:
-    # Nếu đổi tháng, xóa key của data_editor cũ để tránh xung đột
-    if f"ed_{st.session_state.last_sheet}" in st.session_state:
-        del st.session_state[f"ed_{st.session_state.last_sheet}"]
-    st.session_state.last_sheet = sheet_name
+if st.session_state.current_active_month != sheet_name:
+    # Nếu phát hiện đổi tháng, xóa sạch các state liên quan đến editor cũ
+    keys_to_delete = [k for k in st.session_state.keys() if k.startswith("ed_")]
+    for k in keys_to_delete:
+        del st.session_state[k]
+    st.session_state.current_active_month = sheet_name
+    # Buộc app phải load lại từ đầu với tháng mới
     st.rerun()
 
-# Khởi tạo danh mục
+# Khởi tạo danh mục mặc định
 if 'gians' not in st.session_state:
     st.session_state.gians = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9" , "THOR", "SDE" , "GUNNLOD"]
 if 'companies' not in st.session_state:
@@ -92,9 +94,8 @@ def get_prev_ca():
         return pd.to_numeric(series, errors='coerce').fillna(0.0).to_dict()
     except: return {}
 
-# Tải dữ liệu
-if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sheet_name:
-    st.session_state.active_sheet = sheet_name
+# Quản lý việc tải dữ liệu vào session_state
+if 'db' not in st.session_state or st.session_state.get('loaded_sheet') != sheet_name:
     prev_ca_data = get_prev_ca()
     try:
         df_load = conn.read(worksheet=sheet_name, ttl=0)
@@ -105,10 +106,10 @@ if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sh
         df_init = pd.DataFrame({'STT': range(1, 66), 'Họ và Tên': NAMES_64, 'Công ty': 'PVDWS', 'Chức danh': 'Casing crew', 'Job Detail': '', 'CA Tháng Trước': 0.0})
         st.session_state.db = df_init
     
-    # Cập nhật CA tháng trước luôn luôn mới nhất
     st.session_state.db['CA Tháng Trước'] = st.session_state.db['Họ và Tên'].map(prev_ca_data).fillna(0.0)
+    st.session_state.loaded_sheet = sheet_name
 
-# Thiết lập cột ngày
+# Tính toán các cột ngày
 num_days = calendar.monthrange(curr_year, curr_month)[1]
 DATE_COLS = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(curr_year,curr_month,d).weekday()]})" for d in range(1, num_days+1)]
 for c in DATE_COLS:
@@ -141,17 +142,17 @@ def apply_calculation(df):
     return df
 
 st.session_state.db = apply_calculation(st.session_state.db)
+
+# Sắp xếp lại cột để loại bỏ cột thừa của tháng cũ
 main_cols = ['STT', 'Họ và Tên', 'Quỹ CA Tổng', 'CA Tháng Trước', 'Công ty', 'Chức danh', 'Job Detail']
-# Lọc bỏ các cột ngày cũ của tháng khác trước khi reindex
-current_all_cols = main_cols + DATE_COLS
-st.session_state.db = st.session_state.db.reindex(columns=current_all_cols)
+st.session_state.db = st.session_state.db.reindex(columns=main_cols + DATE_COLS)
 
 # --- 4. NÚT CHỨC NĂNG ---
 bc1, bc2, _ = st.columns([1.5, 1.5, 5])
 with bc1:
     if st.button("📤 LƯU CLOUD", use_container_width=True, type="primary"):
         conn.update(worksheet=sheet_name, data=st.session_state.db)
-        st.success(f"Đã lưu dữ liệu {sheet_name}!")
+        st.success(f"Đã lưu bảng {sheet_name}")
 with bc2:
     buffer = io.BytesIO()
     st.session_state.db.to_excel(buffer, index=False)
@@ -161,10 +162,12 @@ with bc2:
 t1, t2, t3 = st.tabs(["🚀 ĐIỀU ĐỘNG", "🏗️ DANH MỤC", "📊 THỐNG KÊ"])
 
 with t1:
+    # --- CÔNG CỤ CẬP NHẬT NHANH ---
     with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH"):
         r1_c1, r1_c2 = st.columns([2, 1.2])
         f_staff = r1_c1.multiselect("Nhân sự:", st.session_state.db['Họ và Tên'].tolist())
-        f_date = r1_c2.date_input("Khoảng thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, num_days)))
+        # Giới hạn ngày chọn trong tháng hiện tại để tránh lỗi
+        f_date = r1_c2.date_input("Khoảng ngày:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, num_days)))
         
         r2_c1, r2_c2, r2_c3, r2_c4 = st.columns([1, 1, 1, 1])
         f_status = r2_c1.selectbox("Trạng thái:", ["Không đổi", "Đi Biển", "CA", "NP", "Ốm", "WS"])
@@ -172,7 +175,7 @@ with t1:
         f_co = r2_c3.selectbox("Công ty:", ["Không đổi"] + st.session_state.companies)
         f_ti = r2_c4.selectbox("Chức danh:", ["Không đổi"] + st.session_state.titles)
         
-        if st.button("✅ ÁP DỤNG"):
+        if st.button("✅ XÁC NHẬN"):
             if f_staff and isinstance(f_date, tuple) and len(f_date) == 2:
                 s_d, e_d = f_date
                 if f_co != "Không đổi":
@@ -188,35 +191,36 @@ with t1:
                                 st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(f_staff), col] = f_val
                 st.rerun()
 
-    # --- XỬ LÝ DỮ LIỆU AN TOÀN TRƯỚC KHI HIỂN THỊ ---
-    df_display = st.session_state.db.copy()
-    df_display['Công ty'] = df_display['Công ty'].fillna("PVDWS").astype(str)
-    df_display['Chức danh'] = df_display['Chức danh'].fillna("Casing crew").astype(str)
+    # --- CHUẨN BỊ DỮ LIỆU HIỂN THỊ ---
+    df_editor = st.session_state.db.copy()
+    # Chống lỗi kiểu dữ liệu cho Selectbox
+    df_editor['Công ty'] = df_editor['Công ty'].fillna("PVDWS").astype(str)
+    df_editor['Chức danh'] = df_editor['Chức danh'].fillna("Casing crew").astype(str)
     
-    safe_cos = sorted(list(set(st.session_state.companies + df_display['Công ty'].unique().tolist())))
-    safe_tis = sorted(list(set(st.session_state.titles + df_display['Chức danh'].unique().tolist())))
+    s_cos = sorted(list(set(st.session_state.companies + df_editor['Công ty'].unique().tolist())))
+    s_tis = sorted(list(set(st.session_state.titles + df_editor['Chức danh'].unique().tolist())))
 
     config = {
         "STT": st.column_config.NumberColumn("STT", width=40, disabled=True, pinned=True),
         "Họ và Tên": st.column_config.TextColumn("Họ và Tên", width=180, pinned=True),
         "Quỹ CA Tổng": st.column_config.NumberColumn("Tồn Cuối", width=85, format="%.1f", disabled=True, pinned=True),
         "CA Tháng Trước": st.column_config.NumberColumn("Tồn Đầu", width=80, format="%.1f", pinned=True),
-        "Công ty": st.column_config.SelectboxColumn("Công ty", width=120, options=safe_cos, pinned=True),
-        "Chức danh": st.column_config.SelectboxColumn("Chức danh", width=120, options=safe_tis, pinned=True),
+        "Công ty": st.column_config.SelectboxColumn("Công ty", width=120, options=s_cos, pinned=True),
+        "Chức danh": st.column_config.SelectboxColumn("Chức danh", width=120, options=s_tis, pinned=True),
     }
     for col in DATE_COLS: config[col] = st.column_config.TextColumn(col, width=75)
 
-    # Sử dụng key động dựa trên sheet_name để Streamlit buộc phải tạo mới widget khi đổi tháng
+    # Dùng key động ed_ + sheet_name để Streamlit không dùng lại cache tháng cũ
     edited_df = st.data_editor(
-        df_display, 
-        column_config=config, 
-        use_container_width=True, 
-        height=600, 
-        hide_index=True, 
+        df_editor,
+        column_config=config,
+        use_container_width=True,
+        height=600,
+        hide_index=True,
         key=f"ed_{sheet_name}" 
     )
     
-    if not edited_df.equals(df_display):
+    if not edited_df.equals(df_editor):
         st.session_state.db = edited_df
         st.rerun()
 
@@ -225,29 +229,29 @@ with t2:
     ca, cb, cc = st.columns(3)
     with ca:
         st.write("**🏗️ Giàn**")
-        ng = st.text_input("Thêm giàn:", key="add_g")
-        if st.button("➕ Thêm", key="btn_g"):
+        ng = st.text_input("Thêm giàn mới:", key="in_g")
+        if st.button("➕ Thêm Giàn"):
             if ng and ng not in st.session_state.gians:
                 st.session_state.gians.append(ng)
                 st.rerun()
-        st.write(st.session_state.gians)
+        st.dataframe(st.session_state.gians)
     with cb:
         st.write("**🏢 Công ty**")
-        nc = st.text_input("Thêm công ty:", key="add_c")
-        if st.button("➕ Thêm", key="btn_c"):
+        nc = st.text_input("Thêm công ty mới:", key="in_c")
+        if st.button("➕ Thêm Công ty"):
             if nc and nc not in st.session_state.companies:
                 st.session_state.companies.append(nc)
                 st.rerun()
-        st.write(st.session_state.companies)
+        st.dataframe(st.session_state.companies)
     with cc:
         st.write("**🎖️ Chức danh**")
-        nt = st.text_input("Thêm chức danh:", key="add_t")
-        if st.button("➕ Thêm", key="btn_t"):
+        nt = st.text_input("Thêm chức danh mới:", key="in_t")
+        if st.button("➕ Thêm Chức danh"):
             if nt and nt not in st.session_state.titles:
                 st.session_state.titles.append(nt)
                 st.rerun()
-        st.write(st.session_state.titles)
+        st.dataframe(st.session_state.titles)
 
 with t3:
     st.subheader("📊 THỐNG KÊ")
-    st.info("Hệ thống tự động tính toán Quỹ CA dựa trên dữ liệu điều động.")
+    st.write("Dữ liệu được cập nhật dựa trên bảng điều động tháng hiện tại.")

@@ -24,7 +24,7 @@ st.markdown("""
     /* Tiêu đề chính TO GẤP 3 LẦN, căn giữa tuyệt đối */
     .main-title {
         color: #00f2ff; 
-        font-size: 120px; /* Tăng kích thước lên gấp khoảng 3 lần bản cũ */
+        font-size: 190px; /* Tăng kích thước lên gấp khoảng 3 lần bản cũ */
         font-weight: bold;
         text-align: center; 
         width: 100%;

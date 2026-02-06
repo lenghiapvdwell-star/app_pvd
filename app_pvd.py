@@ -21,18 +21,19 @@ st.markdown("""
         z-index: 1000;
     }
     
-    /* Tiêu đề chính căn giữa tuyệt đối, to và rõ */
+    /* Tiêu đề chính TO GẤP 3 LẦN, căn giữa tuyệt đối */
     .main-title {
         color: #00f2ff; 
-        font-size: 42px; 
+        font-size: 120px; /* Tăng kích thước lên gấp khoảng 3 lần bản cũ */
         font-weight: bold;
         text-align: center; 
         width: 100%;
-        margin-top: 10px;
-        margin-bottom: 10px;
-        text-shadow: 3px 3px 6px #000;
+        margin-top: 20px;
+        margin-bottom: 20px;
+        text-shadow: 5px 5px 10px #000;
         font-family: 'Arial Black', sans-serif;
-        letter-spacing: 1px;
+        letter-spacing: 2px;
+        line-height: 1.1;
     }
     
     /* Căn chỉnh khung chọn ngày */
@@ -48,15 +49,15 @@ st.markdown("""
 
 # --- 2. HIỂN THỊ HEADER ---
 
-# Hiển thị Logo (Dùng cột rộng hơn để không mất góc)
+# Hiển thị Logo
 c_logo, _ = st.columns([1, 4])
 with c_logo:
     if os.path.exists("logo_pvd.png"): 
-        st.image("logo_pvd.png", width=220) # Tăng width để không bị cắt
+        st.image("logo_pvd.png", width=220) 
     else: 
         st.markdown("### 🔴 PVD")
 
-# Hiển thị Tiêu đề (Nằm riêng, tự do căn giữa)
+# Hiển thị Tiêu đề TO
 st.markdown('<p class="main-title">PVD WELL SERVICES MANAGEMENT</p>', unsafe_allow_html=True)
 
 # Hiển thị Ô chọn ngày (Căn giữa)
@@ -66,7 +67,7 @@ with c_mid_date:
 
 st.write("---")
 
-# --- 3. DỮ LIỆU & KẾT NỐI ---
+# --- 3. DỮ LIỆU & KẾT NỐI (Giữ nguyên) ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 curr_month, curr_year = working_date.month, working_date.year
 month_abbr = working_date.strftime("%b") 
@@ -188,7 +189,7 @@ with t1:
     }
     for col in DATE_COLS: config[col] = st.column_config.TextColumn(col, width=75)
 
-    st.data_editor(st.session_state.db, column_config=config, use_container_width=True, height=600, hide_index=True, key=f"fixed_v10_{sheet_name}")
+    st.data_editor(st.session_state.db, column_config=config, use_container_width=True, height=600, hide_index=True, key=f"fixed_v11_{sheet_name}")
 
 with t2:
     st.subheader("🏗️ Quản lý danh sách Giàn khoan")

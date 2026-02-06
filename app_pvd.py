@@ -144,12 +144,10 @@ t1, t2, t3 = st.tabs(["🚀 ĐIỀU ĐỘNG & NHÂN SỰ", "🏗️ QUẢN LÝ D
 
 with t1:
     with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH (Trạng thái, Công ty, Chức danh)"):
-        # Dòng 1: Chọn nhân sự và Thời gian
         r1_c1, r1_c2 = st.columns([2, 1.2])
         f_staff = r1_c1.multiselect("Chọn nhân sự cần cập nhật:", st.session_state.db['Họ và Tên'].tolist())
         f_date = r1_c2.date_input("Thời gian áp dụng:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, num_days)))
         
-        # Dòng 2: Chọn Trạng thái, Công ty, Chức danh
         r2_c1, r2_c2, r2_c3, r2_c4 = st.columns([1, 1, 1, 1])
         f_status = r2_c1.selectbox("Trạng thái mới:", ["Không đổi", "Đi Biển", "CA", "NP", "Ốm", "WS"])
         f_val = r2_c2.selectbox("Chọn Giàn:", st.session_state.gians) if f_status == "Đi Biển" else f_status
@@ -159,13 +157,11 @@ with t1:
         if st.button("✅ XÁC NHẬN CẬP NHẬT", use_container_width=True):
             if f_staff and isinstance(f_date, tuple) and len(f_date) == 2:
                 s_d, e_d = f_date
-                # Cập nhật Công ty & Chức danh (nếu có chọn)
                 if f_co != "Không đổi":
                     st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(f_staff), 'Công ty'] = f_co
                 if f_ti != "Không đổi":
                     st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(f_staff), 'Chức danh'] = f_ti
                 
-                # Cập nhật trạng thái theo ngày
                 if f_status != "Không đổi":
                     for i in range((e_d - s_d).days + 1):
                         day = s_d + timedelta(days=i)
@@ -175,18 +171,27 @@ with t1:
                                 st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(f_staff), col] = f_val
                 st.rerun()
 
-    # Bảng biên tập chính
+    # --- SỬA LỖI STREAMLIT API EXCEPTION TẠI ĐÂY ---
+    # Đảm bảo dữ liệu không có Null và chuyển về String để SelectboxColumn không bị lỗi
+    st.session_state.db['Công ty'] = st.session_state.db['Công ty'].fillna("PVDWS").astype(str)
+    st.session_state.db['Chức danh'] = st.session_state.db['Chức danh'].fillna("Casing crew").astype(str)
+
+    # Gộp options mặc định và các giá trị thực tế trong data để đảm bảo không bị crash
+    safe_companies = sorted(list(set(list(st.session_state.companies) + st.session_state.db['Công ty'].unique().tolist())))
+    safe_titles = sorted(list(set(list(st.session_state.titles) + st.session_state.db['Chức danh'].unique().tolist())))
+
     config = {
         "STT": st.column_config.NumberColumn("STT", width=40, disabled=True, pinned=True),
         "Họ và Tên": st.column_config.TextColumn("Họ và Tên", width=180, pinned=True),
         "Quỹ CA Tổng": st.column_config.NumberColumn("Tồn Cuối", width=85, format="%.1f", disabled=True, pinned=True),
         "CA Tháng Trước": st.column_config.NumberColumn("Tồn Đầu", width=80, format="%.1f", pinned=True),
-        "Công ty": st.column_config.SelectboxColumn("Công ty", width=120, options=st.session_state.companies, pinned=True),
-        "Chức danh": st.column_config.SelectboxColumn("Chức danh", width=120, options=st.session_state.titles, pinned=True),
+        "Công ty": st.column_config.SelectboxColumn("Công ty", width=120, options=safe_companies, pinned=True),
+        "Chức danh": st.column_config.SelectboxColumn("Chức danh", width=120, options=safe_titles, pinned=True),
     }
     for col in DATE_COLS: config[col] = st.column_config.TextColumn(col, width=75)
 
     edited_df = st.data_editor(st.session_state.db, column_config=config, use_container_width=True, height=600, hide_index=True, key=f"ed_{sheet_name}")
+    
     if not edited_df.equals(st.session_state.db):
         st.session_state.db = edited_df
         st.rerun()
@@ -225,4 +230,3 @@ with t2:
 with t3:
     st.subheader("📊 THỐNG KÊ NHÂN SỰ")
     st.write("Dữ liệu đang được tổng hợp dựa trên bảng Điều động...")
-    # Tương lai có thể thêm biểu đồ số người đi biển/nghỉ CA tại đây

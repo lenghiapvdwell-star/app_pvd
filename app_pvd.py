@@ -13,7 +13,7 @@ st.markdown("""
     <style>
     .block-container {padding-top: 0.5rem; padding-bottom: 0rem;}
     
-    /* Logo cố định ở góc trái trên cùng */
+    /* Logo cố định ở góc trái */
     .logo-fixed {
         position: absolute;
         top: -10px;
@@ -21,26 +21,19 @@ st.markdown("""
         z-index: 1000;
     }
     
-    /* Tiêu đề chính TO GẤP 3 LẦN, căn giữa tuyệt đối */
+    /* Tiêu đề chính GẤP 2.5 LẦN, căn giữa tuyệt đối */
     .main-title {
         color: #00f2ff; 
-        font-size: 190px; /* Tăng kích thước lên gấp khoảng 3 lần bản cũ */
+        font-size: 90px; /* Điều chỉnh về mức 2.5 lần */
         font-weight: bold;
         text-align: center; 
         width: 100%;
-        margin-top: 20px;
-        margin-bottom: 20px;
-        text-shadow: 5px 5px 10px #000;
+        margin-top: 15px;
+        margin-bottom: 15px;
+        text-shadow: 4px 4px 8px #000;
         font-family: 'Arial Black', sans-serif;
-        letter-spacing: 2px;
+        letter-spacing: 1.5px;
         line-height: 1.1;
-    }
-    
-    /* Căn chỉnh khung chọn ngày */
-    .date-container {
-        display: flex;
-        justify-content: center;
-        margin-bottom: 10px;
     }
     
     .stButton>button {border-radius: 5px; height: 3em; font-weight: bold;}
@@ -57,7 +50,7 @@ with c_logo:
     else: 
         st.markdown("### 🔴 PVD")
 
-# Hiển thị Tiêu đề TO
+# Hiển thị Tiêu đề (Gấp 2.5 lần)
 st.markdown('<p class="main-title">PVD WELL SERVICES MANAGEMENT</p>', unsafe_allow_html=True)
 
 # Hiển thị Ô chọn ngày (Căn giữa)
@@ -67,7 +60,7 @@ with c_mid_date:
 
 st.write("---")
 
-# --- 3. DỮ LIỆU & KẾT NỐI (Giữ nguyên) ---
+# --- 3. DỮ LIỆU & KẾT NỐI ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 curr_month, curr_year = working_date.month, working_date.year
 month_abbr = working_date.strftime("%b") 
@@ -144,7 +137,7 @@ def apply_calculation(df):
 
 st.session_state.db = apply_calculation(st.session_state.db)
 
-# Sắp xếp cột: STT ĐẦU TIÊN
+# Sắp xếp cột: STT ĐẦU TIÊN TUYỆT ĐỐI
 main_cols = ['STT', 'Họ và Tên', 'Quỹ CA Tổng', 'CA Tháng Trước', 'Công ty', 'Chức danh', 'Job Detail']
 st.session_state.db = st.session_state.db.reindex(columns=main_cols + DATE_COLS)
 
@@ -189,7 +182,7 @@ with t1:
     }
     for col in DATE_COLS: config[col] = st.column_config.TextColumn(col, width=75)
 
-    st.data_editor(st.session_state.db, column_config=config, use_container_width=True, height=600, hide_index=True, key=f"fixed_v11_{sheet_name}")
+    st.data_editor(st.session_state.db, column_config=config, use_container_width=True, height=600, hide_index=True, key=f"final_v12_{sheet_name}")
 
 with t2:
     st.subheader("🏗️ Quản lý danh sách Giàn khoan")

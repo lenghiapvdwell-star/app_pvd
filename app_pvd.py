@@ -13,27 +13,25 @@ st.markdown("""
     <style>
     .block-container {padding-top: 0.5rem; padding-bottom: 0rem;}
     
-    /* Logo cố định ở góc trái */
-    .logo-fixed {
-        position: absolute;
-        top: -10px;
-        left: 0px;
-        z-index: 1000;
+    /* Ép tiêu đề to gấp đôi và ưu tiên hiển thị cao nhất */
+    .main-title {
+        color: #00f2ff !important; 
+        font-size: 180px !important; /* Tăng cực đại để đảm bảo độ to */
+        font-weight: bold !important;
+        text-align: center !important; 
+        width: 100% !important;
+        display: block !important;
+        margin-top: 10px !important;
+        margin-bottom: 10px !important;
+        text-shadow: 6px 6px 12px #000 !important;
+        font-family: 'Arial Black', sans-serif !important;
+        line-height: 1.0 !important;
     }
     
-    /* Tiêu đề chính GẤP 2.5 LẦN, căn giữa tuyệt đối */
-    .main-title {
-        color: #00f2ff; 
-        font-size: 90px; /* Điều chỉnh về mức 2.5 lần */
-        font-weight: bold;
-        text-align: center; 
-        width: 100%;
-        margin-top: 15px;
-        margin-bottom: 15px;
-        text-shadow: 4px 4px 8px #000;
-        font-family: 'Arial Black', sans-serif;
-        letter-spacing: 1.5px;
-        line-height: 1.1;
+    /* Logo cố định góc trái */
+    .logo-container {
+        position: relative;
+        z-index: 999;
     }
     
     .stButton>button {border-radius: 5px; height: 3em; font-weight: bold;}
@@ -42,18 +40,18 @@ st.markdown("""
 
 # --- 2. HIỂN THỊ HEADER ---
 
-# Hiển thị Logo
+# Hiển thị Logo bên trái khung
 c_logo, _ = st.columns([1, 4])
 with c_logo:
     if os.path.exists("logo_pvd.png"): 
-        st.image("logo_pvd.png", width=220) 
+        st.image("logo_pvd.png", width=250) 
     else: 
         st.markdown("### 🔴 PVD")
 
-# Hiển thị Tiêu đề (Gấp 2.5 lần)
-st.markdown('<p class="main-title">PVD WELL SERVICES MANAGEMENT</p>', unsafe_allow_html=True)
+# Hiển thị Tiêu đề SIÊU TO CĂN GIỮA
+st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
 
-# Hiển thị Ô chọn ngày (Căn giữa)
+# Hiển thị Ô chọn ngày (Dưới tiêu đề, căn giữa)
 _, c_mid_date, _ = st.columns([3.5, 2, 3.5])
 with c_mid_date:
     working_date = st.date_input("📅 CHỌN THÁNG LÀM VIỆC:", value=date.today())
@@ -137,7 +135,6 @@ def apply_calculation(df):
 
 st.session_state.db = apply_calculation(st.session_state.db)
 
-# Sắp xếp cột: STT ĐẦU TIÊN TUYỆT ĐỐI
 main_cols = ['STT', 'Họ và Tên', 'Quỹ CA Tổng', 'CA Tháng Trước', 'Công ty', 'Chức danh', 'Job Detail']
 st.session_state.db = st.session_state.db.reindex(columns=main_cols + DATE_COLS)
 
@@ -182,7 +179,7 @@ with t1:
     }
     for col in DATE_COLS: config[col] = st.column_config.TextColumn(col, width=75)
 
-    st.data_editor(st.session_state.db, column_config=config, use_container_width=True, height=600, hide_index=True, key=f"final_v12_{sheet_name}")
+    st.data_editor(st.session_state.db, column_config=config, use_container_width=True, height=600, hide_index=True, key=f"ultra_large_v1")
 
 with t2:
     st.subheader("🏗️ Quản lý danh sách Giàn khoan")

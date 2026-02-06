@@ -14,7 +14,7 @@ st.markdown("""
     .block-container {padding-top: 0.5rem; padding-bottom: 0rem;}
     .main-title {
         color: #00f2ff !important; 
-        font-size: 90px !important; 
+        font-size: 80px !important; 
         font-weight: bold !important;
         text-align: center !important; 
         width: 100% !important;
@@ -49,8 +49,15 @@ curr_month, curr_year = working_date.month, working_date.year
 month_abbr = working_date.strftime("%b") 
 sheet_name = working_date.strftime("%m_%Y") 
 
+# Khởi tạo danh sách nếu chưa có trong session_state
 if 'gians' not in st.session_state:
     st.session_state.gians = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9" , "THOR", "SDE" , "GUNNLOD"]
+
+if 'companies' not in st.session_state:
+    st.session_state.companies = ["PVDWS", "OWS", "National", "Baker Hughes", "Schlumberger", "Halliburton"]
+
+if 'titles' not in st.session_state:
+    st.session_state.titles = ["Casing crew", "CRTI LD", "CRTI SP", "SOLID", "MUDCL", "UNDERRM", "PPLS", "HAMER"]
 
 NAMES_64 = [
     "Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", 
@@ -66,7 +73,6 @@ NAMES_64 = [
     "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong"
 ]
 
-# Hàm lấy tồn cuối tháng trước làm tồn đầu tháng này
 def get_prev_ca():
     prev_date = date(curr_year, curr_month, 1) - timedelta(days=1)
     prev_sheet = prev_date.strftime("%m_%Y")
@@ -76,7 +82,6 @@ def get_prev_ca():
         return pd.to_numeric(series, errors='coerce').fillna(0.0).to_dict()
     except: return {}
 
-# Khởi tạo hoặc load dữ liệu
 if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sheet_name:
     st.session_state.active_sheet = sheet_name
     prev_ca_data = get_prev_ca()
@@ -87,7 +92,7 @@ if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sh
             st.session_state.db['CA Tháng Trước'] = st.session_state.db['Họ và Tên'].map(prev_ca_data).fillna(0.0)
         else: raise Exception
     except:
-        df_init = pd.DataFrame({'STT': range(1, 66), 'Họ và Tên': NAMES_64, 'Công ty': 'PVDWS', 'Chức danh': 'Casing Crew', 'Job Detail': '', 'CA Tháng Trước': 0.0})
+        df_init = pd.DataFrame({'STT': range(1, 66), 'Họ và Tên': NAMES_64, 'Công ty': 'PVDWS', 'Chức danh': 'Casing crew', 'Job Detail': '', 'CA Tháng Trước': 0.0})
         df_init['CA Tháng Trước'] = df_init['Họ và Tên'].map(prev_ca_data).fillna(0.0)
         st.session_state.db = df_init
 
@@ -96,9 +101,7 @@ DATE_COLS = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(
 for c in DATE_COLS:
     if c not in st.session_state.db.columns: st.session_state.db[c] = ""
 
-# --- LOGIC TÍNH TOÁN CA THEO QUY ƯỚC MỚI ---
 def apply_calculation(df):
-    # Danh sách ngày lễ 2026
     holidays = [date(curr_year, 1, 1), date(curr_year, 4, 30), date(curr_year, 5, 1), date(curr_year, 9, 2)]
     if curr_year == 2026: holidays += [date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19)]
     
@@ -107,25 +110,13 @@ def apply_calculation(df):
         for col in DATE_COLS:
             val = str(row.get(col, "")).strip()
             if not val or val.lower() in ["nan", ""]: continue
-            
-            d = int(col[:2])
-            dt = date(curr_year, curr_month, d)
-            is_holiday = dt in holidays
-            is_weekend = dt.weekday() >= 5 # T7, CN
-            
-            # 1. Nếu đi biển (có tên giàn trong ô)
+            dt = date(curr_year, curr_month, int(col[:2]))
             if val in st.session_state.gians:
-                if is_holiday: total_delta += 2.0
-                elif is_weekend: total_delta += 1.0
+                if dt in holidays: total_delta += 2.0
+                elif dt.weekday() >= 5: total_delta += 1.0
                 else: total_delta += 0.5
-            
-            # 2. Nếu nghỉ CA
             elif val.upper() == "CA":
-                # Chỉ trừ nếu là ngày thường và không phải lễ
-                if not is_holiday and not is_weekend:
-                    total_delta -= 1.0
-                # Nếu rơi vào T7, CN, Lễ: Giữ nguyên (không cộng không trừ)
-        
+                if dt not in holidays and dt.weekday() < 5: total_delta -= 1.0
         return total_delta
 
     df['CA Tháng Trước'] = pd.to_numeric(df['CA Tháng Trước'], errors='coerce').fillna(0.0).astype(float)
@@ -142,7 +133,6 @@ st.session_state.db = st.session_state.db.reindex(columns=main_cols + DATE_COLS)
 bc1, bc2, _ = st.columns([1.5, 1.5, 5])
 with bc1:
     if st.button("📤 LƯU CLOUD", use_container_width=True, type="primary"):
-        # Khi lưu sẽ đẩy toàn bộ session_state.db lên Google Sheet
         conn.update(worksheet=sheet_name, data=st.session_state.db)
         st.success("Đã đồng bộ dữ liệu lên Cloud!")
 with bc2:
@@ -151,7 +141,7 @@ with bc2:
     st.download_button("📥 XUẤT EXCEL", buffer, file_name=f"PVD_WS_{sheet_name}.xlsx", use_container_width=True)
 
 # --- 5. TABS ---
-t1, t2, t3 = st.tabs(["🚀 ĐIỀU ĐỘNG", "🏗️ GIÀN KHOAN", "👤 NHÂN VIÊN"])
+t1, t2, t3, t4, t5 = st.tabs(["🚀 ĐIỀU ĐỘNG", "🏗️ GIÀN KHOAN", "🏢 CÔNG TY", "🎖️ CHỨC DANH", "👤 NHÂN VIÊN"])
 
 with t1:
     with st.expander("🛠️ Công cụ cập nhật nhanh"):
@@ -169,36 +159,56 @@ with t1:
                     if day.month == curr_month:
                         col = f"{day.day:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][day.weekday()]})"
                         if col in st.session_state.db.columns:
-                            # Cập nhật trực tiếp vào session_state (chưa lưu cloud)
                             st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(f_staff), col] = f_val
                 st.rerun()
 
+    # Cấu hình bảng biên tập (Thêm Dropdown cho Công ty và Chức danh)
     config = {
         "STT": st.column_config.NumberColumn("STT", width=40, disabled=True, pinned=True),
         "Họ và Tên": st.column_config.TextColumn("Họ và Tên", width=180, pinned=True),
         "Quỹ CA Tổng": st.column_config.NumberColumn("Tồn Cuối", width=85, format="%.1f", disabled=True, pinned=True),
         "CA Tháng Trước": st.column_config.NumberColumn("Tồn Đầu", width=80, format="%.1f", pinned=True),
+        "Công ty": st.column_config.SelectboxColumn("Công ty", width=120, options=st.session_state.companies, pinned=True),
+        "Chức danh": st.column_config.SelectboxColumn("Chức danh", width=120, options=st.session_state.titles, pinned=True),
     }
     for col in DATE_COLS: config[col] = st.column_config.TextColumn(col, width=75)
 
-    # Hiển thị bảng và cho phép chỉnh sửa tay trực tiếp
     edited_df = st.data_editor(st.session_state.db, column_config=config, use_container_width=True, height=600, hide_index=True, key=f"editor_{sheet_name}")
     
-    # Nếu người dùng sửa tay trên bảng, cập nhật vào session_state
     if not edited_df.equals(st.session_state.db):
         st.session_state.db = edited_df
         st.rerun()
 
 with t2:
-    st.subheader("🏗️ Quản lý danh sách Giàn khoan")
+    st.subheader("🏗️ Quản lý Giàn khoan")
     st.dataframe(pd.DataFrame({"Tên Giàn": st.session_state.gians}), use_container_width=True)
     cg1, cg2 = st.columns([3, 1])
     new_g = cg1.text_input("Thêm giàn mới:")
-    if cg2.button("➕ Thêm"):
+    if cg2.button("➕ Thêm Giàn"):
         if new_g and new_g not in st.session_state.gians:
             st.session_state.gians.append(new_g)
             st.rerun()
 
 with t3:
+    st.subheader("🏢 Quản lý Đối tác/Công ty")
+    st.dataframe(pd.DataFrame({"Tên Công ty": st.session_state.companies}), use_container_width=True)
+    cc1, cc2 = st.columns([3, 1])
+    new_c = cc1.text_input("Thêm công ty mới:")
+    if cc2.button("➕ Thêm Công ty"):
+        if new_c and new_c not in st.session_state.companies:
+            st.session_state.companies.append(new_c)
+            st.rerun()
+
+with t4:
+    st.subheader("🎖️ Quản lý Chức danh")
+    st.dataframe(pd.DataFrame({"Chức danh": st.session_state.titles}), use_container_width=True)
+    ct1, ct2 = st.columns([3, 1])
+    new_t = ct1.text_input("Thêm chức danh mới:")
+    if ct2.button("➕ Thêm Chức danh"):
+        if new_t and new_t not in st.session_state.titles:
+            st.session_state.titles.append(new_t)
+            st.rerun()
+
+with t5:
     st.subheader("👤 Nhân sự PVDWS")
     st.dataframe(st.session_state.db[['STT', 'Họ và Tên', 'Công ty', 'Chức danh']], use_container_width=True, hide_index=True)

@@ -16,7 +16,7 @@ st.markdown("""
     /* Ép tiêu đề to gấp đôi và ưu tiên hiển thị cao nhất */
     .main-title {
         color: #00f2ff !important; 
-        font-size: 110px !important; /* Tăng cực đại để đảm bảo độ to */
+        font-size: 99px !important; /* Tăng cực đại để đảm bảo độ to */
         font-weight: bold !important;
         text-align: center !important; 
         width: 100% !important;

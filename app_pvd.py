@@ -166,7 +166,7 @@ with t1:
         "STT": st.column_config.NumberColumn(disabled=True),
         "Họ và Tên": st.column_config.TextColumn(disabled=True),
         "Quỹ CA Tổng": st.column_config.NumberColumn("Tồn Cuối", format="%.1f", disabled=True),
-        "CA Tháng Trước": st.column_config.NumberColumn("Tồn Đầu", format="%.1f"),
+        "CA Tháng Trước": st.column_config.NumberColumn("Tổng ca", format="%.1f"),
     }
     ed_df = st.data_editor(st.session_state.db, column_config=config, use_container_width=True, height=600, hide_index=True, key=f"ed_{sheet_name}")
     if not ed_df.equals(st.session_state.db):

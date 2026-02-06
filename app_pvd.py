@@ -4,7 +4,6 @@ from datetime import datetime, date, timedelta
 import calendar
 from streamlit_gsheets import GSheetsConnection
 import io
-import os
 import plotly.express as px
 
 # --- 1. CẤU HÌNH ---
@@ -14,18 +13,22 @@ st.markdown("""
     <style>
     .block-container {padding-top: 0.5rem; padding-bottom: 0rem;}
     .main-title {
-        color: #00f2ff !important; font-size: 50px !important; font-weight: bold !important;
+        color: #00f2ff !important; font-size: 45px !important; font-weight: bold !important;
         text-align: center !important; text-shadow: 3px 3px 6px #000 !important;
         font-family: 'Arial Black', sans-serif !important;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. HEADER ---
+# --- 2. HEADER (LOGO GITHUB & TITLE) ---
 c_logo, _ = st.columns([1, 4])
 with c_logo:
-    if os.path.exists("logo_pvd.png"): st.image("logo_pvd.png", width=220)
-    else: st.markdown("### 🔴 PVD WELL")
+    # THAY URL DƯỚI ĐÂY BẰNG ĐƯỜNG DẪN ẢNH TRÊN GITHUB CỦA BẠN
+    logo_url = "https://raw.githubusercontent.com/username/repo/main/logo_pvd.png"
+    try:
+        st.image(logo_url, width=200)
+    except:
+        st.markdown("### 🔴 PVD WELL")
 
 st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
 
@@ -38,11 +41,9 @@ sheet_name = working_date.strftime("%m_%Y")
 curr_month, curr_year = working_date.month, working_date.year
 month_abbr = working_date.strftime("%b") 
 
-# Tính tháng trước để lấy tồn chính xác
 prev_date = working_date.replace(day=1) - timedelta(days=1)
 prev_sheet_name = prev_date.strftime("%m_%Y")
 
-# Reset Session khi đổi tháng
 if "current_sheet" not in st.session_state: st.session_state.current_sheet = sheet_name
 if st.session_state.current_sheet != sheet_name:
     for key in list(st.session_state.keys()):
@@ -59,7 +60,6 @@ NAMES_64 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung
 
 def get_prev_ton_dau():
     try:
-        # Đọc sheet tháng trước để lấy cột 'Quỹ CA Tổng'
         df_prev = conn.read(worksheet=prev_sheet_name, ttl=0)
         if df_prev is not None:
             return df_prev.set_index('Họ và Tên')['Quỹ CA Tổng'].to_dict()
@@ -73,7 +73,6 @@ if 'db' not in st.session_state:
             st.session_state.db = df_load
         else: raise Exception
     except:
-        # NẾU LÀ THÁNG MỚI: Tự động lấy tồn từ Quỹ CA Tổng của tháng trước
         prev_map = get_prev_ton_dau()
         st.session_state.db = pd.DataFrame({
             'STT': range(1, 66), 'Họ và Tên': NAMES_64, 'Công ty': 'PVDWS', 
@@ -116,8 +115,20 @@ def calculate_pvd_logic(df):
 
 st.session_state.db = calculate_pvd_logic(st.session_state.db)
 
-# --- 6. GIAO DIỆN ---
-t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ 12 THÁNG"])
+# --- 6. TỐI ƯU BIỂU ĐỒ (DÙNG CACHE) ---
+@st.cache_data(ttl=600) # Lưu bộ nhớ đệm 10 phút
+def load_year_data(year):
+    all_data = {}
+    for m in range(1, 13):
+        try:
+            df_m = conn.read(worksheet=f"{m:02d}_{year}", ttl=0)
+            if df_m is not None:
+                all_data[m] = df_m
+        except: continue
+    return all_data
+
+# --- 7. GIAO DIỆN ---
+t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ TỐC ĐỘ CAO"])
 
 with t1:
     bc1, bc2, _ = st.columns([1.5, 1.5, 5])
@@ -126,8 +137,8 @@ with t1:
             try:
                 conn.update(worksheet=sheet_name, data=st.session_state.db)
                 st.success("Đã lưu thành công!")
-            except Exception:
-                st.error("Lỗi kết nối. Vui lòng kiểm tra quyền chia sẻ Sheet.")
+                st.cache_data.clear() # Xóa cache để cập nhật biểu đồ ngay
+            except Exception: st.error("Lỗi kết nối Google Sheets.")
 
     with bc2:
         buf = io.BytesIO()
@@ -169,28 +180,32 @@ with t1:
         st.rerun()
 
 with t2:
-    st.subheader("📊 Phân tích cường độ 12 tháng")
-    sel = st.selectbox("🔍 Chọn nhân sự xem biểu đồ:", NAMES_64)
+    st.subheader("📊 Phân tích cường độ 12 tháng (Dữ liệu tức thời)")
+    sel = st.selectbox("🔍 Chọn nhân sự:", NAMES_64)
+    
+    # Sử dụng cache để tải dữ liệu 1 lần
+    year_data = load_year_data(curr_year)
+    
     recs = []
-    with st.spinner("Đang tổng hợp dữ liệu toàn năm..."):
-        for m in range(1, 13):
-            try:
-                df_m = conn.read(worksheet=f"{m:02d}_{curr_year}", ttl=0)
-                if df_m is not None and sel in df_m['Họ và Tên'].values:
-                    row_p = df_m[df_m['Họ và Tên'] == sel].iloc[0]
-                    m_label = date(curr_year, m, 1).strftime("%b")
-                    for col in df_m.columns:
-                        if "/" in col and m_label in col:
-                            v = str(row_p[col]).strip().upper()
-                            if v and v != "NAN" and v != "NONE":
-                                cat = "Đi Biển" if any(g.upper() in v for g in GIANS) else v
-                                if cat in ["Đi Biển", "CA", "WS", "NP", "ỐM"]:
-                                    recs.append({"Tháng": f"T{m}", "Loại": cat, "Ngày": 1})
-            except: continue
+    if year_data:
+        for m, df_m in year_data.items():
+            if sel in df_m['Họ và Tên'].values:
+                row_p = df_m[df_m['Họ và Tên'] == sel].iloc[0]
+                m_label = date(curr_year, m, 1).strftime("%b")
+                for col in df_m.columns:
+                    if "/" in col and m_label in col:
+                        v = str(row_p[col]).strip().upper()
+                        if v and v not in ["NAN", "NONE", ""]:
+                            cat = "Đi Biển" if any(g.upper() in v for g in GIANS) else v
+                            if cat in ["Đi Biển", "CA", "WS", "NP", "ỐM"]:
+                                recs.append({"Tháng": f"T{m}", "Loại": cat, "Ngày": 1})
+    
     if recs:
         pdf = pd.DataFrame(recs)
         fig = px.bar(pdf, x="Tháng", y="Ngày", color="Loại", barmode="stack",
                      color_discrete_map={"Đi Biển": "#00CC96", "CA": "#EF553B", "WS": "#FECB52", "NP": "#636EFA", "ỐM": "#AB63FA"},
                      category_orders={"Tháng": [f"T{i}" for i in range(1, 13)]})
-        fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="white")
+        fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="white", height=500)
         st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Chưa có dữ liệu hoặc đang tải...")

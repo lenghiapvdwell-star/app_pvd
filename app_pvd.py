@@ -4,6 +4,7 @@ from datetime import datetime, date, timedelta
 import calendar
 from streamlit_gsheets import GSheetsConnection
 import io
+import os
 import plotly.express as px
 
 # --- 1. CẤU HÌNH ---
@@ -20,14 +21,14 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. HEADER (LOGO GITHUB & TITLE) ---
+# --- 2. HEADER (LOGO TỪ CÙNG THƯ MỤC GITHUB) ---
 c_logo, _ = st.columns([1, 4])
 with c_logo:
-    # THAY URL DƯỚI ĐÂY BẰNG ĐƯỜNG DẪN ẢNH TRÊN GITHUB CỦA BẠN
-    logo_url = "https://raw.githubusercontent.com/username/repo/main/logo_pvd.png"
-    try:
-        st.image(logo_url, width=200)
-    except:
+    # Nếu file logo_pvd.png nằm cùng thư mục với app_pvd.py trên Github
+    logo_path = "logo_pvd.png" 
+    if os.path.exists(logo_path):
+        st.image(logo_path, width=200)
+    else:
         st.markdown("### 🔴 PVD WELL")
 
 st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
@@ -61,7 +62,7 @@ NAMES_64 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung
 def get_prev_ton_dau():
     try:
         df_prev = conn.read(worksheet=prev_sheet_name, ttl=0)
-        if df_prev is not None:
+        if df_prev is not None and 'Quỹ CA Tổng' in df_prev.columns:
             return df_prev.set_index('Họ và Tên')['Quỹ CA Tổng'].to_dict()
     except: return {}
     return {}
@@ -75,9 +76,9 @@ if 'db' not in st.session_state:
     except:
         prev_map = get_prev_ton_dau()
         st.session_state.db = pd.DataFrame({
-            'STT': range(1, 66), 'Họ và Tên': NAMES_64, 'Công ty': 'PVDWS', 
+            'STT': range(1, 65), 'Họ và Tên': NAMES_64[:64], 'Công ty': 'PVDWS', 
             'Chức danh': 'Casing crew', 'Job Detail': '', 
-            'CA Tháng Trước': [prev_map.get(name, 0.0) for name in NAMES_64],
+            'CA Tháng Trước': [prev_map.get(name, 0.0) for name in NAMES_64[:64]],
             'Quỹ CA Tổng': 0.0
         })
 
@@ -95,7 +96,7 @@ def calculate_pvd_logic(df):
         accrued = 0.0
         for col in DATE_COLS:
             v = str(row.get(col, "")).strip().upper()
-            if not v or v == "NAN": continue
+            if not v or v in ["NAN", "NONE"]: continue
             try:
                 dt = date(curr_year, curr_month, int(col[:2]))
                 is_we = dt.weekday() >= 5
@@ -115,20 +116,22 @@ def calculate_pvd_logic(df):
 
 st.session_state.db = calculate_pvd_logic(st.session_state.db)
 
-# --- 6. TỐI ƯU BIỂU ĐỒ (DÙNG CACHE) ---
-@st.cache_data(ttl=600) # Lưu bộ nhớ đệm 10 phút
+# --- 6. TỐI ƯU BIỂU ĐỒ (SỬA LỖI KEYERROR) ---
+@st.cache_data(ttl=300)
 def load_year_data(year):
     all_data = {}
     for m in range(1, 13):
         try:
-            df_m = conn.read(worksheet=f"{m:02d}_{year}", ttl=0)
-            if df_m is not None:
+            name_m = f"{m:02d}_{year}"
+            df_m = conn.read(worksheet=name_m, ttl=0)
+            # Kiểm tra xem sheet có tồn tại và có đúng cột không
+            if df_m is not None and 'Họ và Tên' in df_m.columns:
                 all_data[m] = df_m
         except: continue
     return all_data
 
 # --- 7. GIAO DIỆN ---
-t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ TỐC ĐỘ CAO"])
+t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ"])
 
 with t1:
     bc1, bc2, _ = st.columns([1.5, 1.5, 5])
@@ -136,9 +139,9 @@ with t1:
         if st.button("📤 LƯU CLOUD", type="primary", use_container_width=True):
             try:
                 conn.update(worksheet=sheet_name, data=st.session_state.db)
-                st.success("Đã lưu thành công!")
-                st.cache_data.clear() # Xóa cache để cập nhật biểu đồ ngay
-            except Exception: st.error("Lỗi kết nối Google Sheets.")
+                st.success("Đã lưu!")
+                st.cache_data.clear()
+            except: st.error("Lỗi kết nối Cloud.")
 
     with bc2:
         buf = io.BytesIO()
@@ -180,16 +183,17 @@ with t1:
         st.rerun()
 
 with t2:
-    st.subheader("📊 Phân tích cường độ 12 tháng (Dữ liệu tức thời)")
+    st.subheader("📊 Phân tích cường độ 12 tháng")
     sel = st.selectbox("🔍 Chọn nhân sự:", NAMES_64)
     
-    # Sử dụng cache để tải dữ liệu 1 lần
+    # Sử dụng cache để tải dữ liệu cực nhanh
     year_data = load_year_data(curr_year)
     
     recs = []
     if year_data:
         for m, df_m in year_data.items():
-            if sel in df_m['Họ và Tên'].values:
+            # Kiểm tra cột lại một lần nữa trước khi lọc
+            if 'Họ và Tên' in df_m.columns and sel in df_m['Họ và Tên'].values:
                 row_p = df_m[df_m['Họ và Tên'] == sel].iloc[0]
                 m_label = date(curr_year, m, 1).strftime("%b")
                 for col in df_m.columns:
@@ -205,7 +209,7 @@ with t2:
         fig = px.bar(pdf, x="Tháng", y="Ngày", color="Loại", barmode="stack",
                      color_discrete_map={"Đi Biển": "#00CC96", "CA": "#EF553B", "WS": "#FECB52", "NP": "#636EFA", "ỐM": "#AB63FA"},
                      category_orders={"Tháng": [f"T{i}" for i in range(1, 13)]})
-        fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="white", height=500)
+        fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="white")
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("Chưa có dữ liệu hoặc đang tải...")
+        st.info("Chưa có dữ liệu cho nhân sự này hoặc dữ liệu đang được đồng bộ.")

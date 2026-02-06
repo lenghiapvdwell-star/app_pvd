@@ -49,7 +49,7 @@ curr_month, curr_year = working_date.month, working_date.year
 month_abbr = working_date.strftime("%b") 
 sheet_name = working_date.strftime("%m_%Y") 
 
-# Khởi tạo danh sách nếu chưa có trong session_state
+# Khởi tạo danh sách mặc định
 if 'gians' not in st.session_state:
     st.session_state.gians = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9" , "THOR", "SDE" , "GUNNLOD"]
 
@@ -125,7 +125,6 @@ def apply_calculation(df):
     return df
 
 st.session_state.db = apply_calculation(st.session_state.db)
-
 main_cols = ['STT', 'Họ và Tên', 'Quỹ CA Tổng', 'CA Tháng Trước', 'Công ty', 'Chức danh', 'Job Detail']
 st.session_state.db = st.session_state.db.reindex(columns=main_cols + DATE_COLS)
 
@@ -141,28 +140,42 @@ with bc2:
     st.download_button("📥 XUẤT EXCEL", buffer, file_name=f"PVD_WS_{sheet_name}.xlsx", use_container_width=True)
 
 # --- 5. TABS ---
-t1, t2, t3, t4, t5 = st.tabs(["🚀 ĐIỀU ĐỘNG", "🏗️ GIÀN KHOAN", "🏢 CÔNG TY", "🎖️ CHỨC DANH", "👤 NHÂN VIÊN"])
+t1, t2, t3 = st.tabs(["🚀 ĐIỀU ĐỘNG & NHÂN SỰ", "🏗️ QUẢN LÝ DANH MỤC", "📊 THỐNG KÊ"])
 
 with t1:
-    with st.expander("🛠️ Công cụ cập nhật nhanh"):
-        c1, c2, c3, c4 = st.columns([2, 1, 1, 1.2])
-        f_staff = c1.multiselect("Nhân sự:", st.session_state.db['Họ và Tên'].tolist())
-        f_status = c2.selectbox("Trạng thái:", ["Đi Biển", "CA", "NP", "Ốm", "WS"])
-        f_val = c3.selectbox("Giàn:", st.session_state.gians) if f_status == "Đi Biển" else f_status
-        f_date = c4.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, num_days)))
+    with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH (Trạng thái, Công ty, Chức danh)"):
+        # Dòng 1: Chọn nhân sự và Thời gian
+        r1_c1, r1_c2 = st.columns([2, 1.2])
+        f_staff = r1_c1.multiselect("Chọn nhân sự cần cập nhật:", st.session_state.db['Họ và Tên'].tolist())
+        f_date = r1_c2.date_input("Thời gian áp dụng:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, num_days)))
         
-        if st.button("✅ ÁP DỤNG TẠM THỜI", use_container_width=True):
+        # Dòng 2: Chọn Trạng thái, Công ty, Chức danh
+        r2_c1, r2_c2, r2_c3, r2_c4 = st.columns([1, 1, 1, 1])
+        f_status = r2_c1.selectbox("Trạng thái mới:", ["Không đổi", "Đi Biển", "CA", "NP", "Ốm", "WS"])
+        f_val = r2_c2.selectbox("Chọn Giàn:", st.session_state.gians) if f_status == "Đi Biển" else f_status
+        f_co = r2_c3.selectbox("Cập nhật Công ty:", ["Không đổi"] + st.session_state.companies)
+        f_ti = r2_c4.selectbox("Cập nhật Chức danh:", ["Không đổi"] + st.session_state.titles)
+        
+        if st.button("✅ XÁC NHẬN CẬP NHẬT", use_container_width=True):
             if f_staff and isinstance(f_date, tuple) and len(f_date) == 2:
                 s_d, e_d = f_date
-                for i in range((e_d - s_d).days + 1):
-                    day = s_d + timedelta(days=i)
-                    if day.month == curr_month:
-                        col = f"{day.day:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][day.weekday()]})"
-                        if col in st.session_state.db.columns:
-                            st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(f_staff), col] = f_val
+                # Cập nhật Công ty & Chức danh (nếu có chọn)
+                if f_co != "Không đổi":
+                    st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(f_staff), 'Công ty'] = f_co
+                if f_ti != "Không đổi":
+                    st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(f_staff), 'Chức danh'] = f_ti
+                
+                # Cập nhật trạng thái theo ngày
+                if f_status != "Không đổi":
+                    for i in range((e_d - s_d).days + 1):
+                        day = s_d + timedelta(days=i)
+                        if day.month == curr_month:
+                            col = f"{day.day:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][day.weekday()]})"
+                            if col in st.session_state.db.columns:
+                                st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(f_staff), col] = f_val
                 st.rerun()
 
-    # Cấu hình bảng biên tập (Thêm Dropdown cho Công ty và Chức danh)
+    # Bảng biên tập chính
     config = {
         "STT": st.column_config.NumberColumn("STT", width=40, disabled=True, pinned=True),
         "Họ và Tên": st.column_config.TextColumn("Họ và Tên", width=180, pinned=True),
@@ -173,42 +186,43 @@ with t1:
     }
     for col in DATE_COLS: config[col] = st.column_config.TextColumn(col, width=75)
 
-    edited_df = st.data_editor(st.session_state.db, column_config=config, use_container_width=True, height=600, hide_index=True, key=f"editor_{sheet_name}")
-    
+    edited_df = st.data_editor(st.session_state.db, column_config=config, use_container_width=True, height=600, hide_index=True, key=f"ed_{sheet_name}")
     if not edited_df.equals(st.session_state.db):
         st.session_state.db = edited_df
         st.rerun()
 
 with t2:
-    st.subheader("🏗️ Quản lý Giàn khoan")
-    st.dataframe(pd.DataFrame({"Tên Giàn": st.session_state.gians}), use_container_width=True)
-    cg1, cg2 = st.columns([3, 1])
-    new_g = cg1.text_input("Thêm giàn mới:")
-    if cg2.button("➕ Thêm Giàn"):
-        if new_g and new_g not in st.session_state.gians:
-            st.session_state.gians.append(new_g)
-            st.rerun()
+    st.subheader("⚙️ QUẢN LÝ DANH MỤC HỆ THỐNG")
+    col_a, col_b, col_c = st.columns(3)
+    
+    with col_a:
+        st.write("**🏗️ Giàn khoan**")
+        new_g = st.text_input("Tên giàn mới:", key="add_g")
+        if st.button("➕ Thêm Giàn"):
+            if new_g and new_g not in st.session_state.gians:
+                st.session_state.gians.append(new_g)
+                st.rerun()
+        st.dataframe(st.session_state.gians, use_container_width=True)
+
+    with col_b:
+        st.write("**🏢 Công ty**")
+        new_c = st.text_input("Tên công ty mới:", key="add_c")
+        if st.button("➕ Thêm Công ty"):
+            if new_c and new_c not in st.session_state.companies:
+                st.session_state.companies.append(new_c)
+                st.rerun()
+        st.dataframe(st.session_state.companies, use_container_width=True)
+
+    with col_c:
+        st.write("**🎖️ Chức danh**")
+        new_t = st.text_input("Chức danh mới:", key="add_t")
+        if st.button("➕ Thêm Chức danh"):
+            if new_t and new_t not in st.session_state.titles:
+                st.session_state.titles.append(new_t)
+                st.rerun()
+        st.dataframe(st.session_state.titles, use_container_width=True)
 
 with t3:
-    st.subheader("🏢 Quản lý Đối tác/Công ty")
-    st.dataframe(pd.DataFrame({"Tên Công ty": st.session_state.companies}), use_container_width=True)
-    cc1, cc2 = st.columns([3, 1])
-    new_c = cc1.text_input("Thêm công ty mới:")
-    if cc2.button("➕ Thêm Công ty"):
-        if new_c and new_c not in st.session_state.companies:
-            st.session_state.companies.append(new_c)
-            st.rerun()
-
-with t4:
-    st.subheader("🎖️ Quản lý Chức danh")
-    st.dataframe(pd.DataFrame({"Chức danh": st.session_state.titles}), use_container_width=True)
-    ct1, ct2 = st.columns([3, 1])
-    new_t = ct1.text_input("Thêm chức danh mới:")
-    if ct2.button("➕ Thêm Chức danh"):
-        if new_t and new_t not in st.session_state.titles:
-            st.session_state.titles.append(new_t)
-            st.rerun()
-
-with t5:
-    st.subheader("👤 Nhân sự PVDWS")
-    st.dataframe(st.session_state.db[['STT', 'Họ và Tên', 'Công ty', 'Chức danh']], use_container_width=True, hide_index=True)
+    st.subheader("📊 THỐNG KÊ NHÂN SỰ")
+    st.write("Dữ liệu đang được tổng hợp dựa trên bảng Điều động...")
+    # Tương lai có thể thêm biểu đồ số người đi biển/nghỉ CA tại đây

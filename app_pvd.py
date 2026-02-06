@@ -37,20 +37,18 @@ with c_logo:
 
 st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
 
-# --- 3. CHỌN THÁNG & QUẢN LÝ TRẠNG THÁI (PHẦN QUAN TRỌNG NHẤT) ---
+# --- 3. CHỌN THÁNG & QUẢN LÝ TRẠNG THÁI ---
 _, c_mid_date, _ = st.columns([3.5, 2, 3.5])
 with c_mid_date:
-    # Sử dụng on_change để reset toàn bộ session khi đổi tháng
     working_date = st.date_input("📅 CHỌN THÁNG LÀM VIỆC:", value=date.today(), key="main_date_picker")
 
 sheet_name = working_date.strftime("%m_%Y")
 
-# Cơ chế Hard Reset: Nếu tháng hiện tại khác tháng đã lưu, xóa sạch bộ nhớ tạm
+# Hard Reset khi đổi tháng
 if "current_sheet" not in st.session_state:
     st.session_state.current_sheet = sheet_name
 
 if st.session_state.current_sheet != sheet_name:
-    # Xóa sạch mọi thứ liên quan đến bảng cũ
     for key in list(st.session_state.keys()):
         if key.startswith("editor_") or key == "db":
             del st.session_state[key]
@@ -63,15 +61,6 @@ st.write("---")
 conn = st.connection("gsheets", type=GSheetsConnection)
 curr_month, curr_year = working_date.month, working_date.year
 month_abbr = working_date.strftime("%b") 
-
-def get_prev_ca():
-    prev_date = date(curr_year, curr_month, 1) - timedelta(days=1)
-    prev_sheet = prev_date.strftime("%m_%Y")
-    try:
-        df_prev = conn.read(worksheet=prev_sheet, ttl=0)
-        series = df_prev.set_index('Họ và Tên')['Quỹ CA Tổng']
-        return pd.to_numeric(series, errors='coerce').fillna(0.0).to_dict()
-    except: return {}
 
 if 'db' not in st.session_state:
     NAMES_64 = [
@@ -95,75 +84,44 @@ if 'db' not in st.session_state:
     except:
         st.session_state.db = pd.DataFrame({'STT': range(1, 66), 'Họ và Tên': NAMES_64, 'Công ty': 'PVDWS', 'Chức danh': 'Casing crew', 'Job Detail': '', 'CA Tháng Trước': 0.0})
     
-    # Cập nhật CA tháng trước
-    prev_ca_data = get_prev_ca()
-    st.session_state.db['CA Tháng Trước'] = st.session_state.db['Họ và Tên'].map(prev_ca_data).fillna(0.0)
+    # Fill NaN để tránh lỗi tính toán
+    st.session_state.db = st.session_state.db.fillna("")
 
-# Cấu hình danh mục (giữ trong session)
-for k, v in {"gians": ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNLOD"], 
-             "companies": ["PVDWS", "OWS", "National", "Baker Hughes", "Schlumberger", "Halliburton"],
-             "titles": ["Casing crew", "CRTI LD", "CRTI SP", "SOLID", "MUDCL", "UNDERRM", "PPLS", "HAMER"]}.items():
-    if k not in st.session_state: st.session_state[k] = v
+# Danh mục
+if 'gians' not in st.session_state: st.session_state.gians = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNLOD"]
+if 'companies' not in st.session_state: st.session_state.companies = ["PVDWS", "OWS", "National", "Baker Hughes", "Schlumberger", "Halliburton"]
+if 'titles' not in st.session_state: st.session_state.titles = ["Casing crew", "CRTI LD", "CRTI SP", "SOLID", "MUDCL", "UNDERRM", "PPLS", "HAMER"]
 
-# --- 5. TÍNH TOÁN VÀ CHUẨN HÓA CỘT ---
+# --- 5. CHUẨN HÓA CỘT NGÀY ---
 num_days = calendar.monthrange(curr_year, curr_month)[1]
 DATE_COLS = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(curr_year,curr_month,d).weekday()]})" for d in range(1, num_days+1)]
 
-# Loại bỏ các cột ngày không thuộc tháng hiện tại và thêm cột mới nếu thiếu
 main_cols = ['STT', 'Họ và Tên', 'Quỹ CA Tổng', 'CA Tháng Trước', 'Công ty', 'Chức danh', 'Job Detail']
 st.session_state.db = st.session_state.db.reindex(columns=main_cols + DATE_COLS, fill_value="")
 
-def apply_calculation(df):
-    holidays = [date(curr_year, 1, 1), date(curr_year, 4, 30), date(curr_year, 5, 1), date(curr_year, 9, 2)]
-    if curr_year == 2026: holidays += [date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19)]
-    
-    def calc_row(row):
-        total_delta = 0.0
-        for col in DATE_COLS:
-            val = str(row.get(col, "")).strip()
-            if not val or val.lower() in ["nan", ""]: continue
-            try:
-                dt = date(curr_year, curr_month, int(col[:2]))
-                if val in st.session_state.gians:
-                    if dt in holidays: total_delta += 2.0
-                    elif dt.weekday() >= 5: total_delta += 1.0
-                    else: total_delta += 0.5
-                elif val.upper() == "CA":
-                    if dt not in holidays and dt.weekday() < 5: total_delta -= 1.0
-            except: continue
-        return total_delta
-
-    df['CA Tháng Trước'] = pd.to_numeric(df['CA Tháng Trước'], errors='coerce').fillna(0.0)
-    df['Phát sinh trong tháng'] = df.apply(calc_row, axis=1)
-    df['Quỹ CA Tổng'] = df['CA Tháng Trước'] + df['Phát sinh trong tháng']
-    return df
-
-st.session_state.db = apply_calculation(st.session_state.db)
-
-# --- 6. NÚT CHỨC NĂNG (BỌC LỖI CLOUD) ---
+# --- 6. NÚT CHỨC NĂNG ---
 bc1, bc2, _ = st.columns([1.5, 1.5, 5])
 with bc1:
     if st.button("📤 LƯU CLOUD", use_container_width=True, type="primary"):
         try:
-            with st.spinner("Đang lưu..."):
-                conn.update(worksheet=sheet_name, data=st.session_state.db)
-                st.success("Đã lưu thành công!")
-                st.toast("Cloud updated!")
-        except Exception as e:
-            st.error(f"Lỗi lưu Cloud: {e}")
+            conn.update(worksheet=sheet_name, data=st.session_state.db)
+            st.success("Đã lưu!")
+        except Exception as e: st.error(f"Lỗi: {e}")
 
 with bc2:
     buffer = io.BytesIO()
     st.session_state.db.to_excel(buffer, index=False)
     st.download_button("📥 XUẤT EXCEL", buffer, file_name=f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
-# --- 7. HIỂN THỊ TABS ---
+# --- 7. TABS ---
 t1, t2, t3 = st.tabs(["🚀 ĐIỀU ĐỘNG", "🏗️ DANH MỤC", "📊 THỐNG KÊ"])
 
 with t1:
+    # --- FIX LOGIC CẬP NHẬT NHANH Ở ĐÂY ---
     with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH"):
         r1_c1, r1_c2 = st.columns([2, 1.2])
         f_staff = r1_c1.multiselect("Nhân sự:", st.session_state.db['Họ và Tên'].tolist())
+        # Mặc định chọn từ ngày 1 đến cuối tháng
         f_date = r1_c2.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, num_days)))
         
         r2_c1, r2_c2, r2_c3, r2_c4 = st.columns([1, 1, 1, 1])
@@ -172,14 +130,65 @@ with t1:
         f_co = r2_c3.selectbox("Công ty:", ["Không đổi"] + st.session_state.companies)
         f_ti = r2_c4.selectbox("Chức danh:", ["Không đổi"] + st.session_state.titles)
         
-        if st.button("✅ ÁP DỤNG"):
-            if f_staff and isinstance(f_date, tuple) and len(f_date) == 2:
-                s_d, e_d = f_date
-                # Cập nhật logic...
+        if st.button("✅ ÁP DỤNG CẬP NHẬT"):
+            if not f_staff:
+                st.warning("Vui lòng chọn ít nhất một nhân sự!")
+            elif isinstance(f_date, tuple) and len(f_date) == 2:
+                start_d, end_d = f_date
+                
+                # Duyệt qua từng nhân sự được chọn
+                for person in f_staff:
+                    idx = st.session_state.db.index[st.session_state.db['Họ và Tên'] == person].tolist()[0]
+                    
+                    # 1. Cập nhật Công ty & Chức danh
+                    if f_co != "Không đổi":
+                        st.session_state.db.at[idx, 'Công ty'] = f_co
+                    if f_ti != "Không đổi":
+                        st.session_state.db.at[idx, 'Chức danh'] = f_ti
+                    
+                    # 2. Cập nhật trạng thái cho từng ngày trong khoảng đã chọn
+                    if f_status != "Không đổi":
+                        delta = (end_d - start_d).days + 1
+                        for i in range(delta):
+                            d = start_d + timedelta(days=i)
+                            # Chỉ cập nhật nếu ngày thuộc tháng đang hiển thị
+                            if d.month == curr_month and d.year == curr_year:
+                                # Tạo tên cột tương ứng: "01/Feb (T2)"
+                                col_name = f"{d.day:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][d.weekday()]})"
+                                if col_name in st.session_state.db.columns:
+                                    st.session_state.db.at[idx, col_name] = f_val
+                
+                st.success(f"Đã cập nhật cho {len(f_staff)} nhân sự!")
                 st.rerun()
 
-    # Cấu hình hiển thị bảng
-    df_editor = st.session_state.db.copy()
+    # --- TÍNH TOÁN CA TRƯỚC KHI HIỂN THỊ ---
+    def auto_calc(df):
+        holidays = [date(curr_year, 1, 1), date(curr_year, 4, 30), date(curr_year, 5, 1), date(curr_year, 9, 2)]
+        if curr_year == 2026: holidays += [date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19)]
+        
+        def row_logic(row):
+            p_sinh = 0.0
+            for col in DATE_COLS:
+                val = str(row.get(col, "")).strip()
+                if not val or val == "": continue
+                try:
+                    dt = date(curr_year, curr_month, int(col[:2]))
+                    if val in st.session_state.gians:
+                        if dt in holidays: p_sinh += 2.0
+                        elif dt.weekday() >= 5: p_sinh += 1.0
+                        else: p_sinh += 0.5
+                    elif val.upper() == "CA":
+                        if dt not in holidays and dt.weekday() < 5: p_sinh -= 1.0
+                except: continue
+            return p_sinh
+
+        df['CA Tháng Trước'] = pd.to_numeric(df['CA Tháng Trước'], errors='coerce').fillna(0.0)
+        df['Quỹ CA Tổng'] = df['CA Tháng Trước'] + df.apply(row_logic, axis=1)
+        return df
+
+    st.session_state.db = auto_calc(st.session_state.db)
+
+    # Hiển thị bảng
     config = {
         "STT": st.column_config.NumberColumn("STT", width=40, disabled=True, pinned=True),
         "Họ và Tên": st.column_config.TextColumn("Họ và Tên", width=180, pinned=True),
@@ -190,9 +199,8 @@ with t1:
     }
     for col in DATE_COLS: config[col] = st.column_config.TextColumn(col, width=75)
 
-    # Hiển thị với Key động theo sheet_name
     edited_df = st.data_editor(
-        df_editor,
+        st.session_state.db,
         column_config=config,
         use_container_width=True,
         height=600,
@@ -200,14 +208,6 @@ with t1:
         key=f"editor_{sheet_name}"
     )
     
-    if not edited_df.equals(df_editor):
+    if not edited_df.equals(st.session_state.db):
         st.session_state.db = edited_df
         st.rerun()
-
-with t2:
-    # Quản lý danh mục (Giữ nguyên logic cũ)
-    pass
-
-with t3:
-    st.subheader("📊 THỐNG KÊ")
-    st.info("Hệ thống tự động tính toán.")

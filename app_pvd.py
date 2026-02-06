@@ -27,7 +27,7 @@ with c_logo:
     # Nếu file logo_pvd.png nằm cùng thư mục với app_pvd.py trên Github
     logo_path = "logo_pvd.png" 
     if os.path.exists(logo_path):
-        st.image(logo_path, width=200)
+        st.image(logo_path, width=180)
     else:
         st.markdown("### 🔴 PVD WELL")
 

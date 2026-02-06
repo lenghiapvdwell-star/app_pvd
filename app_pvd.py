@@ -122,18 +122,51 @@ with tab2:
         names = sorted(st.session_state.db['Họ và Tên'].unique())
         selected = st.selectbox("🔍 Chọn nhân sự để xem báo cáo năm:", names)
         
-        with st.spinner("Đang quét dữ liệu 12 tháng..."):
+        with st.spinner(f"Đang tổng hợp dữ liệu cho {selected}..."):
             stats_df = get_detailed_stats(selected)
             
             if not stats_df.empty:
-                # Metrics tổng hợp
-                st.markdown(f"### 📊 Báo cáo năm {curr_year}: {selected}")
+                st.markdown(f"### 📊 Báo cáo hoạt động năm {curr_year}")
+                st.markdown(f"**Nhân sự:** {selected}")
+                
+                # Hiển thị Metrics với chữ "Ngày" đầy đủ và rõ ràng
                 m1, m2, m3, m4, m5 = st.columns(5)
-                m1.metric("🌊 Đi Biển", f"{stats_df[stats_df['Loại']=='Đi Biển']['Ngày'].sum()}đd")
-                m2.metric("🏠 Nghỉ CA", f"{stats_df[stats_df['Loại']=='Nghỉ CA']['Ngày'].sum()}đd")
-                m3.metric("🛠️ Làm Bờ", f"{stats_df[stats_df['Loại']=='Làm Bờ']['Ngày'].sum()}đd")
-                m4.metric("🌴 Nghỉ Phép", f"{stats_df[stats_df['Loại']=='Nghỉ Phép']['Ngày'].sum()}đd")
-                m5.metric("🧧 Lễ Tết", f"{stats_df[stats_df['Loại']=='Lễ Tết']['Ngày'].sum()}đd")
+                
+                # Tính toán tổng số ngày cho từng loại
+                sea_total = stats_df[stats_df['Loại']=='Đi Biển']['Ngày'].sum()
+                ca_total = stats_df[stats_df['Loại']=='Nghỉ CA']['Ngày'].sum()
+                ws_total = stats_df[stats_df['Loại']=='Làm Bờ']['Ngày'].sum()
+                np_total = stats_df[stats_df['Loại']=='Nghỉ Phép']['Ngày'].sum()
+                holiday_total = stats_df[stats_df['Loại']=='Lễ Tết']['Ngày'].sum()
+
+                m1.metric("🌊 ĐI BIỂN", f"{int(sea_total)} Ngày")
+                m2.metric("🏠 NGHỈ CA", f"{int(ca_total)} Ngày")
+                m3.metric("🛠️ LÀM BỜ", f"{int(ws_total)} Ngày")
+                m4.metric("🌴 NGHỈ PHÉP", f"{int(np_total)} Ngày")
+                m5.metric("🧧 LỄ TẾT", f"{int(holiday_total)} Ngày")
+
+                # Vẽ biểu đồ với chú thích rõ ràng
+                fig = px.bar(
+                    stats_df, x="Tháng", y="Ngày", color="Loại",
+                    labels={"Ngày": "Tổng số ngày trong tháng", "Loại": "Trạng thái công việc"},
+                    color_discrete_map={
+                        "Đi Biển": "#00CC96", "Nghỉ CA": "#EF553B", "Làm Bờ": "#FECB52",
+                        "Nghỉ Phép": "#636EFA", "Nghỉ Ốm": "#AB63FA", "Lễ Tết": "#FFA15A"
+                    },
+                    category_orders={"Tháng": [f"T{i}" for i in range(1, 13)]},
+                    height=500
+                )
+                
+                fig.update_layout(
+                    legend_title_text='Chú thích màu sắc:',
+                    paper_bgcolor='rgba(0,0,0,0)', 
+                    plot_bgcolor='rgba(0,0,0,0)', 
+                    font_color="white"
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("Nhân sự này chưa có dữ liệu hoạt động trong năm.")
 
                 # Biểu đồ Plotly
                 fig = px.bar(

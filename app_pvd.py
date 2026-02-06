@@ -12,46 +12,31 @@ st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 st.markdown("""
     <style>
     .block-container {padding-top: 0.5rem; padding-bottom: 0rem;}
-    
-    /* Ép tiêu đề to gấp đôi và ưu tiên hiển thị cao nhất */
     .main-title {
         color: #00f2ff !important; 
-        font-size: 77px !important; /* Tăng cực đại để đảm bảo độ to */
+        font-size: 90px !important; 
         font-weight: bold !important;
         text-align: center !important; 
         width: 100% !important;
         display: block !important;
         margin-top: 10px !important;
         margin-bottom: 10px !important;
-        text-shadow: 6px 6px 12px #000 !important;
+        text-shadow: 4px 4px 8px #000 !important;
         font-family: 'Arial Black', sans-serif !important;
-        line-height: 1.0 !important;
+        line-height: 1.1 !important;
     }
-    
-    /* Logo cố định góc trái */
-    .logo-container {
-        position: relative;
-        z-index: 999;
-    }
-    
     .stButton>button {border-radius: 5px; height: 3em; font-weight: bold;}
     </style>
     """, unsafe_allow_html=True)
 
 # --- 2. HIỂN THỊ HEADER ---
-
-# Hiển thị Logo bên trái khung
 c_logo, _ = st.columns([1, 4])
 with c_logo:
-    if os.path.exists("logo_pvd.png"): 
-        st.image("logo_pvd.png", width=250) 
-    else: 
-        st.markdown("### 🔴 PVD")
+    if os.path.exists("logo_pvd.png"): st.image("logo_pvd.png", width=220)
+    else: st.markdown("### 🔴 PVD")
 
-# Hiển thị Tiêu đề SIÊU TO CĂN GIỮA
 st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
 
-# Hiển thị Ô chọn ngày (Dưới tiêu đề, căn giữa)
 _, c_mid_date, _ = st.columns([3.5, 2, 3.5])
 with c_mid_date:
     working_date = st.date_input("📅 CHỌN THÁNG LÀM VIỆC:", value=date.today())
@@ -81,6 +66,7 @@ NAMES_64 = [
     "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong"
 ]
 
+# Hàm lấy tồn cuối tháng trước làm tồn đầu tháng này
 def get_prev_ca():
     prev_date = date(curr_year, curr_month, 1) - timedelta(days=1)
     prev_sheet = prev_date.strftime("%m_%Y")
@@ -90,6 +76,7 @@ def get_prev_ca():
         return pd.to_numeric(series, errors='coerce').fillna(0.0).to_dict()
     except: return {}
 
+# Khởi tạo hoặc load dữ liệu
 if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sheet_name:
     st.session_state.active_sheet = sheet_name
     prev_ca_data = get_prev_ca()
@@ -109,24 +96,37 @@ DATE_COLS = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(
 for c in DATE_COLS:
     if c not in st.session_state.db.columns: st.session_state.db[c] = ""
 
+# --- LOGIC TÍNH TOÁN CA THEO QUY ƯỚC MỚI ---
 def apply_calculation(df):
+    # Danh sách ngày lễ 2026
     holidays = [date(curr_year, 1, 1), date(curr_year, 4, 30), date(curr_year, 5, 1), date(curr_year, 9, 2)]
     if curr_year == 2026: holidays += [date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19)]
     
     def calc_row(row):
-        total = 0.0
+        total_delta = 0.0
         for col in DATE_COLS:
             val = str(row.get(col, "")).strip()
             if not val or val.lower() in ["nan", ""]: continue
+            
             d = int(col[:2])
             dt = date(curr_year, curr_month, d)
+            is_holiday = dt in holidays
+            is_weekend = dt.weekday() >= 5 # T7, CN
+            
+            # 1. Nếu đi biển (có tên giàn trong ô)
             if val in st.session_state.gians:
-                if dt in holidays: total += 2.0
-                elif dt.weekday() >= 5: total += 1.0
-                else: total += 0.5
-            elif val.upper() == "CA" and dt.weekday() < 5 and dt not in holidays:
-                total -= 1.0
-        return total
+                if is_holiday: total_delta += 2.0
+                elif is_weekend: total_delta += 1.0
+                else: total_delta += 0.5
+            
+            # 2. Nếu nghỉ CA
+            elif val.upper() == "CA":
+                # Chỉ trừ nếu là ngày thường và không phải lễ
+                if not is_holiday and not is_weekend:
+                    total_delta -= 1.0
+                # Nếu rơi vào T7, CN, Lễ: Giữ nguyên (không cộng không trừ)
+        
+        return total_delta
 
     df['CA Tháng Trước'] = pd.to_numeric(df['CA Tháng Trước'], errors='coerce').fillna(0.0).astype(float)
     df['Phát sinh trong tháng'] = df.apply(calc_row, axis=1).astype(float)
@@ -142,8 +142,9 @@ st.session_state.db = st.session_state.db.reindex(columns=main_cols + DATE_COLS)
 bc1, bc2, _ = st.columns([1.5, 1.5, 5])
 with bc1:
     if st.button("📤 LƯU CLOUD", use_container_width=True, type="primary"):
+        # Khi lưu sẽ đẩy toàn bộ session_state.db lên Google Sheet
         conn.update(worksheet=sheet_name, data=st.session_state.db)
-        st.success("Đã lưu dữ liệu!")
+        st.success("Đã đồng bộ dữ liệu lên Cloud!")
 with bc2:
     buffer = io.BytesIO()
     st.session_state.db.to_excel(buffer, index=False)
@@ -160,7 +161,7 @@ with t1:
         f_val = c3.selectbox("Giàn:", st.session_state.gians) if f_status == "Đi Biển" else f_status
         f_date = c4.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, num_days)))
         
-        if st.button("✅ ÁP DỤNG", use_container_width=True):
+        if st.button("✅ ÁP DỤNG TẠM THỜI", use_container_width=True):
             if f_staff and isinstance(f_date, tuple) and len(f_date) == 2:
                 s_d, e_d = f_date
                 for i in range((e_d - s_d).days + 1):
@@ -168,18 +169,25 @@ with t1:
                     if day.month == curr_month:
                         col = f"{day.day:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][day.weekday()]})"
                         if col in st.session_state.db.columns:
+                            # Cập nhật trực tiếp vào session_state (chưa lưu cloud)
                             st.session_state.db.loc[st.session_state.db['Họ và Tên'].isin(f_staff), col] = f_val
                 st.rerun()
 
     config = {
         "STT": st.column_config.NumberColumn("STT", width=40, disabled=True, pinned=True),
         "Họ và Tên": st.column_config.TextColumn("Họ và Tên", width=180, pinned=True),
-        "Quỹ CA Tổng": st.column_config.NumberColumn("T ca", width=65, format="%.1f", disabled=True, pinned=True),
-        "CA Tháng Trước": st.column_config.NumberColumn("Tồn cũ", width=65, format="%.1f", pinned=True),
+        "Quỹ CA Tổng": st.column_config.NumberColumn("Tồn Cuối", width=85, format="%.1f", disabled=True, pinned=True),
+        "CA Tháng Trước": st.column_config.NumberColumn("Tồn Đầu", width=80, format="%.1f", pinned=True),
     }
     for col in DATE_COLS: config[col] = st.column_config.TextColumn(col, width=75)
 
-    st.data_editor(st.session_state.db, column_config=config, use_container_width=True, height=600, hide_index=True, key=f"ultra_large_v1")
+    # Hiển thị bảng và cho phép chỉnh sửa tay trực tiếp
+    edited_df = st.data_editor(st.session_state.db, column_config=config, use_container_width=True, height=600, hide_index=True, key=f"editor_{sheet_name}")
+    
+    # Nếu người dùng sửa tay trên bảng, cập nhật vào session_state
+    if not edited_df.equals(st.session_state.db):
+        st.session_state.db = edited_df
+        st.rerun()
 
 with t2:
     st.subheader("🏗️ Quản lý danh sách Giàn khoan")

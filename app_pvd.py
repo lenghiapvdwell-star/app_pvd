@@ -33,7 +33,7 @@ with c_logo:
 
 st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
 
-# --- 3. KẾT NỐI & HÀM BỔ TRỢ ---
+# --- 3. KẾT NỐI & HÀM BỔ TRỢ (BẢN TỐI ƯU LƯU NHANH) ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def load_gians_from_sheets():
@@ -45,17 +45,29 @@ def load_gians_from_sheets():
         pass
     return ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNLOD"]
 
-def save_to_cloud_with_retry(worksheet_name, df):
-    max_retries = 3
-    for i in range(max_retries):
+def save_to_cloud_smart(worksheet_name, df):
+    """Cơ chế lưu thông minh: Tự động dọn dẹp data và Retry quyết liệt"""
+    # Bước 1: Chuẩn hóa dữ liệu (Xử lý NaN để tránh lỗi Google API)
+    df_clean = df.copy()
+    for col in df_clean.columns:
+        if df_clean[col].dtype == 'object':
+            df_clean[col] = df_clean[col].fillna("")
+        else:
+            df_clean[col] = df_clean[col].fillna(0)
+            
+    # Bước 2: Thử lưu với cơ chế Retry tăng dần thời gian chờ
+    retries = 3
+    for i in range(retries):
         try:
-            conn.update(worksheet=worksheet_name, data=df)
+            conn.update(worksheet=worksheet_name, data=df_clean)
             return True
-        except:
-            if i < max_retries - 1:
-                time.sleep(1.5)
+        except Exception as e:
+            if i < retries - 1:
+                time.sleep(1 + i) 
                 continue
-    return False
+            else:
+                st.error(f"Lỗi Cloud: {e}")
+                return False
 
 # --- 4. KHỞI TẠO DỮ LIỆU ---
 if "gians_list" not in st.session_state:
@@ -119,11 +131,17 @@ with t1:
     bc1, bc2, _ = st.columns([1.5, 1.5, 5])
     with bc1:
         if st.button("📤 LƯU CLOUD", type="primary", use_container_width=True):
-            with st.spinner("Đang lưu..."):
-                if save_to_cloud_with_retry(sheet_name, st.session_state.db):
-                    st.success("Đã lưu!")
-                    st.cache_data.clear()
-                else: st.error("Lỗi kết nối Cloud.")
+            with st.status("🚀 Đang đồng bộ Cloud...", expanded=True) as status:
+                st.write("Đang chuẩn hóa dữ liệu...")
+                st.cache_data.clear() # Xóa cache để đảm bảo ghi mới nhất
+                if save_to_cloud_smart(sheet_name, st.session_state.db):
+                    status.update(label="✅ Đã lưu thành công!", state="complete", expanded=False)
+                    st.toast("Dữ liệu đã được cập nhật!", icon="💾")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    status.update(label="❌ Lỗi lưu dữ liệu!", state="error")
+                    
     with bc2:
         buf = io.BytesIO()
         st.session_state.db.to_excel(buf, index=False)
@@ -178,7 +196,6 @@ with t2:
     st.subheader("📊 Phân tích cường độ & Tổng hợp ngày biển")
     sel = st.selectbox("🔍 Chọn nhân sự:", NAMES_64)
     
-    # Gom dữ liệu cả năm từ Cloud
     recs = []
     for m in range(1, 13):
         try:
@@ -199,20 +216,17 @@ with t2:
         pdf = pd.DataFrame(recs)
         summary = pdf.groupby(['Tháng', 'Loại']).sum().reset_index()
         
-        # Tính toán lũy kế ngày biển
         sea_only = summary[summary['Loại'] == "Đi Biển"].copy()
         if not sea_only.empty:
             sea_only['MonthIdx'] = sea_only['Tháng'].str[1:].astype(int)
             sea_only = sea_only.sort_values('MonthIdx')
             sea_only['Lũy kế biển'] = sea_only['Ngày'].cumsum()
 
-        # Tạo biểu đồ Stack Bar với nhãn số liệu
         fig = px.bar(summary, x="Tháng", y="Ngày", color="Loại", text="Ngày",
                      barmode="stack",
                      color_discrete_map={"Đi Biển": "#00CC96", "CA": "#EF553B", "WS": "#FECB52", "NP": "#636EFA", "ỐM": "#AB63FA"},
                      category_orders={"Tháng": [f"T{i}" for i in range(1, 13)]})
 
-        # Thêm đường line lũy kế biển
         if not sea_only.empty:
             fig.add_trace(go.Scatter(
                 x=sea_only["Tháng"], y=sea_only["Lũy kế biển"],
@@ -226,7 +240,6 @@ with t2:
         st.plotly_chart(fig, use_container_width=True)
         
         st.markdown("---")
-        # Khối Metric hiển thị tổng kết
         cm1, cm2, cm3, cm4 = st.columns(4)
         total_sea = pdf[pdf['Loại'] == 'Đi Biển']['Ngày'].sum()
         total_ca = pdf[pdf['Loại'] == 'CA']['Ngày'].sum()

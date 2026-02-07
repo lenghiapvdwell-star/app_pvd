@@ -25,16 +25,14 @@ st.markdown("""
 # --- 2. HEADER ---
 c_logo, _ = st.columns([1, 4])
 with c_logo:
-    logo_path = "logo_pvd.png" 
-    if os.path.exists(logo_path):
-        st.image(logo_path, width=180)
+    if os.path.exists("logo_pvd.png"):
+        st.image("logo_pvd.png", width=180)
     else:
         st.markdown("### 🔴 PVD WELL")
 
 st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
 
-# --- 3. QUẢN LÝ DANH SÁCH GIÀN (LƯU TRONG SESSION) ---
-# Khởi tạo danh sách giàn mặc định nếu chưa có
+# --- 3. QUẢN LÝ DANH SÁCH GIÀN ---
 if "gians_list" not in st.session_state:
     st.session_state.gians_list = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNLOD"]
 
@@ -108,7 +106,6 @@ def calculate_pvd_logic(df):
                 dt = date(curr_year, curr_month, int(col[:2]))
                 is_we = dt.weekday() >= 5
                 is_ho = dt in hols
-                # Kiểm tra xem giá trị nhập vào có chứa bất kỳ tên giàn nào trong danh sách không
                 if any(g.upper() in v for g in st.session_state.gians_list):
                     if is_ho: accrued += 2.0
                     elif is_we: accrued += 1.0
@@ -141,7 +138,7 @@ def load_year_data(year):
 t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ"])
 
 with t1:
-    bc1, bc2, bc3 = st.columns([1.5, 1.5, 5])
+    bc1, bc2, _ = st.columns([1.5, 1.5, 5])
     with bc1:
         if st.button("📤 LƯU CLOUD", type="primary", use_container_width=True):
             try:
@@ -149,34 +146,34 @@ with t1:
                 st.success("Đã lưu!")
                 st.cache_data.clear()
             except: st.error("Lỗi kết nối.")
-
     with bc2:
         buf = io.BytesIO()
         st.session_state.db.to_excel(buf, index=False)
         st.download_button("📥 XUẤT EXCEL", buf, f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
-    # --- CÔNG CỤ CẬP NHẬT NHANH ---
     with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH & QUẢN LÝ GIÀN"):
-        # Phần Thêm Giàn Mới
-        st.markdown("##### ⚓ Thêm giàn khoan mới")
-        c_add1, c_add2 = st.columns([3, 1])
-        new_rig = c_add1.text_input("Nhập tên giàn mới (VD: PVD 11, HAKURYU 5...):", key="new_rig_input")
+        # Quản lý giàn
+        st.markdown("##### ⚓ Danh mục giàn khoan")
+        c_add1, c_add2, c_del = st.columns([2, 1, 1])
+        new_rig = c_add1.text_input("Tên giàn mới:", key="new_rig_in")
         if c_add2.button("➕ Thêm Giàn", use_container_width=True):
             if new_rig and new_rig not in st.session_state.gians_list:
                 st.session_state.gians_list.append(new_rig)
-                st.success(f"Đã thêm {new_rig}")
                 st.rerun()
         
+        del_rig = c_del.selectbox("Xóa giàn:", ["-- Chọn --"] + st.session_state.gians_list)
+        if del_rig != "-- Chọn --":
+            if st.button(f"🗑️ Xóa {del_rig}"):
+                st.session_state.gians_list.remove(del_rig)
+                st.rerun()
+
         st.divider()
-        
-        # Phần Nhập Dữ Liệu Nhanh
-        st.markdown("##### 📝 Nhập dữ liệu nhanh")
+        # Nhập liệu nhanh
         c1, c2 = st.columns([2, 1])
         f_staff = c1.multiselect("Nhân sự:", NAMES_64)
         f_date = c2.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, num_days)))
         r2_1, r2_2, r2_3, r2_4 = st.columns(4)
         f_status = r2_1.selectbox("Trạng thái:", ["Không đổi", "Đi Biển", "CA", "WS", "NP", "Ốm"])
-        # Lấy danh sách giàn từ Session State
         f_val = r2_2.selectbox("Chọn giàn:", st.session_state.gians_list) if f_status == "Đi Biển" else f_status
         f_co = r2_3.selectbox("Cty:", ["Không đổi"] + COMPANIES)
         f_ti = r2_4.selectbox("Chức danh:", ["Không đổi"] + TITLES)
@@ -210,7 +207,6 @@ with t2:
     st.subheader("📊 Phân tích cường độ & Tổng hợp ngày biển")
     sel = st.selectbox("🔍 Chọn nhân sự:", NAMES_64)
     year_data = load_year_data(curr_year)
-    
     recs = []
     if year_data:
         for m in range(1, 13):
@@ -223,37 +219,32 @@ with t2:
                         if "/" in col and m_label in col:
                             v = str(row_p[col]).strip().upper()
                             if v and v not in ["NAN", "NONE", ""]:
-                                # Kiểm tra đi biển dựa trên danh sách giàn linh hoạt
                                 cat = "Đi Biển" if any(g.upper() in v for g in st.session_state.gians_list) else v
                                 if cat in ["Đi Biển", "CA", "WS", "NP", "ỐM"]:
                                     recs.append({"Tháng": f"T{m}", "Loại": cat, "Ngày": 1})
-
     if recs:
         pdf = pd.DataFrame(recs)
         summary = pdf.groupby(['Tháng', 'Loại']).sum().reset_index()
-        
         sea_only = summary[summary['Loại'] == "Đi Biển"].copy()
         if not sea_only.empty:
             sea_only['MonthIdx'] = sea_only['Tháng'].str[1:].astype(int)
             sea_only = sea_only.sort_values('MonthIdx')
             sea_only['Lũy kế biển'] = sea_only['Ngày'].cumsum()
 
-        fig = px.bar(summary, x="Tháng", y="Ngày", color="Loại", text="Ngày",
-                     barmode="stack",
+        fig = px.bar(summary, x="Tháng", y="Ngày", color="Loại", text="Ngày", barmode="stack",
                      color_discrete_map={"Đi Biển": "#00CC96", "CA": "#EF553B", "WS": "#FECB52", "NP": "#636EFA", "ỐM": "#AB63FA"},
                      category_orders={"Tháng": [f"T{i}" for i in range(1, 13)]})
-
         if not sea_only.empty:
-            fig.add_trace(go.Scatter(
-                x=sea_only["Tháng"], y=sea_only["Lũy kế biển"],
-                name="Tổng Biển Cộng Dồn", mode="lines+markers+text",
-                text=sea_only["Lũy kế biển"], textposition="top center",
-                line=dict(color="#00f2ff", width=3)
-            ))
-
+            fig.add_trace(go.Scatter(x=sea_only["Tháng"], y=sea_only["Lũy kế biển"], name="Tổng Biển Cộng Dồn", 
+                                     mode="lines+markers+text", text=sea_only["Lũy kế biển"], textposition="top center",
+                                     line=dict(color="#00f2ff", width=3)))
         fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="white", height=600)
         st.plotly_chart(fig, use_container_width=True)
-        
         st.markdown("---")
         c_m1, c_m2 = st.columns(2)
-        c_m1.metric("Tổng ngày biển cả năm", f"{sea_only['Ngày'].sum() if not sea_only.empty else
+        total_sea = sea_only['Ngày'].sum() if not sea_only.empty else 0
+        total_ca = summary[summary['Loại'] == 'CA']['Ngày'].sum() if not summary.empty else 0
+        c_m1.metric("Tổng ngày biển cả năm", f"{total_sea} ngày")
+        c_m2.metric("Tổng ngày nghỉ CA", f"{total_ca} ngày")
+    else:
+        st.info("Chưa có dữ liệu cho nhân sự này.")

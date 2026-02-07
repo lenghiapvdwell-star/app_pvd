@@ -42,7 +42,7 @@ def load_gians_from_sheets():
         if df_config is not None and not df_config.empty:
             return df_config.iloc[:, 0].dropna().astype(str).tolist()
     except:
-        return ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNLOD"]
+        pass
     return ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNLOD"]
 
 def save_to_cloud_with_retry(worksheet_name, df):
@@ -51,7 +51,7 @@ def save_to_cloud_with_retry(worksheet_name, df):
         try:
             conn.update(worksheet=worksheet_name, data=df)
             return True
-        except Exception:
+        except:
             if i < max_retries - 1:
                 time.sleep(1.5)
                 continue
@@ -86,7 +86,6 @@ if 'db' not in st.session_state or st.session_state.get('active_sheet') != sheet
         })
     st.session_state.active_sheet = sheet_name
 
-# Tạo cột ngày
 num_days = calendar.monthrange(curr_year, curr_month)[1]
 DATE_COLS = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(curr_year,curr_month,d).weekday()]})" for d in range(1, num_days+1)]
 for col in DATE_COLS:
@@ -176,14 +175,15 @@ with t1:
         st.rerun()
 
 with t2:
-    st.subheader("📊 Phân tích biểu đồ")
+    st.subheader("📊 Phân tích cường độ & Tổng hợp ngày biển")
     sel = st.selectbox("🔍 Chọn nhân sự:", NAMES_64)
-    # Gom dữ liệu cả năm
+    
+    # Gom dữ liệu cả năm từ Cloud
     recs = []
     for m in range(1, 13):
         try:
             df_m = conn.read(worksheet=f"{m:02d}_{curr_year}", ttl=0)
-            if sel in df_m['Họ và Tên'].values:
+            if df_m is not None and sel in df_m['Họ và Tên'].values:
                 row_p = df_m[df_m['Họ và Tên'] == sel].iloc[0]
                 m_lab = date(curr_year, m, 1).strftime("%b")
                 for col in df_m.columns:
@@ -196,8 +196,46 @@ with t2:
         except: continue
     
     if recs:
-        summary = pd.DataFrame(recs).groupby(['Tháng', 'Loại']).sum().reset_index()
-        fig = px.bar(summary, x="Tháng", y="Ngày", color="Loại", barmode="stack",
+        pdf = pd.DataFrame(recs)
+        summary = pdf.groupby(['Tháng', 'Loại']).sum().reset_index()
+        
+        # Tính toán lũy kế ngày biển
+        sea_only = summary[summary['Loại'] == "Đi Biển"].copy()
+        if not sea_only.empty:
+            sea_only['MonthIdx'] = sea_only['Tháng'].str[1:].astype(int)
+            sea_only = sea_only.sort_values('MonthIdx')
+            sea_only['Lũy kế biển'] = sea_only['Ngày'].cumsum()
+
+        # Tạo biểu đồ Stack Bar với nhãn số liệu
+        fig = px.bar(summary, x="Tháng", y="Ngày", color="Loại", text="Ngày",
+                     barmode="stack",
+                     color_discrete_map={"Đi Biển": "#00CC96", "CA": "#EF553B", "WS": "#FECB52", "NP": "#636EFA", "ỐM": "#AB63FA"},
                      category_orders={"Tháng": [f"T{i}" for i in range(1, 13)]})
+
+        # Thêm đường line lũy kế biển
+        if not sea_only.empty:
+            fig.add_trace(go.Scatter(
+                x=sea_only["Tháng"], y=sea_only["Lũy kế biển"],
+                name="Lũy kế Biển", mode="lines+markers+text",
+                text=sea_only["Lũy kế biển"], textposition="top center",
+                line=dict(color="#00f2ff", width=3)
+            ))
+
+        fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', 
+                          font_color="white", height=600, showlegend=True)
         st.plotly_chart(fig, use_container_width=True)
-    else: st.info("Chưa có dữ liệu.")
+        
+        st.markdown("---")
+        # Khối Metric hiển thị tổng kết
+        cm1, cm2, cm3, cm4 = st.columns(4)
+        total_sea = pdf[pdf['Loại'] == 'Đi Biển']['Ngày'].sum()
+        total_ca = pdf[pdf['Loại'] == 'CA']['Ngày'].sum()
+        total_np = pdf[pdf['Loại'] == 'NP']['Ngày'].sum()
+        total_om = pdf[pdf['Loại'] == 'ỐM']['Ngày'].sum()
+        
+        cm1.metric("🚢 Tổng Biển (Năm)", f"{total_sea} ngày")
+        cm2.metric("🏠 Tổng Nghỉ CA", f"{total_ca} ngày")
+        cm3.metric("📅 Nghỉ Phép (NP)", f"{total_np} ngày")
+        cm4.metric("💊 Nghỉ Ốm", f"{total_om} ngày")
+    else:
+        st.info("Chưa có dữ liệu cho nhân sự này trong năm nay.")

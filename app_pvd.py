@@ -19,8 +19,6 @@ st.markdown("""
         text-align: center !important; text-shadow: 3px 3px 6px #000 !important;
         font-family: 'Arial Black', sans-serif !important;
     }
-    /* Tối ưu hóa bảng để nhìn rõ màu sắc hơn */
-    .stDataFrame div[data-testid="stTable"] { font-weight: 500; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -188,22 +186,10 @@ with t1:
                     st.session_state.db = recalculate_ca(st.session_state.db)
                     st.rerun()
 
-        # CẤU HÌNH BẢNG - PHÂN BIỆT MÀU SẮC
         cols_info = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'CA Tháng Trước', 'Quỹ CA Tổng']
         cols_final = cols_info + [c for c in DATE_COLS if c in st.session_state.db.columns]
         
-        # Tạo cấu hình màu cho từng cột ngày
-        day_config = {}
-        for c in DATE_COLS:
-            day_config[c] = st.column_config.SelectboxColumn(
-                c,
-                options=[""] + st.session_state.GIANS + ["CA", "WS", "NP", "ỐM"],
-                width="small"
-            )
-
         display_df = st.session_state.db[cols_final].fillna("")
-        
-        # Hiển thị bảng Editor
         ed_df = st.data_editor(
             display_df, 
             use_container_width=True, 
@@ -212,7 +198,6 @@ with t1:
             column_config={
                 "CA Tháng Trước": st.column_config.NumberColumn("🏠 Tồn cũ", format="%.1f"),
                 "Quỹ CA Tổng": st.column_config.NumberColumn("📊 Tổng ca", format="%.1f", disabled=True),
-                **day_config # Áp dụng cấu hình cột ngày
             }
         )
         if not ed_df.equals(display_df):
@@ -226,24 +211,70 @@ with t2:
     st.subheader(f"📊 Phân tích nhân sự {curr_year}")
     sel_name = st.selectbox("🔍 Chọn nhân sự:", NAMES_66)
     recs = []
+    
     with st.spinner("Đang truy xuất dữ liệu..."):
         for m in range(1, 13):
             df_m = load_sheet_data(f"{m:02d}_{curr_year}")
             if not df_m.empty and sel_name in df_m['Họ và Tên'].values:
                 row_p = df_m[df_m['Họ và Tên'] == sel_name].iloc[0]
+                # Lấy tên viết tắt của tháng (ví dụ Jan, Feb...)
                 m_label = date(curr_year, m, 1).strftime("%b")
                 for col in df_m.columns:
+                    # Kiểm tra cột có chứa ngày/tháng không (ví dụ "01/Jan")
                     if "/" in col and m_label in col:
                         v = str(row_p.get(col, "")).strip().upper()
                         if v and v not in ["", "NAN", "NONE"]:
-                            cat = "Đi Biển" if any(g.upper() in v for g in st.session_state.GIANS) else v
-                            if cat in ["Đi Biển", "CA", "WS", "NP", "ỐM"]:
-                                recs.append({"Tháng": f"T{m}", "Loại": cat, "Ngày": 1})
+                            # Phân loại trạng thái
+                            if any(g.upper() in v for g in st.session_state.GIANS):
+                                cat = "ĐI BIỂN"
+                            elif v == "CA": cat = "NGHỈ CA"
+                            elif v == "WS": cat = "LÀM WS"
+                            elif v == "NP": cat = "NGHỈ PHÉP"
+                            elif v == "ỐM": cat = "NGHỈ ỐM"
+                            else: continue
+                            
+                            recs.append({"Tháng": f"T{m}", "Loại": cat, "Ngày": 1})
+    
     if recs:
         pdf = pd.DataFrame(recs)
-        summary = pdf.groupby(['Tháng', 'Loại']).size().reset_index(name='Ngày')
-        fig = px.bar(summary, x="Tháng", y="Ngày", color="Loại", text="Ngày", barmode="stack",
-                     category_orders={"Tháng": [f"T{i}" for i in range(1, 13)]},
-                     color_discrete_map={"Đi Biển": "#00f2ff", "CA": "#ff4b4b", "WS": "#ffd700", "NP": "#00ff00", "ỐM": "#ff00ff"})
+        # Nhóm dữ liệu để vẽ biểu đồ
+        summary = pdf.groupby(['Tháng', 'Loại']).size().reset_index(name='Số ngày')
+        
+        # Sắp xếp thứ tự tháng
+        month_order = [f"T{i}" for i in range(1, 13)]
+        
+        # Vẽ biểu đồ với Plotly
+        fig = px.bar(
+            summary, 
+            x="Tháng", 
+            y="Số ngày", 
+            color="Loại", 
+            text="Số ngày", # Hiển thị số ngày trên đồ thị màu đó
+            barmode="stack",
+            category_orders={"Tháng": month_order},
+            color_discrete_map={
+                "ĐI BIỂN": "#00f2ff", # Xanh Neon
+                "NGHỈ CA": "#ff4b4b", # Đỏ
+                "LÀM WS": "#ffd700",  # Vàng
+                "NGHỈ PHÉP": "#00ff00", # Xanh lá
+                "NGHỈ ỐM": "#ff00ff"   # Tím
+            }
+        )
+        
+        # Tinh chỉnh hiển thị số trên cột
+        fig.update_traces(textposition='inside', textfont_size=14)
+        fig.update_layout(uniformtext_minsize=12, uniformtext_mode='hide', xaxis_title="Tháng trong năm", yaxis_title="Tổng số ngày")
+        
         st.plotly_chart(fig, use_container_width=True)
-        st.table(pdf.groupby('Loại')['Ngày'].sum().reset_index(name='Tổng số ngày'))
+        
+        # BẢNG TỔNG HỢP SỐ LIỆU DƯỚI ĐỒ THỊ
+        st.markdown("#### 📑 Bảng tổng hợp chi tiết theo loại hình:")
+        
+        # Tạo bảng ngang để dễ nhìn
+        total_summary = pdf.groupby('Loại')['Ngày'].sum().reset_index()
+        total_summary.columns = ['Hạng mục', 'Tổng số ngày trong năm']
+        
+        # Hiển thị bảng đẹp hơn với style
+        st.dataframe(total_summary, use_container_width=True, hide_index=True)
+    else:
+        st.info(f"Chưa có dữ liệu hoạt động của {sel_name} trong năm {curr_year}")

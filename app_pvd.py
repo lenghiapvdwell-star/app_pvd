@@ -50,7 +50,7 @@ with st.sidebar:
             st.session_state.GIANS.remove(selected_gian_del)
             st.rerun()
 
-# --- 4. CHỌN THÁNG ---
+# --- 4. CHỌN THÁNG & KẾT NỐI ---
 _, c_mid_date, _ = st.columns([3.5, 2, 3.5])
 with c_mid_date:
     working_date = st.date_input("📅 CHỌN THÁNG LÀM VIỆC:", value=date.today(), key="main_date_picker")
@@ -65,12 +65,11 @@ if "current_sheet" not in st.session_state or st.session_state.current_sheet != 
     st.session_state.current_sheet = sheet_name
     if 'db' in st.session_state: del st.session_state.db
 
-# --- 5. DANH SÁCH NHÂN SỰ (FIXED 66 NAMES) ---
+# --- 5. TẢI DỮ LIỆU ---
 NAMES_66 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong"]
 COMPANIES = ["PVDWS", "OWS", "National", "Baker Hughes", "Schlumberger", "Halliburton"]
 TITLES = ["Casing crew", "CRTI LD", "CRTI SP", "SOLID", "MUDCL", "UNDERRM", "PPLS", "HAMER"]
 
-# --- 6. TẢI DỮ LIỆU & FIX LỖI LENGTH ---
 if 'db' not in st.session_state:
     try:
         df_load = conn.read(worksheet=sheet_name, ttl=0)
@@ -78,7 +77,6 @@ if 'db' not in st.session_state:
             st.session_state.db = df_load
         else: raise Exception
     except:
-        # Đảm bảo tất cả các list có cùng độ dài là 66
         st.session_state.db = pd.DataFrame({
             'STT': list(range(1, 67)), 
             'Họ và Tên': NAMES_66, 
@@ -94,7 +92,7 @@ DATE_COLS = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(
 for col in DATE_COLS:
     if col not in st.session_state.db.columns: st.session_state.db[col] = ""
 
-# --- 7. LOGIC TÍNH CA ---
+# --- 6. LOGIC TÍNH CA ---
 def calculate_pvd_logic(df):
     hols = [date(2026,1,1), date(2026,4,30), date(2026,5,1), date(2026,9,2),
             date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19)]
@@ -110,7 +108,6 @@ def calculate_pvd_logic(df):
             val = str(df_calc.at[idx, col]).strip().upper()
             curr_v = val if val not in ["", "NAN", "NONE"] else (last_status if (d_int < today_day or (d_int == today_day and now.hour >= 7)) else "")
             last_status = curr_v if curr_v else last_status
-
             if curr_v:
                 try:
                     dt = date(curr_year, curr_month, d_int)
@@ -125,7 +122,7 @@ def calculate_pvd_logic(df):
 
 st.session_state.db = calculate_pvd_logic(st.session_state.db)
 
-# --- 8. GIAO DIỆN ---
+# --- 7. GIAO DIỆN ---
 t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ"])
 
 with t1:
@@ -161,15 +158,19 @@ with t1:
                     if f_ti != "Không đổi": st.session_state.db.at[idx, 'Chức danh'] = f_ti
                 st.rerun()
 
+    # --- SẮP XẾP CỘT: TỒN CŨ VÀ TỔNG CA SÁT NHAU ---
+    ordered_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'CA Tháng Trước', 'Quỹ CA Tổng'] + DATE_COLS
+    
     config = {
         "STT": st.column_config.NumberColumn(disabled=True),
         "Họ và Tên": st.column_config.TextColumn(disabled=True),
         "CA Tháng Trước": st.column_config.NumberColumn("Tồn Cũ", format="%.1f"),
         "Quỹ CA Tổng": st.column_config.NumberColumn("Tổng ca", format="%.1f", disabled=True),
     }
-    ed_df = st.data_editor(st.session_state.db, column_config=config, use_container_width=True, height=600, hide_index=True, key=f"ed_{sheet_name}")
-    if not ed_df.equals(st.session_state.db):
-        st.session_state.db = ed_df
+    
+    ed_df = st.data_editor(st.session_state.db[ordered_cols], column_config=config, use_container_width=True, height=600, hide_index=True, key=f"ed_{sheet_name}")
+    if not ed_df.equals(st.session_state.db[ordered_cols]):
+        st.session_state.db.update(ed_df)
         st.rerun()
 
 with t2:
@@ -180,7 +181,9 @@ with t2:
     def load_clean_year(year):
         data = {}
         for m in range(1, 13):
-            try: data[m] = conn.read(worksheet=f"{m:02d}_{year}", ttl=0)
+            try:
+                temp_df = conn.read(worksheet=f"{m:02d}_{year}", ttl=0)
+                if temp_df is not None: data[m] = temp_df
             except: pass
         return data
 
@@ -188,7 +191,8 @@ with t2:
     recs = []
     if year_data:
         for m, df_m in year_data.items():
-            if sel in df_m['Họ và Tên'].values:
+            # SỬA LỖI KEYERROR: Kiểm tra cột 'Họ và Tên' tồn tại mới quét
+            if 'Họ và Tên' in df_m.columns and sel in df_m['Họ và Tên'].values:
                 row_p = df_m[df_m['Họ và Tên'] == sel].iloc[0]
                 m_label = date(curr_year, m, 1).strftime("%b")
                 for col in df_m.columns:

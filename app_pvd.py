@@ -72,7 +72,7 @@ COMPANIES = ["PVDWS", "OWS", "National", "Baker Hughes", "Schlumberger", "Hallib
 TITLES = ["Casing crew", "CRTI LD", "CRTI SP", "SOLID", "MUDCL", "UNDERRM", "PPLS", "HAMER"]
 NAMES_BASE = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong"]
 
-# --- 5. CHỌN THỜI GIAN & XỬ LÝ DÒNG TRỐNG ---
+# --- 5. CHỌN THỜI GIAN & TẢI DỮ LIỆU ---
 _, c_mid_date, _ = st.columns([3.5, 2, 3.5])
 with c_mid_date:
     working_date = st.date_input("📅 CHỌN THÁNG LÀM VIỆC:", value=date.today())
@@ -84,23 +84,16 @@ month_abbr = working_date.strftime("%b")
 if 'db' not in st.session_state or st.session_state.get('active_sheet') != sheet_name:
     try:
         df_load = conn.read(worksheet=sheet_name, ttl=300)
-        # Xử lý lỗi dữ liệu không đồng nhất (NaN)
         df_load['Họ và Tên'] = df_load['Họ và Tên'].fillna("").astype(str)
-        
-        # Đảm bảo luôn có 5 dòng trống ở cuối bảng
-        # Lọc những dòng thực sự có tên
         filled_rows = df_load[df_load['Họ và Tên'].str.strip() != ""]
-        # Tạo thêm 5 dòng trống hoàn toàn mới sau các dòng đã có dữ liệu
+        
         new_empty_rows = pd.DataFrame([{
             'STT': len(filled_rows) + i + 1, 'Họ và Tên': "", 'Công ty': 'PVDWS',
             'Chức danh': 'Casing crew', 'Job Detail': '', 'CA Tháng Trước': 0.0, 'Quỹ CA Tổng': 0.0
         } for i in range(5)])
         
-        # Kết hợp dữ liệu cũ đã có tên và 5 dòng trống mới
         st.session_state.db = pd.concat([filled_rows, new_empty_rows], ignore_index=True)
-        
     except:
-        # Nếu sheet chưa tồn tại, tạo danh sách gốc + 5 ô trống
         all_names = NAMES_BASE + [""] * 5
         st.session_state.db = pd.DataFrame({
             'STT': range(1, len(all_names) + 1), 'Họ và Tên': all_names, 
@@ -119,7 +112,8 @@ def calculate_pvd_logic(df):
     hols = [date(2026,1,1), date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19), date(2026,2,20), date(2026,2,21), date(2026,4,25), date(2026,4,30), date(2026,5,1), date(2026,9,2)]
     def row_calc(row):
         accrued = 0.0
-        if not str(row.get('Họ và Tên', '')).strip(): return 0.0
+        name = str(row.get('Họ và Tên', '')).strip()
+        if not name: return 0.0
         for col in DATE_COLS:
             v = str(row.get(col, "")).strip().upper()
             if not v or v in ["NAN", "NONE", "WS", "NP", "ỐM"]: continue
@@ -135,11 +129,13 @@ def calculate_pvd_logic(df):
             except: continue
         return accrued
 
-    df['CA Tháng Trước'] = pd.to_numeric(df['CA Tháng Trước'], errors='coerce').fillna(0.0)
-    df['Quỹ CA Tổng'] = df['CA Tháng Trước'] + df.apply(row_calc, axis=1)
-    return df
+    df_calc = df.copy()
+    df_calc['CA Tháng Trước'] = pd.to_numeric(df_calc['CA Tháng Trước'], errors='coerce').fillna(0.0)
+    df_calc['Quỹ CA Tổng'] = df_calc['CA Tháng Trước'] + df_calc.apply(row_calc, axis=1)
+    return df_calc
 
-st.session_state.db = calculate_pvd_logic(st.session_state.db)
+# Chỉ tính toán lại khi hiển thị, không gán ngược liên tục làm trigger rerun
+db_display = calculate_pvd_logic(st.session_state.db)
 
 # --- 7. TABS ---
 t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ"])
@@ -155,11 +151,11 @@ with t1:
                     st.rerun()
     with bc2:
         buf = io.BytesIO()
-        st.session_state.db.to_excel(buf, index=False)
+        db_display.to_excel(buf, index=False)
         st.download_button("📥 XUẤT EXCEL", buf, f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
     with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH & QUẢN LÝ GIÀN"):
-        st.markdown("##### ⚓ Quản lý giàn")
+        # Giữ nguyên các tính năng cũ
         c_add1, c_add2, c_del = st.columns([2, 1, 1])
         new_rig = c_add1.text_input("Tên giàn mới:")
         if c_add2.button("➕ Thêm"):
@@ -169,7 +165,6 @@ with t1:
                 st.rerun()
         
         st.divider()
-        # Lấy tên nhân sự (bao gồm cả nhân viên mới vừa được lưu)
         valid_names = [str(n) for n in st.session_state.db['Họ và Tên'].tolist() if str(n).strip() != ""]
         f_staff = st.multiselect("Nhân sự:", valid_names)
         f_date = st.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, num_days)))
@@ -193,18 +188,21 @@ with t1:
                                 if col_n in st.session_state.db.columns: st.session_state.db.at[idx, col_n] = f_val
                 st.rerun()
 
-    # HIỂN THỊ BẢNG DỮ LIỆU (Giữ nguyên không khóa cột)
-    ed_df = st.data_editor(st.session_state.db, use_container_width=True, height=600, hide_index=True, key=f"ed_{sheet_name}")
-    if not ed_df.equals(st.session_state.db):
-        st.session_state.db = ed_df
-        st.rerun()
+    # HIỂN THỊ BẢNG (BỎ RERUN TỰ ĐỘNG)
+    # Dữ liệu hiển thị lấy từ db_display (có tính Quỹ CA)
+    # Dữ liệu gốc trong session_state sẽ được cập nhật âm thầm
+    ed_df = st.data_editor(db_display, use_container_width=True, height=600, hide_index=True, key=f"ed_{sheet_name}")
+    
+    if not ed_df.equals(db_display):
+        st.session_state.db = ed_df # Cập nhật dữ liệu vào bộ nhớ nhưng không rerun ngay
 
 with t2:
     st.subheader("📊 Phân tích cường độ & Tổng hợp ngày biển")
+    # Biểu đồ vẫn lấy dữ liệu từ bộ nhớ để hiển thị
     chart_names = [str(n) for n in st.session_state.db['Họ và Tên'].tolist() if str(n).strip() != ""]
     sel = st.selectbox("🔍 Chọn nhân sự:", chart_names) if chart_names else st.info("Chưa có dữ liệu.")
     
-    if chart_names:
+    if chart_names and sel:
         recs = []
         for m in range(1, 13):
             try:

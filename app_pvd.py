@@ -20,6 +20,8 @@ st.markdown("""
         text-align: center !important; text-shadow: 3px 3px 6px #000 !important;
         font-family: 'Arial Black', sans-serif !important;
     }
+    /* Tối ưu giao diện form để không chiếm diện tích */
+    .stForm {border: none !important; padding: 0 !important;}
     </style>
     """, unsafe_allow_html=True)
 
@@ -51,20 +53,13 @@ def save_to_cloud_smart(worksheet_name, df):
             df_clean[col] = df_clean[col].fillna("")
         else:
             df_clean[col] = df_clean[col].fillna(0)
-            
-    retries = 3
-    for i in range(retries):
-        try:
-            conn.update(worksheet=worksheet_name, data=df_clean)
-            return True
-        except Exception as e:
-            if "429" in str(e):
-                time.sleep(5)
-                continue
-            return False
-    return False
+    try:
+        conn.update(worksheet=worksheet_name, data=df_clean)
+        return True
+    except:
+        return False
 
-# --- 4. KHỞI TẠO ---
+# --- 4. KHỞI TẠO DANH SÁCH GỐC ---
 if "gians_list" not in st.session_state:
     st.session_state.gians_list = load_gians_from_sheets()
 
@@ -86,12 +81,10 @@ if 'db' not in st.session_state or st.session_state.get('active_sheet') != sheet
         df_load = conn.read(worksheet=sheet_name, ttl=300)
         df_load['Họ và Tên'] = df_load['Họ và Tên'].fillna("").astype(str)
         filled_rows = df_load[df_load['Họ và Tên'].str.strip() != ""]
-        
         new_empty_rows = pd.DataFrame([{
             'STT': len(filled_rows) + i + 1, 'Họ và Tên': "", 'Công ty': 'PVDWS',
             'Chức danh': 'Casing crew', 'Job Detail': '', 'CA Tháng Trước': 0.0, 'Quỹ CA Tổng': 0.0
         } for i in range(5)])
-        
         st.session_state.db = pd.concat([filled_rows, new_empty_rows], ignore_index=True)
     except:
         all_names = NAMES_BASE + [""] * 5
@@ -112,8 +105,7 @@ def calculate_pvd_logic(df):
     hols = [date(2026,1,1), date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19), date(2026,2,20), date(2026,2,21), date(2026,4,25), date(2026,4,30), date(2026,5,1), date(2026,9,2)]
     def row_calc(row):
         accrued = 0.0
-        name = str(row.get('Họ và Tên', '')).strip()
-        if not name: return 0.0
+        if not str(row.get('Họ và Tên', '')).strip(): return 0.0
         for col in DATE_COLS:
             v = str(row.get(col, "")).strip().upper()
             if not v or v in ["NAN", "NONE", "WS", "NP", "ỐM"]: continue
@@ -134,39 +126,60 @@ def calculate_pvd_logic(df):
     df_calc['Quỹ CA Tổng'] = df_calc['CA Tháng Trước'] + df_calc.apply(row_calc, axis=1)
     return df_calc
 
-# Chỉ tính toán lại khi hiển thị, không gán ngược liên tục làm trigger rerun
-db_display = calculate_pvd_logic(st.session_state.db)
-
 # --- 7. TABS ---
 t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ"])
 
 with t1:
+    # HÀNG NÚT BẤM CHÍNH
     bc1, bc2, _ = st.columns([1.5, 1.5, 5])
     with bc1:
         if st.button("📤 LƯU CLOUD", type="primary", use_container_width=True):
             with st.status("🚀 Đang đồng bộ...", expanded=False):
-                if save_to_cloud_smart(sheet_name, st.session_state.db):
+                # Tính toán lại lần cuối trước khi lưu
+                final_df = calculate_pvd_logic(st.session_state.db)
+                if save_to_cloud_smart(sheet_name, final_df):
                     st.toast("Đã lưu thành công!")
                     time.sleep(0.5)
                     st.rerun()
     with bc2:
         buf = io.BytesIO()
-        db_display.to_excel(buf, index=False)
+        calculate_pvd_logic(st.session_state.db).to_excel(buf, index=False)
         st.download_button("📥 XUẤT EXCEL", buf, f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
+    # KHU VỰC NHẬP LIỆU CHÍNH (Dùng FORM để chống giật)
+    st.markdown("---")
+    with st.form("main_data_form"):
+        st.markdown("##### 📝 BẢNG NHẬP LIỆU CHI TIẾT")
+        # Hiển thị bảng từ session_state hiện tại
+        edited_db = st.data_editor(
+            st.session_state.db, 
+            use_container_width=True, 
+            height=550, 
+            hide_index=True,
+            key="editor_inside_form"
+        )
+        
+        c_form1, c_form2 = st.columns([2, 6])
+        submit_change = c_form1.form_submit_button("✅ XÁC NHẬN THAY ĐỔI (TÍNH CA)", use_container_width=True)
+        if submit_change:
+            st.session_state.db = edited_db
+            st.rerun()
+        with c_form2:
+            st.info("💡 Bạn có thể nhập liệu liên tục nhiều ô. Sau khi nhập xong, nhấn 'XÁC NHẬN THAY ĐỔI' để App tính toán Quỹ CA.")
+
+    # CÔNG CỤ CẬP NHẬT NHANH (Giữ nguyên)
     with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH & QUẢN LÝ GIÀN"):
-        # Giữ nguyên các tính năng cũ
-        c_add1, c_add2, c_del = st.columns([2, 1, 1])
+        c_add1, c_add2 = st.columns([2, 1])
         new_rig = c_add1.text_input("Tên giàn mới:")
-        if c_add2.button("➕ Thêm"):
+        if c_add2.button("➕ Thêm Giàn"):
             if new_rig and new_rig.strip().upper() not in st.session_state.gians_list:
                 st.session_state.gians_list.append(new_rig.strip().upper())
                 save_to_cloud_smart("CONFIG", pd.DataFrame({"Giàn": st.session_state.gians_list}))
                 st.rerun()
         
         st.divider()
-        valid_names = [str(n) for n in st.session_state.db['Họ và Tên'].tolist() if str(n).strip() != ""]
-        f_staff = st.multiselect("Nhân sự:", valid_names)
+        v_names = [str(n) for n in st.session_state.db['Họ và Tên'].tolist() if str(n).strip() != ""]
+        f_staff = st.multiselect("Nhân sự:", v_names)
         f_date = st.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, num_days)))
         r2_1, r2_2, r2_3, r2_4 = st.columns(4)
         f_status = r2_1.selectbox("Trạng thái:", ["Không đổi", "Đi Biển", "CA", "WS", "NP", "Ốm"])
@@ -174,7 +187,7 @@ with t1:
         f_co = r2_3.selectbox("Cty:", ["Không đổi"] + COMPANIES)
         f_ti = r2_4.selectbox("Chức danh:", ["Không đổi"] + TITLES)
         
-        if st.button("✅ ÁP DỤNG"):
+        if st.button("🚀 ÁP DỤNG NHANH"):
             if f_staff and isinstance(f_date, tuple) and len(f_date) == 2:
                 for person in f_staff:
                     idx = st.session_state.db.index[st.session_state.db['Họ và Tên'] == person][0]
@@ -188,17 +201,8 @@ with t1:
                                 if col_n in st.session_state.db.columns: st.session_state.db.at[idx, col_n] = f_val
                 st.rerun()
 
-    # HIỂN THỊ BẢNG (BỎ RERUN TỰ ĐỘNG)
-    # Dữ liệu hiển thị lấy từ db_display (có tính Quỹ CA)
-    # Dữ liệu gốc trong session_state sẽ được cập nhật âm thầm
-    ed_df = st.data_editor(db_display, use_container_width=True, height=600, hide_index=True, key=f"ed_{sheet_name}")
-    
-    if not ed_df.equals(db_display):
-        st.session_state.db = ed_df # Cập nhật dữ liệu vào bộ nhớ nhưng không rerun ngay
-
 with t2:
     st.subheader("📊 Phân tích cường độ & Tổng hợp ngày biển")
-    # Biểu đồ vẫn lấy dữ liệu từ bộ nhớ để hiển thị
     chart_names = [str(n) for n in st.session_state.db['Họ và Tên'].tolist() if str(n).strip() != ""]
     sel = st.selectbox("🔍 Chọn nhân sự:", chart_names) if chart_names else st.info("Chưa có dữ liệu.")
     

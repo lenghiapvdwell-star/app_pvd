@@ -17,9 +17,11 @@ st.markdown("""
         color: #00f2ff !important; font-size: 38px !important; font-weight: bold !important;
         text-align: center !important; text-shadow: 2px 2px 4px #000 !important;
     }
-    /* Làm nổi bật cột Quỹ CA Tổng (Cột 7) */
+    /* Làm nổi bật cột Quỹ CA Tổng (Cột thứ 7 tính từ trái sang) */
     [data-testid="stDataEditor"] div[data-testid="column-7"] {
-        background-color: #004c4c !important; color: #00f2ff !important; font-weight: bold;
+        background-color: #004c4c !important; 
+        color: #00f2ff !important; 
+        font-weight: bold !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -62,24 +64,25 @@ sheet_name = working_date.strftime("%m_%Y")
 curr_month, curr_year = working_date.month, working_date.year
 month_abbr = working_date.strftime("%b")
 
-# --- 6. HÀM XỬ LÝ DỮ LIỆU (AUTOFILL & TÍNH TOÁN) ---
+# --- 6. HÀM XỬ LÝ SIÊU AUTOFILL & TÍNH TOÁN ---
 def process_pvd_data(df):
     num_days = calendar.monthrange(curr_year, curr_month)[1]
     date_cols = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(curr_year,curr_month,d).weekday()]})" for d in range(1, num_days+1)]
     
     df_new = df.copy()
     for idx, row in df_new.iterrows():
-        # A. Autofill Lan truyền
+        # A. Autofill Lan truyền (Real-time)
         last_val = ""
         for col in date_cols:
             if col not in df_new.columns: df_new[col] = ""
             v = str(df_new.at[idx, col]).strip()
+            # Nếu ô trống, tự động lấy giá trị của ô phía trước điền vào
             if v == "" or v.upper() in ["NAN", "NONE"]:
                 df_new.at[idx, col] = last_val
             else:
                 last_val = v
 
-        # B. Tính CA
+        # B. Tính CA dựa trên dữ liệu đã Autofill
         acc = 0.0
         for col in date_cols:
             status = str(df_new.at[idx, col]).strip().upper()
@@ -113,80 +116,95 @@ if 'db' not in st.session_state or st.session_state.get('active_sheet') != sheet
 
 # --- 8. BIỂU ĐỒ THỐNG KÊ ---
 st.markdown("### 📊 THỐNG KÊ NHÂN SỰ")
+# Chạy xử lý dữ liệu để lấy số liệu vẽ biểu đồ
 display_df = process_pvd_data(st.session_state.db)
 c_chart1, c_chart2 = st.columns(2)
 
 with c_chart1:
     fig_ca = px.bar(display_df.sort_values('Quỹ CA Tổng', ascending=False).head(15), 
-                    x='Họ và Tên', y='Quỹ CA Tổng', title="Top 15 nhân sự có quỹ CA cao nhất",
-                    color='Quỹ CA Tổng', color_continuous_scale='Viridis')
+                    x='Họ và Tên', y='Quỹ CA Tổng', title="Top 15 Quỹ CA cao nhất",
+                    color='Quỹ CA Tổng', color_continuous_scale='Turbo')
     st.plotly_chart(fig_ca, use_container_width=True)
 
 with c_chart2:
-    company_counts = display_df['Công ty'].value_counts().reset_index()
-    fig_pie = px.pie(company_counts, names='index', values='Công ty', title="Cơ cấu Công ty")
+    comp_counts = display_df['Công ty'].value_counts().reset_index()
+    fig_pie = px.pie(comp_counts, names='index', values='Công ty', title="Phân bổ nhân sự theo Công ty")
     st.plotly_chart(fig_pie, use_container_width=True)
 
-# --- 9. CÔNG CỤ CẬP NHẬT & QUẢN LÝ GIÀN ---
+# --- 9. CÔNG CỤ CẬP NHẬT NHANH & QUẢN LÝ GIÀN ---
 with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH & QUẢN LÝ GIÀN"):
     t_quick, t_rigs = st.tabs(["⚡ Đổ dữ liệu hàng loạt", "⚓ Quản lý danh sách giàn"])
     
     with t_quick:
         q1, q2, q3 = st.columns(3)
         s_staff = q1.multiselect("Nhân sự:", display_df['Họ và Tên'].tolist())
-        s_date = q2.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, 2)))
+        s_date = q2.date_input("Khoảng thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, 2)))
         s_type = q3.selectbox("Trạng thái:", ["Đi Biển", "CA", "WS", "NP", "Ốm"])
         s_val = q3.selectbox("Chọn giàn:", st.session_state.gians_list) if s_type == "Đi Biển" else s_type
-        if st.button("🚀 ÁP DỤNG"):
+        if st.button("🚀 ÁP DỤNG HÀNG LOẠT"):
             if s_staff and len(s_date) == 2:
                 for p in s_staff:
                     idx = st.session_state.db.index[st.session_state.db['Họ và Tên'] == p][0]
                     for i in range((s_date[1] - s_date[0]).days + 1):
                         d = s_date[0] + timedelta(days=i)
-                        col = [c for c in st.session_state.db.columns if c.startswith(f"{d.day:02d}/")]
-                        if col: st.session_state.db.at[idx, col[0]] = s_val
+                        col_target = [c for c in st.session_state.db.columns if c.startswith(f"{d.day:02d}/")]
+                        if col_target: st.session_state.db.at[idx, col_target[0]] = s_val
                 st.rerun()
 
     with t_rigs:
-        c_add1, c_add2 = st.columns([3, 1])
-        new_rig = c_add1.text_input("Tên giàn mới:")
-        if c_add2.button("➕ Thêm"):
+        ra1, ra2 = st.columns([3, 1])
+        new_rig = ra1.text_input("Tên giàn mới:")
+        if ra2.button("➕ Thêm"):
             if new_rig:
                 st.session_state.gians_list.append(new_rig.upper())
                 conn.update(worksheet="CONFIG", data=pd.DataFrame({"Giàn": st.session_state.gians_list}))
                 st.rerun()
         st.markdown("---")
-        c_del1, c_del2 = st.columns([3, 1])
-        rig_to_del = c_del1.selectbox("Chọn giàn cần xóa:", ["-- Chọn --"] + st.session_state.gians_list)
-        if c_del2.button("🗑️ Xóa"):
+        rd1, rd2 = st.columns([3, 1])
+        rig_to_del = rd1.selectbox("Chọn giàn cần xóa:", ["-- Chọn --"] + st.session_state.gians_list)
+        if rd2.button("🗑️ Xóa"):
             if rig_to_del != "-- Chọn --":
                 st.session_state.gians_list.remove(rig_to_del)
                 conn.update(worksheet="CONFIG", data=pd.DataFrame({"Giàn": st.session_state.gians_list}))
                 st.rerun()
 
-# --- 10. ĐIỀU KHIỂN & BẢNG CHÍNH ---
+# --- 10. ĐIỀU KHIỂN LƯU & XUẤT FILE ---
 st.markdown("---")
 a1, a2, _ = st.columns([2, 2, 5])
 if a1.button("💾 LƯU & ĐỒNG BỘ CLOUD", type="primary", use_container_width=True):
-    with st.spinner("Đang đồng bộ..."):
-        final = process_pvd_data(st.session_state.db)
-        conn.update(worksheet=sheet_name, data=final)
-        st.session_state.db = final
-        st.success("Đã đồng bộ thành công!")
+    with st.spinner("Đang lưu dữ liệu..."):
+        final_processed = process_pvd_data(st.session_state.db)
+        conn.update(worksheet=sheet_name, data=final_processed)
+        st.session_state.db = final_processed
+        st.success("Dữ liệu đã an toàn trên Cloud!")
         st.rerun()
 
 buf = io.BytesIO()
 display_df.to_excel(buf, index=False)
 a2.download_button("📥 XUẤT EXCEL", buf, f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
-# Sắp xếp cột
-cols = list(display_df.columns)
-date_cols = [c for c in cols if '/' in c]
-reorder = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'CA Tháng Trước', 'Quỹ CA Tổng'] + date_cols
-display_df = display_df[reorder]
+# Sắp xếp thứ tự cột hiển thị
+cols_all = list(display_df.columns)
+date_cols_all = [c for c in cols_all if '/' in c]
+reorder_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'CA Tháng Trước', 'Quỹ CA Tổng'] + date_cols_all
+display_df = display_df[reorder_cols]
 
+# --- 11. BẢNG DỮ LIỆU CHÍNH (DATA EDITOR) ---
 edited_df = st.data_editor(
     display_df,
     use_container_width=True,
     height=600,
     hide_index=True,
+    key=f"pvd_editor_v10_{sheet_name}",
+    column_config={
+        "Công ty": st.column_config.SelectboxColumn(options=COMPANIES),
+        "Chức danh": st.column_config.SelectboxColumn(options=TITLES),
+        "Quỹ CA Tổng": st.column_config.NumberColumn(format="%.1f", help="Tính tự động từ CA Tháng Trước + Biển - Nghỉ CA"),
+        "CA Tháng Trước": st.column_config.NumberColumn(format="%.1f")
+    }
+)
+
+# AUTOFILL REAL-TIME: Kiểm tra nếu có bất kỳ ô nào thay đổi
+if not edited_df.equals(display_df):
+    st.session_state.db = edited_df
+    st.rerun()

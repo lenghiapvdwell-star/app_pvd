@@ -33,8 +33,15 @@ with c_logo:
 
 st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
 
-# --- 3. KẾT NỐI & SMART SAVE ---
+# --- 3. KẾT NỐI & HÀM BỔ TRỢ ---
 conn = st.connection("gsheets", type=GSheetsConnection)
+
+def load_config():
+    try:
+        df_conf = conn.read(worksheet="CONFIG", ttl=600)
+        return df_conf.iloc[:, 0].dropna().tolist()
+    except:
+        return ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNLOD"]
 
 def save_to_cloud_smart(worksheet_name, df):
     df_clean = df.fillna("").replace(["nan", "NaN", "None"], "")
@@ -45,9 +52,9 @@ def save_to_cloud_smart(worksheet_name, df):
         st.error(f"Lỗi Cloud: {e}")
         return False
 
-# --- 4. KHỞI TẠO DỮ LIỆU ---
+# --- 4. KHỞI TẠO ---
 if "GIANS" not in st.session_state:
-    st.session_state.GIANS = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNLOD"]
+    st.session_state.GIANS = load_config()
 
 COMPANIES = ["PVDWS", "OWS", "National", "Baker Hughes", "Schlumberger", "Halliburton"]
 TITLES = ["Casing crew", "CRTI LD", "CRTI SP", "SOLID", "MUDCL", "UNDERRM", "PPLS", "HAMER"]
@@ -104,7 +111,7 @@ def recalculate_ca(df):
         df_calc.at[idx, 'Quỹ CA Tổng'] = row['CA Tháng Trước'] + accrued
     return df_calc
 
-# --- 7. TABS ---
+# --- 7. GIAO DIỆN TABS ---
 t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ"])
 
 with t1:
@@ -121,17 +128,33 @@ with t1:
         st.session_state.db.to_excel(buf, index=False)
         st.download_button("📥 XUẤT EXCEL", buf.getvalue(), f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
-    with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH"):
+    with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH & QUẢN LÝ GIÀN"):
+        st.markdown("##### ⚓ Quản lý giàn")
+        c_add1, c_add2, c_del = st.columns([2, 1, 1])
+        new_rig = c_add1.text_input("Tên giàn mới:")
+        if c_add2.button("➕ Thêm Giàn", use_container_width=True):
+            if new_rig and new_rig.strip().upper() not in st.session_state.GIANS:
+                st.session_state.GIANS.append(new_rig.strip().upper())
+                save_to_cloud_smart("CONFIG", pd.DataFrame({"Giàn": st.session_state.GIANS}))
+                st.rerun()
+        
+        del_rig = c_del.selectbox("Xóa giàn:", ["-- Chọn --"] + st.session_state.GIANS)
+        if del_rig != "-- Chọn --" and st.button(f"🗑️ Xóa {del_rig}"):
+            st.session_state.GIANS.remove(del_rig)
+            save_to_cloud_smart("CONFIG", pd.DataFrame({"Giàn": st.session_state.GIANS}))
+            st.rerun()
+
+        st.divider()
         c1, c2 = st.columns([2, 1])
         f_staff = c1.multiselect("Nhân sự:", NAMES_66)
         f_date = c2.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, num_days)))
         r2_1, r2_2, r2_3, r2_4 = st.columns(4)
         f_status = r2_1.selectbox("Trạng thái:", ["Xóa trắng", "Đi Biển", "CA", "WS", "NP", "Ốm"])
-        f_val = r2_2.selectbox("Giàn:", st.session_state.GIANS) if f_status == "Đi Biển" else f_status
+        f_val = r2_2.selectbox("Chọn giàn:", st.session_state.GIANS) if f_status == "Đi Biển" else f_status
         f_co = r2_3.selectbox("Cty:", ["Không đổi"] + COMPANIES)
         f_ti = r2_4.selectbox("Chức danh:", ["Không đổi"] + TITLES)
         
-        if st.button("✅ ÁP DỤNG"):
+        if st.button("✅ ÁP DỤNG THAY ĐỔI"):
             if f_staff and isinstance(f_date, tuple) and len(f_date) == 2:
                 for person in f_staff:
                     idx = st.session_state.db.index[st.session_state.db['Họ và Tên'] == person][0]
@@ -145,27 +168,30 @@ with t1:
                 st.session_state.db = recalculate_ca(st.session_state.db)
                 st.rerun()
 
-    # HIỂN THỊ DỮ LIỆU
-    display_df = st.session_state.db.fillna("").replace(["nan", "NaN"], "")
+    # SẮP XẾP CỘT: CA Tháng Trước và Quỹ CA Tổng nằm cạnh nhau
+    ordered_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'CA Tháng Trước', 'Quỹ CA Tổng'] + DATE_COLS
+    display_df = st.session_state.db[ordered_cols].fillna("").replace(["nan", "NaN"], "")
+    
     ed_df = st.data_editor(display_df, use_container_width=True, height=600, hide_index=True,
-                           column_config={"STT": st.column_config.NumberColumn(disabled=True),
-                                         "Họ và Tên": st.column_config.TextColumn(disabled=True),
-                                         "Quỹ CA Tổng": st.column_config.NumberColumn("Tổng ca", format="%.1f", disabled=True)})
+                           column_config={
+                               "STT": st.column_config.NumberColumn(disabled=True),
+                               "Họ và Tên": st.column_config.TextColumn(disabled=True),
+                               "Quỹ CA Tổng": st.column_config.NumberColumn("Tổng ca", format="%.1f", disabled=True),
+                           })
     if not ed_df.equals(display_df):
         st.session_state.db.update(ed_df)
         st.session_state.db = recalculate_ca(st.session_state.db)
         st.rerun()
 
 with t2:
-    st.subheader(f"📊 Phân tích dữ liệu năm {curr_year}")
-    sel_name = st.selectbox("🔍 Chọn nhân sự xem biểu đồ:", NAMES_66)
+    st.subheader(f"📊 Biểu đồ hoạt động năm {curr_year}")
+    sel_name = st.selectbox("🔍 Chọn nhân sự:", NAMES_66)
     
     recs = []
-    with st.spinner("Đang tổng hợp dữ liệu 12 tháng..."):
+    with st.spinner("Đang quét dữ liệu 12 tháng..."):
         for m in range(1, 13):
             m_sheet = f"{m:02d}_{curr_year}"
             try:
-                # ttl=3600 để tránh load lại từ cloud khi đổi nhân sự
                 df_m = conn.read(worksheet=m_sheet, ttl=3600)
                 if df_m is not None and sel_name in df_m['Họ và Tên'].values:
                     row_p = df_m[df_m['Họ và Tên'] == sel_name].iloc[0]
@@ -176,24 +202,20 @@ with t2:
                             if v and v not in ["", "NAN", "NONE"]:
                                 cat = "Đi Biển" if any(g.upper() in v for g in st.session_state.GIANS) else v
                                 if cat in ["Đi Biển", "CA", "WS", "NP", "ỐM"]:
-                                    recs.append({"Tháng": f"T{m}", "Loại": cat, "Số ngày": 1})
+                                    recs.append({"Tháng": f"T{m}", "Loại": cat, "Ngày": 1})
             except: continue
 
     if recs:
         pdf = pd.DataFrame(recs)
         summary = pdf.groupby(['Tháng', 'Loại']).size().reset_index(name='Ngày')
-        
-        # Sắp xếp tháng theo đúng thứ tự T1 -> T12
         summary['MonthIdx'] = summary['Tháng'].str[1:].astype(int)
         summary = summary.sort_values('MonthIdx')
 
-        # Tính lũy kế riêng cho Đi Biển
         sea_data = summary[summary['Loại'] == "Đi Biển"].copy()
         sea_data['Lũy kế biển'] = sea_data['Ngày'].cumsum()
 
         fig = px.bar(summary, x="Tháng", y="Ngày", color="Loại", text="Ngày",
-                     barmode="stack", title=f"Thống kê hoạt động của {sel_name}",
-                     color_discrete_map={"Đi Biển": "#00CC96", "CA": "#EF553B", "WS": "#FECB52", "NP": "#636EFA", "ỐM": "#AB63FA"},
+                     barmode="stack", color_discrete_map={"Đi Biển": "#00CC96", "CA": "#EF553B", "WS": "#FECB52", "NP": "#636EFA", "ỐM": "#AB63FA"},
                      category_orders={"Tháng": [f"T{i}" for i in range(1, 13)]})
 
         if not sea_data.empty:
@@ -201,10 +223,9 @@ with t2:
                                      mode="lines+markers+text", text=sea_data["Lũy kế biển"], 
                                      textposition="top center", line=dict(color="#00f2ff", width=3)))
 
-        fig.update_layout(hovermode="x unified", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="white")
+        fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="white", height=600)
         st.plotly_chart(fig, use_container_width=True)
         
-        # Chỉ số Metric
         st.divider()
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("🚢 Tổng Biển", f"{pdf[pdf['Loại']=='Đi Biển'].shape[0]} ngày")
@@ -212,4 +233,4 @@ with t2:
         m3.metric("📅 Nghỉ Phép", f"{pdf[pdf['Loại']=='NP'].shape[0]} ngày")
         m4.metric("💊 Nghỉ Ốm", f"{pdf[pdf['Loại']=='ỐM'].shape[0]} ngày")
     else:
-        st.info("Chưa tìm thấy dữ liệu hoạt động trong năm của nhân sự này.")
+        st.info("Nhân sự này chưa có dữ liệu hoạt động trong năm.")

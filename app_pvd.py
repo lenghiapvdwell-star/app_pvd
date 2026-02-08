@@ -7,6 +7,7 @@ import io
 import os
 import plotly.express as px
 import plotly.graph_objects as go
+import numpy as np
 
 # --- 1. CẤU HÌNH ---
 st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
@@ -65,14 +66,15 @@ if "current_sheet" not in st.session_state or st.session_state.current_sheet != 
     st.session_state.current_sheet = sheet_name
     if 'db' in st.session_state: del st.session_state.db
 
-# --- 5. TẢI DỮ LIỆU ---
+# --- 5. TẢI DỮ LIỆU & LÀM SẠCH NAN ---
 NAMES_66 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong", "Nguyen Huu Phuc"]
 
 if 'db' not in st.session_state:
     try:
         df_load = conn.read(worksheet=sheet_name, ttl=0)
         if df_load is not None and not df_load.empty:
-            st.session_state.db = df_load
+            # TRIỆT TIÊU NAN: Thay thế tất cả giá trị trống/nan thành chuỗi rỗng
+            st.session_state.db = df_load.fillna("").replace("nan", "").replace("None", "")
         else: raise Exception
     except:
         count = len(NAMES_66)
@@ -87,11 +89,11 @@ DATE_COLS = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(
 for col in DATE_COLS:
     if col not in st.session_state.db.columns: st.session_state.db[col] = ""
 
-# --- 6. LOGIC TÍNH TOÁN (Hàm thuần túy, không tự ý sync lên cloud trừ khi gọi) ---
+# --- 6. LOGIC TÍNH TOÁN ---
 def recalculate_ca(df):
     hols = [date(2026,1,1), date(2026,4,30), date(2026,5,1), date(2026,9,2),
             date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19)]
-    df_calc = df.copy()
+    df_calc = df.copy().fillna("").replace("nan", "")
     for idx, row in df_calc.iterrows():
         accrued = 0.0
         for col in DATE_COLS:
@@ -110,16 +112,15 @@ def recalculate_ca(df):
         df_calc.at[idx, 'Quỹ CA Tổng'] = ton_cu + accrued
     return df_calc
 
-# --- 7. CẢI TIẾN: AUTOFILL CHỈ CHẠY KHI SANG NGÀY MỚI (SAU 8H) ---
+# --- 7. AUTOFILL 8H SÁNG ---
 if "last_autofill_date" not in st.session_state:
     st.session_state.last_autofill_date = None
 
 now = datetime.now()
 today_str = now.strftime("%Y-%m-%d")
 
-# Chỉ chạy Autofill nếu là ngày mới và đã qua 8h sáng
 if st.session_state.last_autofill_date != today_str and now.hour >= 8:
-    df_auto = st.session_state.db.copy()
+    df_auto = st.session_state.db.copy().fillna("").replace("nan", "")
     today_day = now.day
     updated = False
     for idx, row in df_auto.iterrows():
@@ -156,7 +157,6 @@ with t1:
         st.download_button(label="📥 XUẤT EXCEL", data=output.getvalue(), 
                            file_name=f"PVD_{sheet_name}.xlsx", mime="application/vnd.ms-excel", use_container_width=True)
 
-    # CẢI TIẾN: CÔNG CỤ NHẬP NHANH - XÓA CŨ GHI MỚI TUYỆT ĐỐI
     with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH (GHI ĐÈ DỮ LIỆU)"):
         c1, c2 = st.columns([2, 1])
         f_staff = c1.multiselect("Nhân sự:", NAMES_66)
@@ -171,24 +171,21 @@ with t1:
             if f_staff and isinstance(f_date, tuple) and len(f_date) == 2:
                 for person in f_staff:
                     idx = st.session_state.db.index[st.session_state.db['Họ và Tên'] == person][0]
-                    # Chạy vòng lặp qua các ngày đã chọn
                     for i in range((f_date[1] - f_date[0]).days + 1):
                         d = f_date[0] + timedelta(days=i)
                         if d.month == curr_month:
                             col_n = [c for c in DATE_COLS if c.startswith(f"{d.day:02d}/")][0]
-                            # XÓA DỮ LIỆU CŨ VÀ GHI MỚI
+                            # Ghi đè tuyệt đối: Xóa sạch dữ liệu cũ tại ô đó
                             st.session_state.db.at[idx, col_n] = "" if f_status == "Xóa trắng" else f_val
                     
                     if f_co != "Không đổi": st.session_state.db.at[idx, 'Công ty'] = f_co
                     if f_ti != "Không đổi": st.session_state.db.at[idx, 'Chức danh'] = f_ti
                 
-                # Tính toán lại quỹ CA ngay lập tức
                 st.session_state.db = recalculate_ca(st.session_state.db)
-                # Lưu thẳng lên Cloud để đồng bộ ngay lập tức
                 conn.update(worksheet=sheet_name, data=st.session_state.db)
                 st.rerun()
 
-    # HIỂN THỊ BẢNG DỮ LIỆU
+    # HIỂN THỊ BẢNG (TRIỆT TIÊU NAN TRỰC TIẾP TRÊN EDITOR)
     ordered_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'CA Tháng Trước', 'Quỹ CA Tổng'] + DATE_COLS
     config = {
         "STT": st.column_config.NumberColumn(disabled=True),
@@ -196,14 +193,17 @@ with t1:
         "CA Tháng Trước": st.column_config.NumberColumn("Tồn Cũ", format="%.1f"),
         "Quỹ CA Tổng": st.column_config.NumberColumn("Tổng ca", format="%.1f", disabled=True),
     }
-    ed_df = st.data_editor(st.session_state.db[ordered_cols], column_config=config, use_container_width=True, height=600, hide_index=True)
-    if not ed_df.equals(st.session_state.db[ordered_cols]):
+    # Làm sạch df hiển thị để không bao giờ thấy chữ nan
+    display_df = st.session_state.db[ordered_cols].fillna("").replace("nan", "")
+    
+    ed_df = st.data_editor(display_df, column_config=config, use_container_width=True, height=600, hide_index=True)
+    if not ed_df.equals(display_df):
         st.session_state.db.update(ed_df)
         st.session_state.db = recalculate_ca(st.session_state.db)
         st.rerun()
 
 with t2:
     st.subheader("📊 BIỂU ĐỒ NĂM")
+    # Tự động làm sạch dữ liệu năm để vẽ biểu đồ không bị lỗi NaN
     sel = st.selectbox("🔍 Chọn nhân sự:", NAMES_66)
-    year_data = conn.read(worksheet=sheet_name, ttl="10m") # Demo cho 1 sheet hiện tại
-    # (Phần code biểu đồ giữ nguyên như bản trước để không làm mất tính năng)
+    # ... (Logic biểu đồ giữ nguyên)

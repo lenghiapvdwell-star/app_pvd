@@ -57,7 +57,7 @@ sheet_name = working_date.strftime("%m_%Y")
 curr_month, curr_year = working_date.month, working_date.year
 month_abbr = working_date.strftime("%b")
 
-# --- 5. QUẢN LÝ DỮ LIỆU TẠM THỜI ---
+# --- 5. QUẢN LÝ DỮ LIỆU ---
 if 'db' not in st.session_state or st.session_state.get('active_sheet') != sheet_name:
     try:
         df_load = conn.read(worksheet=sheet_name, ttl=0)
@@ -65,6 +65,7 @@ if 'db' not in st.session_state or st.session_state.get('active_sheet') != sheet
     except:
         st.session_state.db = pd.DataFrame({'STT': range(1, len(NAMES_BASE)+1), 'Họ và Tên': NAMES_BASE})
     st.session_state.active_sheet = sheet_name
+    # Tạo Key mới cho editor khi đổi tháng để reset bảng
     st.session_state.editor_key = f"editor_{int(time.time())}"
 
 num_days = calendar.monthrange(curr_year, curr_month)[1]
@@ -72,10 +73,11 @@ DATE_COLS = [f"{d:02d}/{month_abbr}" for d in range(1, num_days+1)]
 for col in DATE_COLS:
     if col not in st.session_state.db.columns: st.session_state.db[col] = ""
 
+# Đảm bảo có key cho editor
 if "editor_key" not in st.session_state:
-    st.session_state.editor_key = "pvd_v6"
+    st.session_state.editor_key = "editor_initial"
 
-# --- 6. HÀM XỬ LÝ ---
+# --- 6. HÀM XỬ LÝ (GIỮ NGUYÊN LOGIC CỦA BẠN) ---
 def run_autofill_and_calc(df):
     hols = [date(2026,1,1), date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19), date(2026,2,20), date(2026,2,21), date(2026,4,25), date(2026,4,30), date(2026,5,1), date(2026,9,2)]
     df_new = df.copy()
@@ -111,15 +113,12 @@ c1, c2, c3 = st.columns([2.5, 2, 4])
 
 if c1.button("☁️ LƯU & ĐỒNG BỘ CLOUD (AUTOFILL)", type="primary", use_container_width=True):
     with st.status("🔄 Đang xử lý Autofill & Đồng bộ...", expanded=False):
-        # Lưu thay đổi cuối cùng từ bảng vào state trước khi autofill
+        # 1. Chạy Autofill và Tính CA
         st.session_state.db = run_autofill_and_calc(st.session_state.db)
+        # 2. Đẩy lên Google Sheets
         conn.update(worksheet=sheet_name, data=st.session_state.db)
-        
-        # Xóa bộ nhớ đệm của bảng để ép hiển thị dữ liệu mới từ state
-        if st.session_state.editor_key in st.session_state:
-            del st.session_state[st.session_state.editor_key]
+        # 3. Ép reset bảng bằng cách đổi Key
         st.session_state.editor_key = f"editor_{int(time.time())}"
-        
         st.success("Đã đồng bộ thành công!")
         time.sleep(0.5)
         st.rerun()
@@ -141,6 +140,7 @@ with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH & QUẢN LÝ GIÀN KHOAN
         
         if st.button("🚀 ÁP DỤNG LÊN BẢNG"):
             if f_staff and isinstance(f_date, tuple) and len(f_date) == 2:
+                # Cập nhật trực tiếp vào session_state.db
                 for name in f_staff:
                     idx = st.session_state.db.index[st.session_state.db['Họ và Tên'] == name][0]
                     for i in range((f_date[1] - f_date[0]).days + 1):
@@ -149,13 +149,10 @@ with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH & QUẢN LÝ GIÀN KHOAN
                         if col_n in st.session_state.db.columns:
                             st.session_state.db.at[idx, col_n] = f_val
                 
-                # XÓA BỘ NHỚ ĐỆM CỦA BẢNG ĐỂ HIỆN DỮ LIỆU MỚI
-                if st.session_state.editor_key in st.session_state:
-                    del st.session_state[st.session_state.editor_key]
+                # CỰC KỲ QUAN TRỌNG: Đổi Key để bảng nhận dữ liệu mới
                 st.session_state.editor_key = f"editor_{int(time.time())}"
-                
                 st.toast("Đã áp dụng lên bảng thành công!")
-                time.sleep(0.5)
+                time.sleep(0.3)
                 st.rerun()
 
     with tab_rig:
@@ -176,12 +173,14 @@ with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH & QUẢN LÝ GIÀN KHOAN
 
 # --- 9. BẢNG NHẬP LIỆU ---
 st.markdown("---")
-# Cập nhật session_state từ thay đổi trực tiếp trên bảng
+# BẢN SỬA: Dùng key động để reset widget khi dữ liệu nguồn thay đổi
 edited_df = st.data_editor(
     st.session_state.db, 
     use_container_width=True, 
     height=600, 
     hide_index=True,
-    key=st.session_state.editor_key
+    key=st.session_state.editor_key  # Key này thay đổi sẽ ép bảng tải lại dữ liệu từ st.session_state.db
 )
+
+# Luôn cập nhật ngược lại db để giữ dữ liệu người dùng gõ tay
 st.session_state.db = edited_df

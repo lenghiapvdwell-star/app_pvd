@@ -76,7 +76,7 @@ sheet_name = working_date.strftime("%m_%Y")
 curr_month, curr_year = working_date.month, working_date.year
 month_abbr = working_date.strftime("%b")
 
-# --- 5. HÀM TỰ ĐỘNG ENGINE ---
+# --- 5. HÀM TỰ ĐỘNG ENGINE (ĐÃ NÂNG CẤP AUTO-FILL CA/WS) ---
 def auto_engine(df):
     hols = [date(2026,1,1), date(2026,4,30), date(2026,5,1), date(2026,9,2),
             date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19)]
@@ -97,13 +97,20 @@ def auto_engine(df):
             d_num = int(col[:2])
             target_date = date(curr_year, curr_month, d_num)
             val = str(row.get(col, "")).strip()
+            
+            # --- LOGIC AUTO-FILL NÂNG CẤP ---
             if not val and (target_date < today or (target_date == today and now.hour >= 7)):
-                if last_val and any(g.upper() in last_val.upper() for g in st.session_state.GIANS):
-                    val = last_val
-                    df_calc.at[idx, col] = val
-                    data_changed = True
+                if last_val:
+                    lv_up = last_val.upper()
+                    # Tự động điền nếu ngày trước là: Tên Giàn HOẶC CA HOẶC WS
+                    is_gian = any(g.upper() in lv_up for g in st.session_state.GIANS)
+                    if is_gian or lv_up == "CA" or lv_up == "WS":
+                        val = last_val
+                        df_calc.at[idx, col] = val
+                        data_changed = True
+            
             v_up = val.upper()
-            if v_up and v_up not in ["NAN", "NONE", "WS", "NP", "ỐM"]:
+            if v_up and v_up not in ["NAN", "NONE", "NP", "ỐM"]:
                 try:
                     is_we, is_ho = target_date.weekday() >= 5, target_date in hols
                     if any(g.upper() in v_up for g in st.session_state.GIANS):
@@ -217,7 +224,6 @@ with t2:
     st.subheader(f"📊 Phân tích nhân sự năm {curr_year}")
     sel_name = st.selectbox("🔍 Chọn nhân sự xem biểu đồ:", NAMES_66, key="chart_name_select")
     
-    # FIX: Thêm person_name vào hàm cache để dữ liệu không bị trộn lẫn giữa mọi người
     @st.cache_data(ttl="2m")
     def get_person_yearly_recs(person_name, year):
         results = []

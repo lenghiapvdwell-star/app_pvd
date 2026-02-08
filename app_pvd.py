@@ -33,7 +33,7 @@ with c_logo:
 
 st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
 
-# --- 3. KẾT NỐI & XỬ LÝ DỮ LIỆU SẠCH ---
+# --- 3. KẾT NỐI & XỬ LÝ DỮ LIỆU SẠCH (TRIỆT ĐỂ NAN/NONE) ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def clean_dataframe(df):
@@ -97,7 +97,7 @@ month_abbr = working_date.strftime("%b")
 prev_month_date = (working_date.replace(day=1) - timedelta(days=1))
 prev_sheet = prev_month_date.strftime("%m_%Y")
 
-# FIX: Đảm bảo db luôn được khởi tạo trước khi sử dụng
+# Khởi tạo db an toàn
 if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sheet_name or 'db' not in st.session_state:
     st.session_state.active_sheet = sheet_name
     df_prev = load_sheet_data(prev_sheet)
@@ -124,7 +124,6 @@ if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sh
 num_days = calendar.monthrange(curr_year, curr_month)[1]
 DATE_COLS = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(curr_year,curr_month,d).weekday()]})" for d in range(1, num_days+1)]
 
-# FIX TRỰC TIẾP LỖI DÒNG 126: Kiểm tra db có tồn tại trong session_state không
 if 'db' in st.session_state:
     for col in DATE_COLS:
         if col not in st.session_state.db.columns: 
@@ -198,11 +197,15 @@ with t1:
                             if f_ti != "Không đổi": st.session_state.db.at[idx, 'Chức danh'] = f_ti
                     st.session_state.db = recalculate_ca(st.session_state.db); st.rerun()
 
-        display_df = st.session_state.db.fillna("")
+        # SẮP XẾP CỘT: Đưa Tồn cũ và Tổng CA ra cạnh nhau ngay sau thông tin nhân sự
+        cols_info = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'CA Tháng Trước', 'Quỹ CA Tổng']
+        cols_final = cols_info + [c for c in DATE_COLS if c in st.session_state.db.columns]
+        
+        display_df = st.session_state.db[cols_final].fillna("")
         ed_df = st.data_editor(display_df, use_container_width=True, height=600, hide_index=True,
                                column_config={
-                                   "CA Tháng Trước": st.column_config.NumberColumn("Tồn cũ", format="%.1f"),
-                                   "Quỹ CA Tổng": st.column_config.NumberColumn("Tổng ca", format="%.1f", disabled=True),
+                                   "CA Tháng Trước": st.column_config.NumberColumn("🏠 Tồn cũ", format="%.1f"),
+                                   "Quỹ CA Tổng": st.column_config.NumberColumn("📊 Tổng ca", format="%.1f", disabled=True),
                                })
         if not ed_df.equals(display_df):
             st.session_state.db.update(ed_df)

@@ -24,7 +24,6 @@ st.markdown("""
 # --- 2. HEADER & LOGO ---
 c_logo, _ = st.columns([1, 4])
 with c_logo:
-    # Ưu tiên tìm file logo_pvd.png, nếu không có hiện chữ đỏ
     if os.path.exists("logo_pvd.png"):
         st.image("logo_pvd.png", width=180)
     else:
@@ -61,49 +60,77 @@ if 'db' not in st.session_state or st.session_state.get('active_sheet') != sheet
         df_load = conn.read(worksheet=sheet_name, ttl=0)
         st.session_state.db = df_load
     except:
-        st.session_state.db = pd.DataFrame({'STT': range(1, len(NAMES_BASE)+1), 'Họ và Tên': NAMES_BASE})
-        for i in range(5): # Thêm 5 dòng trống
-            st.session_state.db.loc[len(st.session_state.db)] = [len(st.session_state.db)+1, ""]
+        st.session_state.db = pd.DataFrame({
+            'STT': range(1, len(NAMES_BASE)+1), 
+            'Họ và Tên': NAMES_BASE,
+            'CA Tháng Trước': 0.0,
+            'Quỹ CA Tổng': 0.0
+        })
+        for i in range(5):
+            st.session_state.db.loc[len(st.session_state.db)] = [len(st.session_state.db)+1, "", 0.0, 0.0]
     st.session_state.active_sheet = sheet_name
 
-# Tạo cột ngày
 num_days = calendar.monthrange(curr_year, curr_month)[1]
 DATE_COLS = [f"{d:02d}/{month_abbr}" for d in range(1, num_days+1)]
 for col in DATE_COLS:
     if col not in st.session_state.db.columns: st.session_state.db[col] = ""
 
-# --- 5. LOGIC TÍNH CA ---
-def calculate_pvd(df):
+# Đảm bảo thứ tự cột Quỹ CA luôn nằm sau cùng cho dễ nhìn
+fixed_cols = ['STT', 'Họ và Tên', 'CA Tháng Trước']
+other_cols = [c for c in st.session_state.db.columns if c not in fixed_cols and c != 'Quỹ CA Tổng']
+st.session_state.db = st.session_state.db[fixed_cols + other_cols + ['Quỹ CA Tổng']]
+
+# --- 5. LOGIC AUTO-FILL & TÍNH CA ---
+def apply_autofill_and_calc(df):
+    # Danh sách ngày lễ 2026
     hols = [date(2026,1,1), date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19), date(2026,2,20), date(2026,2,21), date(2026,4,25), date(2026,4,30), date(2026,5,1), date(2026,9,2)]
-    def row_calc(row):
-        acc = 0.0
-        if not str(row.get('Họ và Tên', '')).strip(): return 0.0
+    df_new = df.copy()
+    
+    # Ép kiểu dữ liệu số cho cột CA Tháng Trước
+    df_new['CA Tháng Trước'] = pd.to_numeric(df_new['CA Tháng Trước'], errors='coerce').fillna(0.0)
+    
+    for idx, row in df_new.iterrows():
+        if not str(row.get('Họ và Tên', '')).strip(): continue
+        
+        # 1. Thực hiện Auto-fill dọc theo các ngày trong tháng
+        last_val = ""
         for col in DATE_COLS:
-            v = str(row.get(col, "")).strip().upper()
+            current_val = str(row[col]).strip()
+            if current_val == "" or current_val.upper() == "NAN":
+                df_new.at[idx, col] = last_val
+            else:
+                last_val = current_val
+
+        # 2. Tính toán biến động CA trong tháng hiện tại
+        accrued_this_month = 0.0
+        for col in DATE_COLS:
+            v = str(df_new.at[idx, col]).strip().upper()
             if not v or v in ["WS", "NP", "ỐM"]: continue
             try:
-                dt = date(curr_year, curr_month, int(col[:2]))
+                day_int = int(col[:2])
+                dt = date(curr_year, curr_month, day_int)
                 is_offshore = any(g.upper() in v for g in st.session_state.gians_list)
+                
                 if is_offshore:
-                    if dt in hols: acc += 2.0
-                    elif dt.weekday() >= 5: acc += 1.0
-                    else: acc += 0.5
+                    if dt in hols: accrued_this_month += 2.0
+                    elif dt.weekday() >= 5: accrued_this_month += 1.0
+                    else: accrued_this_month += 0.5
                 elif v == "CA":
-                    if dt.weekday() < 5 and dt not in hols: acc -= 1.0
+                    if dt.weekday() < 5 and dt not in hols: accrued_this_month -= 1.0
             except: continue
-        return acc
-    
-    df_calc = df.copy()
-    df_calc['Quỹ CA Tổng'] = df_calc.apply(row_calc, axis=1)
-    return df_calc
+            
+        # 3. Quỹ CA Tổng = CA Tháng Trước + Biến động trong tháng
+        df_new.at[idx, 'Quỹ CA Tổng'] = df_new.at[idx, 'CA Tháng Trước'] + accrued_this_month
 
-# --- 6. GIAO DIỆN ĐIỀU KHIỂN ---
+    return df_new
+
+# --- 6. GIAO DIỆN ---
 c1, c2, c3 = st.columns([2, 2, 4])
-if c1.button("💾 LƯU & TÍNH TOÁN CA", type="primary", use_container_width=True):
-    with st.status("🚀 Đang xử lý dữ liệu...", expanded=False):
-        st.session_state.db = calculate_pvd(st.session_state.db)
+if c1.button("💾 LƯU & TỰ ĐỘNG ĐIỀN TẤT CẢ", type="primary", use_container_width=True):
+    with st.status("🚀 Đang đồng bộ Quỹ CA và lịch trình...", expanded=False):
+        st.session_state.db = apply_autofill_and_calc(st.session_state.db)
         conn.update(worksheet=sheet_name, data=st.session_state.db)
-        st.toast("Đã tính toán và đồng bộ Cloud!")
+        st.toast("Đã cập nhật Quỹ CA và lịch làm việc!")
         time.sleep(1)
         st.rerun()
 
@@ -111,18 +138,16 @@ buf = io.BytesIO()
 st.session_state.db.to_excel(buf, index=False)
 c2.download_button("📥 XUẤT EXCEL", buf, f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
-# --- CÔNG CỤ QUẢN LÝ (GỒM THÊM/XÓA GIÀN) ---
-with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH & QUẢN LÝ GIÀN KHOAN"):
-    tab_bulk, tab_rig = st.tabs(["⚡ Đổ dữ liệu nhanh", "⚓ Quản lý danh sách giàn"])
-    
+# --- EXPANDER CÔNG CỤ ---
+with st.expander("🛠️ CÔNG CỤ QUẢN LÝ NHANH"):
+    tab_bulk, tab_rig = st.tabs(["⚡ Đổ dữ liệu", "⚓ Giàn khoan"])
     with tab_bulk:
         col_a, col_b, col_c = st.columns(3)
         f_staff = col_a.multiselect("Nhân sự:", st.session_state.db['Họ và Tên'].tolist())
         f_date = col_b.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, 2)))
         f_status = col_c.selectbox("Trạng thái:", ["Đi Biển", "CA", "WS", "NP", "Ốm"])
         f_val = col_c.selectbox("Chọn giàn:", st.session_state.gians_list) if f_status == "Đi Biển" else f_status
-        
-        if st.button("🚀 ÁP DỤNG HÀNG LOẠT"):
+        if st.button("🚀 ÁP DỤNG"):
             if f_staff and len(f_date) == 2:
                 for name in f_staff:
                     idx = st.session_state.db.index[st.session_state.db['Họ và Tên'] == name][0]
@@ -131,31 +156,23 @@ with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH & QUẢN LÝ GIÀN KHOAN
                         col_n = f"{d.day:02d}/{month_abbr}"
                         if col_n in st.session_state.db.columns: st.session_state.db.at[idx, col_n] = f_val
                 st.rerun()
-
     with tab_rig:
         ra, rb = st.columns([3, 1])
-        new_r = ra.text_input("Tên giàn mới:")
-        if rb.button("➕ Thêm", use_container_width=True):
+        new_r = ra.text_input("Thêm giàn:")
+        if rb.button("➕", use_container_width=True):
             if new_r:
                 st.session_state.gians_list.append(new_r.upper())
-                conn.update(worksheet="CONFIG", data=pd.DataFrame({"Giàn": st.session_state.gians_list}))
-                st.rerun()
-        
-        del_r = st.selectbox("Xóa giàn khoan:", ["-- Chọn giàn cần xóa --"] + st.session_state.gians_list)
-        if st.button("🗑️ Xác nhận xóa"):
-            if del_r != "-- Chọn giàn cần xóa --":
-                st.session_state.gians_list.remove(del_r)
                 conn.update(worksheet="CONFIG", data=pd.DataFrame({"Giàn": st.session_state.gians_list}))
                 st.rerun()
 
 # --- 7. BẢNG NHẬP LIỆU ---
 st.markdown("---")
-st.info("💡 **Gợi ý:** Bạn có thể copy/paste từ Excel vào bảng này. Sau đó nhấn **LƯU & TÍNH TOÁN CA** để cập nhật Quỹ CA.")
+st.info("💡 **QUY TRÌNH:** Nhập số 'CA Tháng Trước' và trạng thái ngày đầu tiên -> Nhấn **LƯU & TỰ ĐỘNG ĐIỀN** -> Hệ thống tự tính Quỹ CA Tổng.")
 edited_df = st.data_editor(
     st.session_state.db, 
     use_container_width=True, 
     height=600, 
     hide_index=True,
-    key="pvd_editor_v3"
+    key="pvd_editor_vfinal"
 )
 st.session_state.db = edited_df

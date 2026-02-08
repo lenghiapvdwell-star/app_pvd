@@ -123,7 +123,7 @@ if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sh
 if 'db' not in st.session_state:
     prev_sheet = (working_date.replace(day=1) - timedelta(days=1)).strftime("%m_%Y")
     try:
-        df_p = conn.read(worksheet=prev_sheet, ttl="5m")
+        df_p = conn.read(worksheet=prev_sheet, ttl="1m")
         b_map = dict(zip(df_p['Họ và Tên'], df_p['Quỹ CA Tổng']))
     except: b_map = {}
 
@@ -215,23 +215,20 @@ with t1:
 
 with t2:
     st.subheader(f"📊 Phân tích nhân sự năm {curr_year}")
-    sel_name = st.selectbox("🔍 Chọn nhân sự xem biểu đồ:", NAMES_66)
+    sel_name = st.selectbox("🔍 Chọn nhân sự xem biểu đồ:", NAMES_66, key="chart_name_select")
     
-    # FIX LỖI QUOTA: Dùng caching để hạn chế lượt đọc
-    @st.cache_data(ttl="10m")
-    def get_yearly_data(year):
-        # Không dùng worksheet=None để tránh 429, ta quét từng tháng có trọng tâm
+    # FIX: Thêm person_name vào hàm cache để dữ liệu không bị trộn lẫn giữa mọi người
+    @st.cache_data(ttl="2m")
+    def get_person_yearly_recs(person_name, year):
         results = []
         for m in range(1, 13):
             m_s = f"{m:02d}_{year}"
             try:
-                # Đọc riêng lẻ từng sheet và cache lại 10 phút
-                df_m = conn.read(worksheet=m_s, ttl="10m").fillna("")
+                df_m = conn.read(worksheet=m_s, ttl="2m").fillna("")
                 if not df_m.empty:
-                    # Lọc ngay dữ liệu của nhân sự đang chọn để giảm tải bộ nhớ
-                    df_person = df_m[df_m['Họ và Tên'] == sel_name]
-                    if not df_person.empty:
-                        row_p = df_person.iloc[0]
+                    df_p = df_m[df_m['Họ và Tên'] == person_name]
+                    if not df_p.empty:
+                        row_p = df_p.iloc[0]
                         for col in df_m.columns:
                             if "/" in col:
                                 v = str(row_p[col]).strip().upper()
@@ -247,7 +244,9 @@ with t2:
         return results
 
     try:
-        recs = get_yearly_data(curr_year)
+        with st.spinner("Đang truy xuất dữ liệu cá nhân..."):
+            recs = get_person_yearly_recs(sel_name, curr_year)
+            
         if recs:
             pdf = pd.DataFrame(recs)
             summary = pdf.groupby(['Tháng', 'Loại']).size().reset_index(name='Ngày')
@@ -267,6 +266,6 @@ with t2:
             m4.metric("🏖️ Nghỉ NP", f"{total_sum.get('NP', 0)} ngày")
             m5.metric("🏥 Nghỉ ỐM", f"{total_sum.get('ỐM', 0)} ngày")
         else:
-            st.info(f"Không tìm thấy dữ liệu cho **{sel_name}** trong năm {curr_year}.")
+            st.warning(f"Không tìm thấy hoạt động của **{sel_name}** trong năm {curr_year}. Hãy kiểm tra lại Tab Điều Động.")
     except Exception as e:
-        st.error(f"Đang tải dữ liệu, vui lòng đợi giây lát... (Lỗi: {e})")
+        st.error("Hệ thống đang bận tải dữ liệu. Vui lòng đợi 5-10 giây rồi chọn lại tên.")

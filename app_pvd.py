@@ -18,7 +18,7 @@ st.markdown("""
         text-align: center !important; text-shadow: 2px 2px 4px #000 !important;
     }
     /* Làm nổi bật cột Quỹ CA Tổng */
-    [data-testid="stTable"] td:nth-child(4) {
+    [data-testid="stTable"] td:nth-child(7) {
         background-color: #004c4c !important; color: #00f2ff !important; font-weight: bold;
     }
     </style>
@@ -27,7 +27,6 @@ st.markdown("""
 # --- 2. HEADER & LOGO ---
 c_logo, _ = st.columns([1, 4])
 with c_logo:
-    # Ưu tiên file local, nếu không có sẽ hiện text đỏ
     if os.path.exists("logo_pvd.png"):
         st.image("logo_pvd.png", width=180)
     else:
@@ -35,8 +34,10 @@ with c_logo:
 
 st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
 
-# --- 3. DANH SÁCH 65 NHÂN SỰ ---
+# --- 3. DANH MỤC DỮ LIỆU ---
 NAMES_65 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong"]
+COMPANIES = ["PVDWS", "OWS", "National", "Baker Hughes", "Schlumberger", "Halliburton"]
+TITLES = ["Casing crew", "CRTI LD", "CRTI SP", "SOLID", "MUDCL", "UNDERRM", "PPLS", "HAMER"]
 HOLIDAYS_2026 = [date(2026,1,1), date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19), date(2026,2,20), date(2026,2,21), date(2026,4,25), date(2026,4,30), date(2026,5,1), date(2026,9,2)]
 
 # --- 4. KẾT NỐI & LOAD GIÀN ---
@@ -64,49 +65,37 @@ month_abbr = working_date.strftime("%b")
 # --- 6. HÀM LOGIC XỬ LÝ DỮ LIỆU (AUTOFILL & CALCULATE) ---
 def process_pvd_data(df):
     num_days = calendar.monthrange(curr_year, curr_month)[1]
-    # Định dạng tiêu đề cột ngày chuẩn để tính toán
     date_cols = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(curr_year,curr_month,d).weekday()]})" for d in range(1, num_days+1)]
     
     df_new = df.copy()
     
     for idx, row in df_new.iterrows():
-        # A. Autofill: Lan truyền thông tin theo thời gian thực
+        # A. Autofill: Lan truyền thông tin
         current_fill_value = ""
         for col in date_cols:
             if col not in df_new.columns: df_new[col] = ""
-            
             val = str(df_new.at[idx, col]).strip()
-            # Nếu ô trống, lấy giá trị của ngày trước đó điền vào
             if val == "" or val.upper() in ["NAN", "NONE"]:
                 df_new.at[idx, col] = current_fill_value
             else:
-                # Nếu ô có dữ liệu mới (do người dùng nhập), cập nhật mốc lan truyền mới
                 current_fill_value = val
 
-        # B. Tính toán Quỹ CA theo quy ước
+        # B. Tính toán Quỹ CA
         accrued_this_month = 0.0
         for col in date_cols:
             status = str(df_new.at[idx, col]).strip().upper()
             if not status or status in ["WS", "NP", "ỐM"]: continue
-            
             try:
-                day_num = int(col[:2])
-                dt = date(curr_year, curr_month, day_num)
-                is_weekend = dt.weekday() >= 5
-                is_holiday = dt in HOLIDAYS_2026
-                is_offshore = any(g.upper() in status for g in st.session_state.gians_list)
-                
-                if is_offshore:
-                    if is_holiday: accrued_this_month += 2.0
-                    elif is_weekend: accrued_this_month += 1.0
+                dt = date(curr_year, curr_month, int(col[:2]))
+                is_off = any(g.upper() in status for g in st.session_state.gians_list)
+                if is_off:
+                    if dt in HOLIDAYS_2026: accrued_this_month += 2.0
+                    elif dt.weekday() >= 5: accrued_this_month += 1.0
                     else: accrued_this_month += 0.5
                 elif status == "CA":
-                    # Chỉ trừ vào ngày thường, không trừ lễ/tết/cuối tuần
-                    if not is_weekend and not is_holiday:
-                        accrued_this_month -= 1.0
+                    if dt.weekday() < 5 and dt not in HOLIDAYS_2026: accrued_this_month -= 1.0
             except: continue
             
-        # C. Tổng hợp kết quả
         ca_truoc = pd.to_numeric(df_new.at[idx, 'CA Tháng Trước'], errors='coerce') or 0.0
         df_new.at[idx, 'Quỹ CA Tổng'] = ca_truoc + accrued_this_month
         
@@ -120,6 +109,9 @@ if 'db' not in st.session_state or st.session_state.get('active_sheet') != sheet
         st.session_state.db = pd.DataFrame({
             'STT': range(1, 66),
             'Họ và Tên': NAMES_65,
+            'Công ty': 'PVDWS',
+            'Chức danh': 'Casing crew',
+            'Job Detail': '',
             'CA Tháng Trước': 0.0,
             'Quỹ CA Tổng': 0.0
         })
@@ -152,13 +144,6 @@ with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH & QUẢN LÝ GIÀN"):
             st.session_state.gians_list.append(new_r.upper())
             conn.update(worksheet="CONFIG", data=pd.DataFrame({"Giàn": st.session_state.gians_list}))
             st.rerun()
-        st.markdown("---")
-        da, db = st.columns([3, 1])
-        del_r = da.selectbox("Xóa giàn:", ["-- Chọn --"] + st.session_state.gians_list)
-        if db.button("🗑️ Xóa") and del_r != "-- Chọn --":
-            st.session_state.gians_list.remove(del_r)
-            conn.update(worksheet="CONFIG", data=pd.DataFrame({"Giàn": st.session_state.gians_list}))
-            st.rerun()
 
 # --- 9. NÚT ĐIỀU KHIỂN ---
 action1, action2, _ = st.columns([2, 2, 5])
@@ -176,28 +161,31 @@ action2.download_button("📥 XUẤT EXCEL", buf, f"PVD_Report_{sheet_name}.xlsx
 
 # --- 10. BẢNG DỮ LIỆU CHÍNH ---
 st.markdown("---")
-st.caption("Trạng thái: Tự động điền thông tin (Autofill) và Tính Quỹ CA thời gian thực.")
-
 # Chạy xử lý logic để hiển thị
 display_df = process_pvd_data(st.session_state.db)
 
-# SẮP XẾP THỨ TỰ CỘT: STT -> Tên -> CA Trước -> TỔNG QUỸ CA -> Các ngày
+# SẮP XẾP THỨ TỰ CỘT THEO YÊU CẦU
 cols = list(display_df.columns)
 date_cols_list = [c for c in cols if '/' in c]
-reordered_cols = ['STT', 'Họ và Tên', 'CA Tháng Trước', 'Quỹ CA Tổng'] + date_cols_list
+# STT -> Tên -> Công ty -> Chức danh -> Job Detail -> CA Trước -> TỔNG QUỸ CA -> Các ngày
+reordered_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'CA Tháng Trước', 'Quỹ CA Tổng'] + date_cols_list
 display_df = display_df[reordered_cols]
 
-# Hiển thị trình chỉnh sửa
+# Hiển thị trình chỉnh sửa với cấu hình Dropdown cho Công ty và Chức danh
 edited_df = st.data_editor(
     display_df,
     use_container_width=True,
     height=650,
     hide_index=True,
-    key=f"pvd_editor_v7_{sheet_name}"
+    key=f"pvd_editor_v8_{sheet_name}",
+    column_config={
+        "Công ty": st.column_config.SelectboxColumn(options=COMPANIES),
+        "Chức danh": st.column_config.SelectboxColumn(options=TITLES),
+        "Quỹ CA Tổng": st.column_config.NumberColumn(format="%.1f"),
+        "CA Tháng Trước": st.column_config.NumberColumn(format="%.1f")
+    }
 )
 
-# Nếu người dùng có thao tác chỉnh sửa bất kỳ ô nào
 if not edited_df.equals(display_df):
-    # Cập nhật lại session state và Rerun để Autofill hoạt động ngay lập tức
     st.session_state.db = edited_df
     st.rerun()

@@ -33,11 +33,10 @@ with c_logo:
 
 st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
 
-# --- 3. KẾT NỐI & HÀM BỔ TRỢ (CHỐNG LỖI 429 QUOTA) ---
+# --- 3. KẾT NỐI & HÀM BỔ TRỢ ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def load_gians_from_sheets():
-    # Sử dụng ttl=600 (10 phút) để tránh đọc lại liên tục gây tốn Quota
     try:
         df_config = conn.read(worksheet="CONFIG", ttl=600)
         if df_config is not None and not df_config.empty:
@@ -46,7 +45,6 @@ def load_gians_from_sheets():
     return ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNLOD"]
 
 def save_to_cloud_smart(worksheet_name, df):
-    """Cơ chế lưu thông minh: Xử lý lỗi Quota Exceeded 429"""
     df_clean = df.copy()
     for col in df_clean.columns:
         if df_clean[col].dtype == 'object':
@@ -62,9 +60,8 @@ def save_to_cloud_smart(worksheet_name, df):
         except Exception as e:
             error_msg = str(e)
             if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
-                # Nếu bị nghẽn, bắt buộc đợi lâu hơn để Google hồi lại quota
                 wait_time = 5 * (i + 1)
-                st.warning(f"Hệ thống đang nghẽn (Quota 429). Đang chờ {wait_time}s để thử lại...")
+                st.warning(f"Hệ thống đang nghẽn. Đang chờ {wait_time}s...")
                 time.sleep(wait_time)
                 continue
             else:
@@ -78,7 +75,8 @@ if "gians_list" not in st.session_state:
 
 COMPANIES = ["PVDWS", "OWS", "National", "Baker Hughes", "Schlumberger", "Halliburton"]
 TITLES = ["Casing crew", "CRTI LD", "CRTI SP", "SOLID", "MUDCL", "UNDERRM", "PPLS", "HAMER"]
-NAMES_64 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong"]
+# Danh sách 64 nhân sự gốc
+NAMES_BASE = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong"]
 
 # --- 5. CHỌN THỜI GIAN ---
 _, c_mid_date, _ = st.columns([3.5, 2, 3.5])
@@ -91,14 +89,19 @@ month_abbr = working_date.strftime("%b")
 
 if 'db' not in st.session_state or st.session_state.get('active_sheet') != sheet_name:
     try:
-        # Tăng ttl để tránh đọc lại liên tục
         df_load = conn.read(worksheet=sheet_name, ttl=300)
         st.session_state.db = df_load
     except:
+        # Tạo 64 nhân sự cũ + 5 dòng trống cho nhân sự mới
+        full_names = NAMES_BASE + [""] * 5 
         st.session_state.db = pd.DataFrame({
-            'STT': range(1, 66), 'Họ và Tên': NAMES_64[:65], 
-            'Công ty': 'PVDWS', 'Chức danh': 'Casing crew', 
-            'Job Detail': '', 'CA Tháng Trước': 0.0, 'Quỹ CA Tổng': 0.0
+            'STT': range(1, len(full_names) + 1), 
+            'Họ và Tên': full_names, 
+            'Công ty': 'PVDWS', 
+            'Chức danh': 'Casing crew', 
+            'Job Detail': '', 
+            'CA Tháng Trước': 0.0, 
+            'Quỹ CA Tổng': 0.0
         })
     st.session_state.active_sheet = sheet_name
 
@@ -107,64 +110,41 @@ DATE_COLS = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(
 for col in DATE_COLS:
     if col not in st.session_state.db.columns: st.session_state.db[col] = ""
 
-# --- 6. LOGIC TÍNH CA ---
-# --- 6. LOGIC TÍNH CA (ĐÃ CẬP NHẬT CHÍNH XÁC THEO YÊU CẦU) ---
+# --- 6. LOGIC TÍNH CA (CHÍNH XÁC THEO BÀN BẠC) ---
 def calculate_pvd_logic(df):
-    # Danh sách các ngày lễ năm 2026 (Có thể cập nhật thêm theo lịch âm)
     hols = [
-        date(2026,1,1),   # Tết Tây
-        date(2026,2,16), date(2026,2,17), date(2026,2,18), # Dự kiến Tết Nguyên Đán
-        date(2026,2,19), date(2026,2,20), date(2026,2,21),
-        date(2026,4,25),  # Giỗ tổ Hùng Vương (10/3 Al)
-        date(2026,4,30),  # Giải phóng
-        date(2026,5,1),   # Quốc tế lao động
-        date(2026,9,2)    # Quốc khánh
+        date(2026,1,1), date(2026,2,16), date(2026,2,17), date(2026,2,18),
+        date(2026,2,19), date(2026,2,20), date(2026,2,21), date(2026,4,25),
+        date(2026,4,30), date(2026,5,1), date(2026,9,2)
     ]
-    
     def row_calc(row):
         accrued_this_month = 0.0
+        # Nếu dòng không có tên thì không tính toán
+        if not str(row.get('Họ và Tên', '')).strip(): return 0.0
+        
         for col in DATE_COLS:
             v = str(row.get(col, "")).strip().upper()
-            if not v or v in ["NAN", "NONE", "WS", "NP", "ỐM"]: 
-                continue # Làm xưởng, nghỉ phép, nghỉ ốm: Không tính, không trừ
-                
+            if not v or v in ["NAN", "NONE", "WS", "NP", "ỐM"]: continue
             try:
-                # Trích xuất ngày từ tiêu đề cột (ví dụ "01/Feb...")
-                day_int = int(col[:2])
-                dt = date(curr_year, curr_month, day_int)
-                
-                is_weekend = dt.weekday() >= 5 # Thứ 7 (5) hoặc CN (6)
+                dt = date(curr_year, curr_month, int(col[:2]))
+                is_weekend = dt.weekday() >= 5
                 is_holiday = dt in hols
-                
-                # KIỂM TRA ĐI BIỂN (Dựa trên danh sách giàn)
                 is_offshore = any(g.upper() in v for g in st.session_state.gians_list)
                 
                 if is_offshore:
-                    if is_holiday:
-                        accrued_this_month += 2.0  # Lễ: làm 1 tính 2
-                    elif is_weekend:
-                        accrued_this_month += 1.0  # Cuối tuần: làm 1 tính 1
-                    else:
-                        accrued_this_month += 0.5  # Ngày thường: làm 2 tính 1 (0.5/ngày)
-                
-                # KIỂM TRA TRỪ CA
+                    if is_holiday: accrued_this_month += 2.0
+                    elif is_weekend: accrued_this_month += 1.0
+                    else: accrued_this_month += 0.5
                 elif v == "CA":
-                    # Chỉ trừ vào ngày thường (T2-T6) và không phải lễ
-                    if not is_weekend and not is_holiday:
-                        accrued_this_month -= 1.0
-                    else:
-                        pass # Nghỉ CA vào cuối tuần/lễ: Không trừ vào quỹ
-                        
-            except: 
-                continue
+                    if not is_weekend and not is_holiday: accrued_this_month -= 1.0
+            except: continue
         return accrued_this_month
 
-    # Chuyển đổi cột tồn tháng trước sang số để tính toán
     df['CA Tháng Trước'] = pd.to_numeric(df['CA Tháng Trước'], errors='coerce').fillna(0.0)
-    
-    # Tính toán phát sinh và cộng vào quỹ tổng
     df['Quỹ CA Tổng'] = df['CA Tháng Trước'] + df.apply(row_calc, axis=1)
     return df
+
+st.session_state.db = calculate_pvd_logic(st.session_state.db)
 
 # --- 7. GIAO DIỆN TABS ---
 t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ"])
@@ -178,11 +158,11 @@ with t1:
                 if save_to_cloud_smart(sheet_name, st.session_state.db):
                     status.update(label="✅ Đã lưu thành công!", state="complete", expanded=False)
                     st.toast("Dữ liệu đã cập nhật!")
-                    time.sleep(1)
+                    time.sleep(0.5)
                     st.rerun()
                 else:
-                    status.update(label="❌ Lỗi giới hạn API. Hãy đợi 1 phút!", state="error")
-                    
+                    status.update(label="❌ Lỗi API. Hãy đợi 1 phút!", state="error")
+    
     with bc2:
         buf = io.BytesIO()
         st.session_state.db.to_excel(buf, index=False)
@@ -196,19 +176,19 @@ with t1:
             if new_rig and new_rig.strip().upper() not in st.session_state.gians_list:
                 st.session_state.gians_list.append(new_rig.strip().upper())
                 df_conf = pd.DataFrame({"Giàn": st.session_state.gians_list})
-                if save_to_cloud_smart("CONFIG", df_conf):
-                    st.rerun()
+                if save_to_cloud_smart("CONFIG", df_conf): st.rerun()
         
         del_rig = c_del.selectbox("Xóa giàn:", ["-- Chọn --"] + st.session_state.gians_list)
         if del_rig != "-- Chọn --" and st.button(f"🗑️ Xóa {del_rig}"):
             st.session_state.gians_list.remove(del_rig)
             df_conf = pd.DataFrame({"Giàn": st.session_state.gians_list})
-            if save_to_cloud_smart("CONFIG", df_conf):
-                st.rerun()
+            if save_to_cloud_smart("CONFIG", df_conf): st.rerun()
 
         st.divider()
+        # Lấy danh sách tên hiện có trong bảng (bao gồm cả tên mới vừa nhập) để hiển thị trong multiselect
+        current_names = [n for n in st.session_state.db['Họ và Tên'].tolist() if n.strip()]
         c1, c2 = st.columns([2, 1])
-        f_staff = c1.multiselect("Nhân sự:", NAMES_64)
+        f_staff = c1.multiselect("Nhân sự:", current_names)
         f_date = c2.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, num_days)))
         r2_1, r2_2, r2_3, r2_4 = st.columns(4)
         f_status = r2_1.selectbox("Trạng thái:", ["Không đổi", "Đi Biển", "CA", "WS", "NP", "Ốm"])
@@ -230,20 +210,28 @@ with t1:
                                 if col_n in st.session_state.db.columns: st.session_state.db.at[idx, col_n] = f_val
                 st.rerun()
 
-    ed_df = st.data_editor(st.session_state.db, use_container_width=True, height=600, hide_index=True, key=f"ed_{sheet_name}")
+    # CẤU HÌNH BẢNG: Mở cột 'Họ và Tên' để nhập nhân viên mới
+    column_config = {
+        "STT": st.column_config.NumberColumn(disabled=True),
+        "Quỹ CA Tổng": st.column_config.NumberColumn(format="%.1f", disabled=True),
+        "Họ và Tên": st.column_config.TextColumn("Họ và Tên (Nhập mới tại cuối bảng)"),
+    }
+
+    ed_df = st.data_editor(st.session_state.db, column_config=column_config, use_container_width=True, height=600, hide_index=True, key=f"ed_{sheet_name}")
     if not ed_df.equals(st.session_state.db):
         st.session_state.db = ed_df
         st.rerun()
 
 with t2:
     st.subheader("📊 Phân tích cường độ & Tổng hợp ngày biển")
-    sel = st.selectbox("🔍 Chọn nhân sự:", NAMES_64)
+    # Cập nhật danh sách chọn biểu đồ cho cả nhân viên mới
+    chart_names = [n for n in st.session_state.db['Họ và Tên'].tolist() if n.strip()]
+    sel = st.selectbox("🔍 Chọn nhân sự:", chart_names)
     
     recs = []
-    # Lưu ý: Tab BIỂU ĐỒ sẽ gọi API nhiều nhất, nên cân nhắc khi sử dụng
     for m in range(1, 13):
         try:
-            df_m = conn.read(worksheet=f"{m:02d}_{curr_year}", ttl=3600) # Lưu cache 1 tiếng cho biểu đồ
+            df_m = conn.read(worksheet=f"{m:02d}_{curr_year}", ttl=3600)
             if df_m is not None and sel in df_m['Họ và Tên'].values:
                 row_p = df_m[df_m['Họ và Tên'] == sel].iloc[0]
                 m_lab = date(curr_year, m, 1).strftime("%b")
@@ -259,7 +247,6 @@ with t2:
     if recs:
         pdf = pd.DataFrame(recs)
         summary = pdf.groupby(['Tháng', 'Loại']).sum().reset_index()
-        
         sea_only = summary[summary['Loại'] == "Đi Biển"].copy()
         if not sea_only.empty:
             sea_only['MonthIdx'] = sea_only['Tháng'].str[1:].astype(int)
@@ -295,4 +282,4 @@ with t2:
         cm3.metric("📅 Nghỉ Phép (NP)", f"{total_np} ngày")
         cm4.metric("💊 Nghỉ Ốm", f"{total_om} ngày")
     else:
-        st.info("Chưa có dữ liệu cho nhân sự này trong năm nay.")
+        st.info("Chưa có dữ liệu cho nhân sự này.")

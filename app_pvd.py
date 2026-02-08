@@ -108,25 +108,63 @@ for col in DATE_COLS:
     if col not in st.session_state.db.columns: st.session_state.db[col] = ""
 
 # --- 6. LOGIC TÍNH CA ---
+# --- 6. LOGIC TÍNH CA (ĐÃ CẬP NHẬT CHÍNH XÁC THEO YÊU CẦU) ---
 def calculate_pvd_logic(df):
-    hols = [date(2026,1,1), date(2026,4,30), date(2026,5,1), date(2026,9,2)]
+    # Danh sách các ngày lễ năm 2026 (Có thể cập nhật thêm theo lịch âm)
+    hols = [
+        date(2026,1,1),   # Tết Tây
+        date(2026,2,16), date(2026,2,17), date(2026,2,18), # Dự kiến Tết Nguyên Đán
+        date(2026,2,19), date(2026,2,20), date(2026,2,21),
+        date(2026,4,25),  # Giỗ tổ Hùng Vương (10/3 Al)
+        date(2026,4,30),  # Giải phóng
+        date(2026,5,1),   # Quốc tế lao động
+        date(2026,9,2)    # Quốc khánh
+    ]
+    
     def row_calc(row):
-        accrued = 0.0
+        accrued_this_month = 0.0
         for col in DATE_COLS:
             v = str(row.get(col, "")).strip().upper()
-            if not v or v in ["NAN", "NONE"]: continue
+            if not v or v in ["NAN", "NONE", "WS", "NP", "ỐM"]: 
+                continue # Làm xưởng, nghỉ phép, nghỉ ốm: Không tính, không trừ
+                
             try:
-                dt = date(curr_year, curr_month, int(col[:2]))
-                is_we, is_ho = dt.weekday() >= 5, dt in hols
-                if any(g.upper() in v for g in st.session_state.gians_list):
-                    accrued += 2.0 if is_ho else (1.0 if is_we else 0.5)
-                elif v == "CA" and not (is_we or is_ho): accrued -= 1.0
-            except: continue
-        return accrued
-    df['Quỹ CA Tổng'] = df['CA Tháng Trước'].fillna(0) + df.apply(row_calc, axis=1)
-    return df
+                # Trích xuất ngày từ tiêu đề cột (ví dụ "01/Feb...")
+                day_int = int(col[:2])
+                dt = date(curr_year, curr_month, day_int)
+                
+                is_weekend = dt.weekday() >= 5 # Thứ 7 (5) hoặc CN (6)
+                is_holiday = dt in hols
+                
+                # KIỂM TRA ĐI BIỂN (Dựa trên danh sách giàn)
+                is_offshore = any(g.upper() in v for g in st.session_state.gians_list)
+                
+                if is_offshore:
+                    if is_holiday:
+                        accrued_this_month += 2.0  # Lễ: làm 1 tính 2
+                    elif is_weekend:
+                        accrued_this_month += 1.0  # Cuối tuần: làm 1 tính 1
+                    else:
+                        accrued_this_month += 0.5  # Ngày thường: làm 2 tính 1 (0.5/ngày)
+                
+                # KIỂM TRA TRỪ CA
+                elif v == "CA":
+                    # Chỉ trừ vào ngày thường (T2-T6) và không phải lễ
+                    if not is_weekend and not is_holiday:
+                        accrued_this_month -= 1.0
+                    else:
+                        pass # Nghỉ CA vào cuối tuần/lễ: Không trừ vào quỹ
+                        
+            except: 
+                continue
+        return accrued_this_month
 
-st.session_state.db = calculate_pvd_logic(st.session_state.db)
+    # Chuyển đổi cột tồn tháng trước sang số để tính toán
+    df['CA Tháng Trước'] = pd.to_numeric(df['CA Tháng Trước'], errors='coerce').fillna(0.0)
+    
+    # Tính toán phát sinh và cộng vào quỹ tổng
+    df['Quỹ CA Tổng'] = df['CA Tháng Trước'] + df.apply(row_calc, axis=1)
+    return df
 
 # --- 7. GIAO DIỆN TABS ---
 t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ"])

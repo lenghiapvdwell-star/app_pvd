@@ -21,7 +21,6 @@ st.markdown("""
         font-family: 'Arial Black', sans-serif !important;
     }
     [data-testid="stMetricValue"] { font-size: 28px !important; font-weight: bold !important; }
-    /* Giữ bảng ổn định tuyệt đối */
     [data-testid="stDataEditor"] { border: 1px solid #444; border-radius: 5px; }
     </style>
     """, unsafe_allow_html=True)
@@ -89,7 +88,6 @@ def auto_engine(df):
     df_calc = df.copy()
     data_changed = False
     
-    # Đảm bảo date_cols tồn tại trong df_calc
     for col in date_cols:
         if col not in df_calc.columns:
             df_calc[col] = ""
@@ -206,25 +204,16 @@ with t1:
 
     @st.fragment
     def render_main_table():
-        # --- SỬA LỖI TẠI ĐÂY ---
         all_potential_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'CA Tháng Trước', 'Quỹ CA Tổng'] + DATE_COLS
-        # Chỉ lấy những cột thực sự có trong DataFrame để tránh KeyError
         existing_cols = [c for c in all_potential_cols if c in st.session_state.db.columns]
-        
         display_df = st.session_state.db[existing_cols].fillna("")
-
         ed_df = st.data_editor(
-            display_df,
-            use_container_width=True,
-            height=600,
-            hide_index=True,
-            key="main_editor",
+            display_df, use_container_width=True, height=600, hide_index=True, key="main_editor",
             column_config={
                 "CA Tháng Trước": st.column_config.NumberColumn("Tồn cũ", format="%.1f"),
                 "Quỹ CA Tổng": st.column_config.NumberColumn("Tổng ca", format="%.1f", disabled=True)
             }
         )
-
         if st.button("💾 XÁC NHẬN CẬP NHẬT BẢNG & TÍNH QUỸ CA", type="secondary", use_container_width=True):
             st.session_state.db.update(ed_df)
             df_recalc, _ = auto_engine(st.session_state.db)
@@ -241,43 +230,57 @@ with t2:
     st.subheader(f"📊 Phân tích nhân sự năm {curr_year}")
     sel_name = st.selectbox("🔍 Chọn nhân sự xem biểu đồ:", NAMES_66)
     recs = []
+    
+    # Nâng cấp: Quét toàn bộ 12 tháng để đảm bảo không sót dữ liệu
     for m in range(1, 13):
         m_sheet = f"{m:02d}_{curr_year}"
         try:
-            df_m = conn.read(worksheet=m_sheet, ttl=0)
+            # Dùng ttl=0 để luôn lấy dữ liệu mới nhất từ Cloud
+            df_m = conn.read(worksheet=m_sheet, ttl=0).fillna("")
             if not df_m.empty and sel_name in df_m['Họ và Tên'].values:
                 row_p = df_m[df_m['Họ và Tên'] == sel_name].iloc[0]
-                m_label = date(curr_year, m, 1).strftime("%b")
+                
+                # Cải tiến: Tìm tất cả các cột có chứa ký tự '/' (định dạng ngày dd/mm)
                 for col in df_m.columns:
-                    if "/" in col and m_label in col:
+                    if "/" in col:
                         v = str(row_p[col]).strip().upper()
-                        if v and v not in ["", "NAN", "NONE"]:
+                        if v and v not in ["", "NAN", "NONE", "0", "0.0"]:
+                            cat = None
                             if any(g.upper() in v for g in st.session_state.GIANS): cat = "Đi Biển"
                             elif v == "CA": cat = "CA"
                             elif v == "WS": cat = "WS"
                             elif v == "NP": cat = "NP"
                             elif v == "ỐM": cat = "ỐM"
-                            else: continue
-                            recs.append({"Tháng": f"T{m}", "Loại": cat, "Ngày": 1})
-        except: continue
+                            
+                            if cat:
+                                recs.append({"Tháng": f"T{m}", "Loại": cat, "Ngày": 1})
+        except:
+            continue
+            
     if recs:
         pdf = pd.DataFrame(recs)
         summary = pdf.groupby(['Tháng', 'Loại']).size().reset_index(name='Ngày')
+        
+        # Sắp xếp thứ tự tháng chuẩn T1 -> T12
+        month_order = [f"T{i}" for i in range(1, 13)]
         fig = px.bar(summary, x="Tháng", y="Ngày", color="Loại", text="Ngày", barmode="stack",
-                     category_orders={"Tháng": [f"T{i}" for i in range(1, 13)]},
+                     category_orders={"Tháng": month_order},
                      color_discrete_map={"Đi Biển":"#00f2ff","CA":"#ff4b4b","WS":"#ffd700","NP":"#00ff00","ỐM":"#ff00ff"},
                      template="plotly_dark")
+        
         fig.update_traces(textposition='inside', textfont_size=14)
-        fig.update_layout(xaxis_title="Tháng", yaxis_title="Tổng số ngày", height=500)
+        fig.update_layout(xaxis_title="Tháng", yaxis_title="Tổng số ngày", height=500,
+                          legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
         st.plotly_chart(fig, use_container_width=True)
+        
         st.markdown("---")
         st.markdown("### 📋 Tổng kết số ngày hoạt động trong năm")
         total_sum = pdf.groupby('Loại')['Ngày'].sum().to_dict()
         m1, m2, m3, m4, m5 = st.columns(5)
-        m1.metric("🚢 Đi Biển", f"{total_sum.get('Đi Biển', 0)} day")
-        m2.metric("🏠 Nghỉ CA", f"{total_sum.get('CA', 0)} day")
-        m3.metric("🛠️ Làm WS", f"{total_sum.get('WS', 0)} day")
-        m4.metric("🏖️ Nghỉ NP", f"{total_sum.get('NP', 0)} day")
-        m5.metric("🏥 Nghỉ ỐM", f"{total_sum.get('ỐM', 0)} day")
+        m1.metric("🚢 Đi Biển", f"{total_sum.get('Đi Biển', 0)} ngày")
+        m2.metric("🏠 Nghỉ CA", f"{total_sum.get('CA', 0)} ngày")
+        m3.metric("🛠️ Làm WS", f"{total_sum.get('WS', 0)} ngày")
+        m4.metric("🏖️ Nghỉ NP", f"{total_sum.get('NP', 0)} ngày")
+        m5.metric("🏥 Nghỉ ỐM", f"{total_sum.get('ỐM', 0)} ngày")
     else:
-        st.info(f"Không có dữ liệu cho nhân sự {sel_name} trong năm {curr_year}.")
+        st.info(f"Không tìm thấy dữ liệu hoạt động của **{sel_name}** trong năm {curr_year}. Hãy đảm bảo bạn đã nhấn 'LƯU CLOUD' ở tab Điều Động.")

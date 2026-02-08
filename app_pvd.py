@@ -21,7 +21,7 @@ st.markdown("""
         font-family: 'Arial Black', sans-serif !important;
     }
     [data-testid="stMetricValue"] { font-size: 28px !important; font-weight: bold !important; }
-    /* Giữ bảng ổn định */
+    /* Giữ bảng ổn định tuyệt đối */
     [data-testid="stDataEditor"] { border: 1px solid #444; border-radius: 5px; }
     </style>
     """, unsafe_allow_html=True)
@@ -143,7 +143,6 @@ if 'db' not in st.session_state:
     df_auto, has_changes = auto_engine(df_l)
     if has_changes:
         save_to_cloud_silent(sheet_name, df_auto)
-        st.toast("🤖 Đã tự động cập nhật ngày mới!", icon="⚡")
     st.session_state.db = df_auto
 
 # --- 7. TABS ---
@@ -153,9 +152,9 @@ DATE_COLS = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(
 t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ"])
 
 with t1:
-    # --- NÂNG CẤP: BỌC KHU VỰC CHỈNH SỬA VÀO FRAGMENT ---
+    # Nâng cấp: Tách Fragment để quản lý độc lập từng vùng
     @st.fragment
-    def render_editor_section():
+    def render_controls():
         bc1, bc2, bc3 = st.columns([1, 1, 1])
         with bc1:
             if st.button("📤 LƯU CLOUD", type="primary", key="btn_save", use_container_width=True):
@@ -170,6 +169,8 @@ with t1:
             st.session_state.db.to_excel(buf, index=False)
             st.download_button("📥 XUẤT EXCEL", buf.getvalue(), f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
+    @st.fragment
+    def render_quick_update():
         with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH"):
             c1, c2 = st.columns([2, 1])
             f_staff = c1.multiselect("Nhân sự:", NAMES_66, key="quick_staff")
@@ -195,32 +196,37 @@ with t1:
                     save_to_cloud_silent(sheet_name, df_recalc)
                     st.rerun()
 
+    @st.fragment
+    def render_main_table():
+        # PHẦN QUAN TRỌNG: Chống giật cục bằng cách quản lý thay đổi thủ công
         ordered_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'CA Tháng Trước', 'Quỹ CA Tổng'] + DATE_COLS
-        display_df = st.session_state.db[ordered_cols].fillna("")
-
+        
+        # Chỉ hiển thị, không gán trực tiếp logic lưu vào on_change của data_editor
         ed_df = st.data_editor(
-            display_df, 
-            use_container_width=True, 
-            height=600, 
+            st.session_state.db[ordered_cols].fillna(""),
+            use_container_width=True,
+            height=600,
             hide_index=True,
-            key="main_editor", 
+            key="main_editor",
             column_config={
                 "CA Tháng Trước": st.column_config.NumberColumn("Tồn cũ", format="%.1f"),
                 "Quỹ CA Tổng": st.column_config.NumberColumn("Tổng ca", format="%.1f", disabled=True)
             }
         )
-        
-        # LOGIC KIỂM TRA THAY ĐỔI VÀ LƯU NGẦM
-        if not ed_df.equals(display_df):
+
+        # Tạo nút xác nhận ngay dưới bảng để "Chốt" dữ liệu đã nhập, tránh việc load liên tục
+        if st.button("💾 XÁC NHẬN CẬP NHẬT BẢNG & TÍNH QUỸ CA", type="secondary", use_container_width=True):
             st.session_state.db.update(ed_df)
             df_recalc, _ = auto_engine(st.session_state.db)
             st.session_state.db = df_recalc
             save_to_cloud_silent(sheet_name, df_recalc)
-            st.toast("💾 Đã lưu thay đổi!", icon="☁️")
-            # KHÔNG gọi st.rerun() để tránh nhảy trang
+            st.toast("✅ Đã cập nhật và tính toán lại Quỹ CA!", icon="🚀")
+            st.rerun()
 
-    # Gọi hàm fragment
-    render_editor_section()
+    # Thực thi các vùng
+    render_controls()
+    render_quick_update()
+    render_main_table()
 
 with t2:
     st.subheader(f"📊 Phân tích nhân sự năm {curr_year}")

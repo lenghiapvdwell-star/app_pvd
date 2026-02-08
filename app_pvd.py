@@ -73,17 +73,26 @@ NAMES_66 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung
 
 _, c_mid_date, _ = st.columns([3.5, 2, 3.5])
 with c_mid_date:
+    # Thêm callback để xóa session khi đổi ngày
     working_date = st.date_input("📅 CHỌN THÁNG LÀM VIỆC:", value=date.today())
 
 sheet_name = working_date.strftime("%m_%Y")
 curr_month, curr_year = working_date.month, working_date.year
 month_abbr = working_date.strftime("%b")
 
-if 'db' not in st.session_state or st.session_state.get('active_sheet') != sheet_name:
+# CẢI TIẾN: Kiểm tra nếu đổi tháng thì phải reset dữ liệu trong session
+if 'active_sheet' in st.session_state and st.session_state.active_sheet != sheet_name:
+    if 'db' in st.session_state:
+        del st.session_state.db
+
+if 'db' not in st.session_state:
     try:
+        # Tải dữ liệu từ sheet tương ứng
         df_load = conn.read(worksheet=sheet_name, ttl=0)
+        if df_load.empty: raise ValueError("Sheet empty")
         st.session_state.db = df_load.fillna("").replace(["nan", "NaN", "None"], "")
     except:
+        # Nếu sheet chưa tồn tại, tạo khung mới
         count = len(NAMES_66)
         st.session_state.db = pd.DataFrame({
             'STT': range(1, count + 1), 'Họ và Tên': NAMES_66, 
@@ -92,10 +101,12 @@ if 'db' not in st.session_state or st.session_state.get('active_sheet') != sheet
         })
     st.session_state.active_sheet = sheet_name
 
+# Đảm bảo các cột ngày của tháng hiện tại luôn có mặt
 num_days = calendar.monthrange(curr_year, curr_month)[1]
 DATE_COLS = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(curr_year,curr_month,d).weekday()]})" for d in range(1, num_days+1)]
 for col in DATE_COLS:
-    if col not in st.session_state.db.columns: st.session_state.db[col] = ""
+    if col not in st.session_state.db.columns: 
+        st.session_state.db[col] = ""
 
 # --- 6. HÀM TÍNH TOÁN ---
 def recalculate_ca(df):
@@ -130,7 +141,7 @@ with t1:
         if st.button("📤 LƯU CLOUD (DÙNG KHI XONG)", type="primary", use_container_width=True):
             st.session_state.db = recalculate_ca(st.session_state.db)
             if save_to_cloud_smart(sheet_name, st.session_state.db):
-                st.success("Đã lưu thành công!")
+                st.success(f"Đã lưu thành công dữ liệu {sheet_name}!")
                 time.sleep(1)
                 st.rerun()
     with bc2:
@@ -155,20 +166,27 @@ with t1:
                     for i in range((f_date[1] - f_date[0]).days + 1):
                         d = f_date[0] + timedelta(days=i)
                         if d.month == curr_month:
-                            col_n = [c for c in DATE_COLS if c.startswith(f"{d.day:02d}/")][0]
-                            st.session_state.db.at[idx, col_n] = "" if f_status == "Xóa trắng" else f_val
+                            # Tìm đúng cột ngày dựa trên số ngày
+                            day_prefix = f"{d.day:02d}/"
+                            target_col = [c for c in DATE_COLS if c.startswith(day_prefix)]
+                            if target_col:
+                                st.session_state.db.at[idx, target_col[0]] = "" if f_status == "Xóa trắng" else f_val
                     if f_co != "Không đổi": st.session_state.db.at[idx, 'Công ty'] = f_co
                     if f_ti != "Không đổi": st.session_state.db.at[idx, 'Chức danh'] = f_ti
                 st.session_state.db = recalculate_ca(st.session_state.db)
                 st.rerun()
 
-    # --- SẮP XẾP CỘT & SỬA LỖI KEYERROR ---
+    # --- ĐẢM BẢO THỨ TỰ CỘT ---
     basic_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'CA Tháng Trước', 'Quỹ CA Tổng']
+    # Bù cột thiếu nếu sheet trên Cloud bị mất cột
     for col in basic_cols:
         if col not in st.session_state.db.columns:
             st.session_state.db[col] = 0.0 if "CA" in col else ""
     
+    # Chỉ lấy các cột ngày thuộc tháng đang chọn
     ordered_cols = basic_cols + DATE_COLS
+    
+    # Lọc DataFrame theo đúng các cột của tháng hiện tại
     display_df = st.session_state.db[ordered_cols].fillna("").replace(["nan", "NaN"], "")
     
     ed_df = st.data_editor(display_df, use_container_width=True, height=600, hide_index=True,
@@ -188,14 +206,15 @@ with t2:
     sel_name = st.selectbox("🔍 Chọn nhân sự xem biểu đồ:", NAMES_66)
     
     recs = []
-    # Dùng spinner để người dùng biết app đang xử lý dữ liệu năm
-    with st.spinner("Đang tổng hợp dữ liệu..."):
+    with st.spinner("Đang tổng hợp dữ liệu 12 tháng..."):
         for m in range(1, 13):
             m_sheet = f"{m:02d}_{curr_year}"
             try:
-                df_m = conn.read(worksheet=m_sheet, ttl=3600)
+                # Đọc dữ liệu từng tháng để vẽ biểu đồ
+                df_m = conn.read(worksheet=m_sheet, ttl=600)
                 if df_m is not None and sel_name in df_m['Họ và Tên'].values:
                     row_p = df_m[df_m['Họ và Tên'] == sel_name].iloc[0]
+                    # Lấy nhãn tháng viết tắt (Jan, Feb...) để so khớp cột
                     m_label = date(curr_year, m, 1).strftime("%b")
                     for col in df_m.columns:
                         if "/" in col and m_label in col:
@@ -212,26 +231,11 @@ with t2:
         summary['MonthIdx'] = summary['Tháng'].str[1:].astype(int)
         summary = summary.sort_values('MonthIdx')
 
-        sea_data = summary[summary['Loại'] == "Đi Biển"].copy()
-        sea_data['Lũy kế biển'] = sea_data['Ngày'].cumsum()
-
         fig = px.bar(summary, x="Tháng", y="Ngày", color="Loại", text="Ngày",
                      barmode="stack", color_discrete_map={"Đi Biển": "#00CC96", "CA": "#EF553B", "WS": "#FECB52", "NP": "#636EFA", "ỐM": "#AB63FA"},
                      category_orders={"Tháng": [f"T{i}" for i in range(1, 13)]})
 
-        if not sea_data.empty:
-            fig.add_trace(go.Scatter(x=sea_data["Tháng"], y=sea_data["Lũy kế biển"], name="Lũy kế Biển",
-                                     mode="lines+markers+text", text=sea_data["Lũy kế biển"], 
-                                     textposition="top center", line=dict(color="#00f2ff", width=3)))
-
         fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="white", height=600)
         st.plotly_chart(fig, use_container_width=True)
-        
-        st.divider()
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("🚢 Tổng Biển", f"{pdf[pdf['Loại']=='Đi Biển'].shape[0]} ngày")
-        m2.metric("🏠 Tổng CA", f"{pdf[pdf['Loại']=='CA'].shape[0]} ngày")
-        m3.metric("📅 Nghỉ Phép", f"{pdf[pdf['Loại']=='NP'].shape[0]} ngày")
-        m4.metric("💊 Nghỉ Ốm", f"{pdf[pdf['Loại']=='ỐM'].shape[0]} ngày")
     else:
         st.info("Nhân sự này chưa có dữ liệu hoạt động trong năm.")

@@ -21,7 +21,7 @@ st.markdown("""
         font-family: 'Arial Black', sans-serif !important;
     }
     [data-testid="stMetricValue"] { font-size: 28px !important; font-weight: bold !important; }
-    /* Tối ưu hóa Table Editor để không bị giật */
+    /* Giữ bảng ổn định */
     [data-testid="stDataEditor"] { border: 1px solid #444; border-radius: 5px; }
     </style>
     """, unsafe_allow_html=True)
@@ -153,81 +153,74 @@ DATE_COLS = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(
 t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ"])
 
 with t1:
-    bc1, bc2, bc3 = st.columns([1, 1, 1])
-    with bc1:
-        if st.button("📤 LƯU CLOUD", type="primary", use_container_width=True):
-            df_final, _ = auto_engine(st.session_state.db)
-            if save_to_cloud_silent(sheet_name, df_final):
-                st.success("Đã lưu!"); time.sleep(0.5); st.rerun()
-    with bc2:
-        if st.button("🔄 LÀM MỚI (TẢI LẠI)", use_container_width=True):
-            st.cache_data.clear(); del st.session_state.db; st.rerun()
-    with bc3:
-        buf = io.BytesIO()
-        st.session_state.db.to_excel(buf, index=False)
-        st.download_button("📥 XUẤT EXCEL", buf.getvalue(), f"PVD_{sheet_name}.xlsx", use_container_width=True)
+    # --- NÂNG CẤP: BỌC KHU VỰC CHỈNH SỬA VÀO FRAGMENT ---
+    @st.fragment
+    def render_editor_section():
+        bc1, bc2, bc3 = st.columns([1, 1, 1])
+        with bc1:
+            if st.button("📤 LƯU CLOUD", type="primary", key="btn_save", use_container_width=True):
+                df_final, _ = auto_engine(st.session_state.db)
+                if save_to_cloud_silent(sheet_name, df_final):
+                    st.success("Đã lưu!"); time.sleep(0.5); st.rerun()
+        with bc2:
+            if st.button("🔄 LÀM MỚI (TẢI LẠI)", key="btn_refresh", use_container_width=True):
+                st.cache_data.clear(); del st.session_state.db; st.rerun()
+        with bc3:
+            buf = io.BytesIO()
+            st.session_state.db.to_excel(buf, index=False)
+            st.download_button("📥 XUẤT EXCEL", buf.getvalue(), f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
-    with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH"):
-        c1, c2 = st.columns([2, 1])
-        f_staff = c1.multiselect("Nhân sự:", NAMES_66)
-        f_date = c2.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, num_days)))
-        r2_1, r2_2, r2_3, r2_4 = st.columns(4)
-        f_status = r2_1.selectbox("Trạng thái:", ["Xóa trắng", "Đi Biển", "CA", "WS", "NP", "Ốm"])
-        f_val = r2_2.selectbox("Giàn:", st.session_state.GIANS) if f_status == "Đi Biển" else f_status
-        f_co = r2_3.selectbox("Cty:", ["Không đổi"] + COMPANIES); f_ti = r2_4.selectbox("Chức danh:", ["Không đổi"] + TITLES)
-        if st.button("✅ ÁP DỤNG"):
-            if f_staff and isinstance(f_date, tuple) and len(f_date) == 2:
-                for person in f_staff:
-                    idx_match = st.session_state.db.index[st.session_state.db['Họ và Tên'] == person]
-                    if not idx_match.empty:
-                        idx = idx_match[0]
-                        for i in range((f_date[1] - f_date[0]).days + 1):
-                            d = f_date[0] + timedelta(days=i)
-                            if d.month == curr_month:
-                                col_n = [c for c in DATE_COLS if c.startswith(f"{d.day:02d}/")][0]
-                                st.session_state.db.at[idx, col_n] = "" if f_status == "Xóa trắng" else f_val
-                df_recalc, _ = auto_engine(st.session_state.db)
-                st.session_state.db = df_recalc
-                save_to_cloud_silent(sheet_name, df_recalc)
-                st.rerun()
+        with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH"):
+            c1, c2 = st.columns([2, 1])
+            f_staff = c1.multiselect("Nhân sự:", NAMES_66, key="quick_staff")
+            f_date = c2.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, num_days)), key="quick_date")
+            r2_1, r2_2, r2_3, r2_4 = st.columns(4)
+            f_status = r2_1.selectbox("Trạng thái:", ["Xóa trắng", "Đi Biển", "CA", "WS", "NP", "Ốm"], key="quick_status")
+            f_val = r2_2.selectbox("Giàn:", st.session_state.GIANS, key="quick_gian") if f_status == "Đi Biển" else f_status
+            f_co = r2_3.selectbox("Cty:", ["Không đổi"] + COMPANIES, key="quick_co")
+            f_ti = r2_4.selectbox("Chức danh:", ["Không đổi"] + TITLES, key="quick_title")
+            if st.button("✅ ÁP DỤNG", key="btn_apply"):
+                if f_staff and isinstance(f_date, tuple) and len(f_date) == 2:
+                    for person in f_staff:
+                        idx_match = st.session_state.db.index[st.session_state.db['Họ và Tên'] == person]
+                        if not idx_match.empty:
+                            idx = idx_match[0]
+                            for i in range((f_date[1] - f_date[0]).days + 1):
+                                d = f_date[0] + timedelta(days=i)
+                                if d.month == curr_month:
+                                    col_n = [c for c in DATE_COLS if c.startswith(f"{d.day:02d}/")][0]
+                                    st.session_state.db.at[idx, col_n] = "" if f_status == "Xóa trắng" else f_val
+                    df_recalc, _ = auto_engine(st.session_state.db)
+                    st.session_state.db = df_recalc
+                    save_to_cloud_silent(sheet_name, df_recalc)
+                    st.rerun()
 
-    # --- PHẦN NÂNG CẤP QUAN TRỌNG: CHỐNG NHẢY TRANG ---
-    ordered_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'CA Tháng Trước', 'Quỹ CA Tổng'] + DATE_COLS
-    
-    # Tạo bản copy để hiển thị
-    display_df = st.session_state.db[ordered_cols].fillna("")
+        ordered_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'CA Tháng Trước', 'Quỹ CA Tổng'] + DATE_COLS
+        display_df = st.session_state.db[ordered_cols].fillna("")
 
-    # Sử dụng key cố định để Streamlit không render lại toàn bộ trang khi sửa ô
-    ed_df = st.data_editor(
-        display_df, 
-        use_container_width=True, 
-        height=600, 
-        hide_index=True,
-        key="main_editor", # Key này cực kỳ quan trọng để giữ trạng thái
-        column_config={
-            "CA Tháng Trước": st.column_config.NumberColumn("Tồn cũ", format="%.1f"),
-            "Quỹ CA Tổng": st.column_config.NumberColumn("Tổng ca", format="%.1f", disabled=True)
-        }
-    )
-    
-    # Chỉ thực hiện tính toán và lưu khi có sự thay đổi thực sự (người dùng nhấn Enter hoặc thoát ô)
-    if not ed_df.equals(display_df):
-        # Cập nhật vào session_state trước
-        st.session_state.db.update(ed_df)
+        ed_df = st.data_editor(
+            display_df, 
+            use_container_width=True, 
+            height=600, 
+            hide_index=True,
+            key="main_editor", 
+            column_config={
+                "CA Tháng Trước": st.column_config.NumberColumn("Tồn cũ", format="%.1f"),
+                "Quỹ CA Tổng": st.column_config.NumberColumn("Tổng ca", format="%.1f", disabled=True)
+            }
+        )
         
-        # Chạy engine tính toán lại quỹ CA
-        df_recalc, _ = auto_engine(st.session_state.db)
-        st.session_state.db = df_recalc
-        
-        # Lưu ngầm lên Cloud
-        save_to_cloud_silent(sheet_name, df_recalc)
-        
-        # Thay vì st.rerun() ngay lập tức (gây nhảy trang), ta dùng toast thông báo
-        st.toast("💾 Đã tự động lưu dữ liệu!", icon="☁️")
-        
-        # Chỉ rerun khi thực sự cần thiết để đồng bộ lại giao diện biểu đồ/quỹ CA
-        # Để tránh "nhảy", ta có thể trì hoãn rerun hoặc để người dùng bấm nút Lưu
-        # Ở đây tôi lược bỏ rerun cưỡng bức để bạn nhập liệu mượt hơn.
+        # LOGIC KIỂM TRA THAY ĐỔI VÀ LƯU NGẦM
+        if not ed_df.equals(display_df):
+            st.session_state.db.update(ed_df)
+            df_recalc, _ = auto_engine(st.session_state.db)
+            st.session_state.db = df_recalc
+            save_to_cloud_silent(sheet_name, df_recalc)
+            st.toast("💾 Đã lưu thay đổi!", icon="☁️")
+            # KHÔNG gọi st.rerun() để tránh nhảy trang
+
+    # Gọi hàm fragment
+    render_editor_section()
 
 with t2:
     st.subheader(f"📊 Phân tích nhân sự năm {curr_year}")

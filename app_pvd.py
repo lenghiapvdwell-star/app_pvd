@@ -65,17 +65,15 @@ if 'db' not in st.session_state or st.session_state.get('active_sheet') != sheet
     except:
         st.session_state.db = pd.DataFrame({'STT': range(1, len(NAMES_BASE)+1), 'Họ và Tên': NAMES_BASE})
     st.session_state.active_sheet = sheet_name
-    # Reset key của bảng khi đổi tháng
-    st.session_state.editor_key = str(time.time())
+    st.session_state.editor_key = f"editor_{int(time.time())}"
 
-# Đảm bảo có đủ cột ngày
 num_days = calendar.monthrange(curr_year, curr_month)[1]
 DATE_COLS = [f"{d:02d}/{month_abbr}" for d in range(1, num_days+1)]
 for col in DATE_COLS:
     if col not in st.session_state.db.columns: st.session_state.db[col] = ""
 
 if "editor_key" not in st.session_state:
-    st.session_state.editor_key = "pvd_v5"
+    st.session_state.editor_key = "pvd_v6"
 
 # --- 6. HÀM XỬ LÝ ---
 def run_autofill_and_calc(df):
@@ -86,7 +84,7 @@ def run_autofill_and_calc(df):
         last_val = ""
         for col in DATE_COLS:
             current_val = str(df_new.at[idx, col]).strip()
-            if current_val == "" or current_val.upper() == "NAN":
+            if current_val == "" or current_val.upper() in ["NAN", "NONE"]:
                 df_new.at[idx, col] = last_val
             else:
                 last_val = current_val
@@ -113,12 +111,17 @@ c1, c2, c3 = st.columns([2.5, 2, 4])
 
 if c1.button("☁️ LƯU & ĐỒNG BỘ CLOUD (AUTOFILL)", type="primary", use_container_width=True):
     with st.status("🔄 Đang xử lý Autofill & Đồng bộ...", expanded=False):
+        # Lưu thay đổi cuối cùng từ bảng vào state trước khi autofill
         st.session_state.db = run_autofill_and_calc(st.session_state.db)
         conn.update(worksheet=sheet_name, data=st.session_state.db)
-        # Ép bảng reset lại để hiện dữ liệu đã autofill
-        st.session_state.editor_key = str(time.time())
+        
+        # Xóa bộ nhớ đệm của bảng để ép hiển thị dữ liệu mới từ state
+        if st.session_state.editor_key in st.session_state:
+            del st.session_state[st.session_state.editor_key]
+        st.session_state.editor_key = f"editor_{int(time.time())}"
+        
         st.success("Đã đồng bộ thành công!")
-        time.sleep(1)
+        time.sleep(0.5)
         st.rerun()
 
 buf = io.BytesIO()
@@ -132,7 +135,6 @@ with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH & QUẢN LÝ GIÀN KHOAN
     with tab_bulk:
         col_a, col_b, col_c = st.columns(3)
         f_staff = col_a.multiselect("Chọn nhân sự:", st.session_state.db['Họ và Tên'].tolist())
-        # Tránh lỗi nếu f_date không đủ 2 ngày
         f_date = col_b.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, 2)))
         f_status = col_c.selectbox("Trạng thái:", ["Đi Biển", "CA", "WS", "NP", "Ốm"])
         f_val = col_c.selectbox("Chọn giàn:", st.session_state.gians_list) if f_status == "Đi Biển" else f_status
@@ -147,9 +149,12 @@ with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH & QUẢN LÝ GIÀN KHOAN
                         if col_n in st.session_state.db.columns:
                             st.session_state.db.at[idx, col_n] = f_val
                 
-                # QUAN TRỌNG: Thay đổi Key để bảng hiện thông tin mới
-                st.session_state.editor_key = str(time.time())
-                st.toast("Đã áp dụng lên bảng (Chưa lưu Cloud)")
+                # XÓA BỘ NHỚ ĐỆM CỦA BẢNG ĐỂ HIỆN DỮ LIỆU MỚI
+                if st.session_state.editor_key in st.session_state:
+                    del st.session_state[st.session_state.editor_key]
+                st.session_state.editor_key = f"editor_{int(time.time())}"
+                
+                st.toast("Đã áp dụng lên bảng thành công!")
                 time.sleep(0.5)
                 st.rerun()
 
@@ -171,9 +176,7 @@ with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH & QUẢN LÝ GIÀN KHOAN
 
 # --- 9. BẢNG NHẬP LIỆU ---
 st.markdown("---")
-st.info("💡 **QUY TRÌNH:** Nhập dữ liệu -> Kiểm tra trên bảng -> Nhấn **'LƯU & ĐỒNG BỘ CLOUD'**")
-
-# Sử dụng editor_key từ session_state để ép bảng làm mới dữ liệu
+# Cập nhật session_state từ thay đổi trực tiếp trên bảng
 edited_df = st.data_editor(
     st.session_state.db, 
     use_container_width=True, 

@@ -20,8 +20,7 @@ st.markdown("""
         text-align: center !important; text-shadow: 3px 3px 6px #000 !important;
         font-family: 'Arial Black', sans-serif !important;
     }
-    /* Tối ưu giao diện form để không chiếm diện tích */
-    .stForm {border: none !important; padding: 0 !important;}
+    .stForm {border: 1px solid #444 !important; padding: 10px !important; border-radius: 10px;}
     </style>
     """, unsafe_allow_html=True)
 
@@ -59,7 +58,7 @@ def save_to_cloud_smart(worksheet_name, df):
     except:
         return False
 
-# --- 4. KHỞI TẠO DANH SÁCH GỐC ---
+# --- 4. KHỞI TẠO ---
 if "gians_list" not in st.session_state:
     st.session_state.gians_list = load_gians_from_sheets()
 
@@ -67,7 +66,7 @@ COMPANIES = ["PVDWS", "OWS", "National", "Baker Hughes", "Schlumberger", "Hallib
 TITLES = ["Casing crew", "CRTI LD", "CRTI SP", "SOLID", "MUDCL", "UNDERRM", "PPLS", "HAMER"]
 NAMES_BASE = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong"]
 
-# --- 5. CHỌN THỜI GIAN & TẢI DỮ LIỆU ---
+# --- 5. THỜI GIAN & DỮ LIỆU ---
 _, c_mid_date, _ = st.columns([3.5, 2, 3.5])
 with c_mid_date:
     working_date = st.date_input("📅 CHỌN THÁNG LÀM VIỆC:", value=date.today())
@@ -130,12 +129,11 @@ def calculate_pvd_logic(df):
 t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ"])
 
 with t1:
-    # HÀNG NÚT BẤM CHÍNH
+    # NÚT BẤM CHÍNH
     bc1, bc2, _ = st.columns([1.5, 1.5, 5])
     with bc1:
         if st.button("📤 LƯU CLOUD", type="primary", use_container_width=True):
             with st.status("🚀 Đang đồng bộ...", expanded=False):
-                # Tính toán lại lần cuối trước khi lưu
                 final_df = calculate_pvd_logic(st.session_state.db)
                 if save_to_cloud_smart(sheet_name, final_df):
                     st.toast("Đã lưu thành công!")
@@ -146,48 +144,29 @@ with t1:
         calculate_pvd_logic(st.session_state.db).to_excel(buf, index=False)
         st.download_button("📥 XUẤT EXCEL", buf, f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
-    # KHU VỰC NHẬP LIỆU CHÍNH (Dùng FORM để chống giật)
-    st.markdown("---")
-    with st.form("main_data_form"):
-        st.markdown("##### 📝 BẢNG NHẬP LIỆU CHI TIẾT")
-        # Hiển thị bảng từ session_state hiện tại
-        edited_db = st.data_editor(
-            st.session_state.db, 
-            use_container_width=True, 
-            height=550, 
-            hide_index=True,
-            key="editor_inside_form"
-        )
-        
-        c_form1, c_form2 = st.columns([2, 6])
-        submit_change = c_form1.form_submit_button("✅ XÁC NHẬN THAY ĐỔI (TÍNH CA)", use_container_width=True)
-        if submit_change:
-            st.session_state.db = edited_db
-            st.rerun()
-        with c_form2:
-            st.info("💡 Bạn có thể nhập liệu liên tục nhiều ô. Sau khi nhập xong, nhấn 'XÁC NHẬN THAY ĐỔI' để App tính toán Quỹ CA.")
-
-    # CÔNG CỤ CẬP NHẬT NHANH (Giữ nguyên)
-    with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH & QUẢN LÝ GIÀN"):
-        c_add1, c_add2 = st.columns([2, 1])
-        new_rig = c_add1.text_input("Tên giàn mới:")
-        if c_add2.button("➕ Thêm Giàn"):
+    # --- ĐÃ KHÔI PHỤC CÔNG CỤ CẬP NHẬT Ở ĐÂY ---
+    with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH & QUẢN LÝ GIÀN", expanded=False):
+        st.markdown("##### ⚓ Quản lý giàn")
+        c_rig1, c_rig2 = st.columns([2, 1])
+        new_rig = c_rig1.text_input("Tên giàn mới (VD: PVD 11):")
+        if c_rig2.button("➕ Thêm Giàn"):
             if new_rig and new_rig.strip().upper() not in st.session_state.gians_list:
                 st.session_state.gians_list.append(new_rig.strip().upper())
                 save_to_cloud_smart("CONFIG", pd.DataFrame({"Giàn": st.session_state.gians_list}))
                 st.rerun()
         
         st.divider()
+        st.markdown("##### ⚡ Cập nhật lịch hàng loạt")
         v_names = [str(n) for n in st.session_state.db['Họ và Tên'].tolist() if str(n).strip() != ""]
-        f_staff = st.multiselect("Nhân sự:", v_names)
-        f_date = st.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, num_days)))
+        f_staff = st.multiselect("Chọn nhân sự:", v_names)
+        f_date = st.date_input("Chọn khoảng thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, num_days)))
         r2_1, r2_2, r2_3, r2_4 = st.columns(4)
         f_status = r2_1.selectbox("Trạng thái:", ["Không đổi", "Đi Biển", "CA", "WS", "NP", "Ốm"])
         f_val = r2_2.selectbox("Chọn giàn:", st.session_state.gians_list) if f_status == "Đi Biển" else f_status
-        f_co = r2_3.selectbox("Cty:", ["Không đổi"] + COMPANIES)
+        f_co = r2_3.selectbox("Công ty:", ["Không đổi"] + COMPANIES)
         f_ti = r2_4.selectbox("Chức danh:", ["Không đổi"] + TITLES)
         
-        if st.button("🚀 ÁP DỤNG NHANH"):
+        if st.button("🚀 ÁP DỤNG CHO CÁC NHÂN SỰ ĐÃ CHỌN"):
             if f_staff and isinstance(f_date, tuple) and len(f_date) == 2:
                 for person in f_staff:
                     idx = st.session_state.db.index[st.session_state.db['Họ và Tên'] == person][0]
@@ -200,6 +179,22 @@ with t1:
                                 col_n = f"{d.day:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][d.weekday()]})"
                                 if col_n in st.session_state.db.columns: st.session_state.db.at[idx, col_n] = f_val
                 st.rerun()
+
+    # --- BẢNG DỮ LIỆU ---
+    st.markdown("---")
+    with st.form("main_data_form"):
+        st.markdown("##### 📝 BẢNG NHẬP LIỆU (Nhập xong nhấn 'Xác nhận' bên dưới)")
+        edited_db = st.data_editor(
+            st.session_state.db, 
+            use_container_width=True, 
+            height=500, 
+            hide_index=True,
+            key="editor_form_fixed"
+        )
+        submit_change = st.form_submit_button("✅ XÁC NHẬN THAY ĐỔI & TÍNH TOÁN CA", use_container_width=True)
+        if submit_change:
+            st.session_state.db = edited_db
+            st.rerun()
 
 with t2:
     st.subheader("📊 Phân tích cường độ & Tổng hợp ngày biển")

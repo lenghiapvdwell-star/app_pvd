@@ -7,8 +7,8 @@ import io
 import os
 import time
 
-# --- 1. CẤU HÌNH ---
-st.set_page_config(page_title="PVD WELL MANAGEMENT", layout="wide")
+# --- 1. CẤU HÌNH TRANG ---
+st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 
 st.markdown("""
     <style>
@@ -16,14 +16,23 @@ st.markdown("""
     .main-title {
         color: #00f2ff !important; font-size: 40px !important; font-weight: bold !important;
         text-align: center !important; text-shadow: 2px 2px 4px #000 !important;
-        margin-bottom: 10px;
+        margin-bottom: 15px;
     }
-    /* Làm nổi bật cột Quỹ CA */
-    [data-testid="stTable"] td:last-child { background-color: #262730 !important; font-weight: bold; color: #00f2ff; }
+    .stButton>button {border-radius: 5px; height: 3em;}
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. KẾT NỐI & DỮ LIỆU ---
+# --- 2. HEADER & LOGO (ĐÃ KHÔI PHỤC) ---
+c_logo, _ = st.columns([1, 4])
+with c_logo:
+    if os.path.exists("logo_pvd.png"):
+        st.image("logo_pvd.png", width=180)
+    else:
+        st.markdown("<h2 style='color:red;'>🔴 PVD WELL</h2>", unsafe_allow_html=True)
+
+st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
+
+# --- 3. KẾT NỐI & DANH SÁCH GIÀN ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def load_gians():
@@ -36,7 +45,7 @@ def load_gians():
 if "gians_list" not in st.session_state:
     st.session_state.gians_list = load_gians()
 
-# --- 3. CHỌN THÁNG ---
+# --- 4. CHỌN THÁNG ---
 _, c_mid_date, _ = st.columns([3.5, 2, 3.5])
 with c_mid_date:
     working_date = st.date_input("📅 CHỌN THÁNG LÀM VIỆC:", value=date.today())
@@ -45,36 +54,33 @@ sheet_name = working_date.strftime("%m_%Y")
 curr_month, curr_year = working_date.month, working_date.year
 month_abbr = working_date.strftime("%b")
 
-# --- 4. HÀM XỬ LÝ AUTOFILL & TÍNH TOÁN PRO ---
-def process_pro_logic(df):
+# --- 5. HÀM XỬ LÝ LOGIC AUTOFILL (PRO) ---
+def apply_autofill_logic(df):
     hols = [date(2026,1,1), date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19), date(2026,2,20), date(2026,2,21), date(2026,4,25), date(2026,4,30), date(2026,5,1), date(2026,9,2)]
     num_days = calendar.monthrange(curr_year, curr_month)[1]
     date_cols = [f"{d:02d}/{month_abbr}" for d in range(1, num_days+1)]
     
-    df_res = df.copy()
-    
-    for idx, row in df_res.iterrows():
+    df_new = df.copy()
+    for idx, row in df_new.iterrows():
         if not str(row.get('Họ và Tên', '')).strip(): continue
         
-        # Bước 1: Autofill logic "Rồng rắn"
-        current_fill = ""
+        # Autofill xuyên suốt từ trái qua phải
+        last_val = ""
         for col in date_cols:
-            val = str(df_res.at[idx, col]).strip()
-            if val == "" or val.upper() in ["NAN", "NONE"]:
-                df_res.at[idx, col] = current_fill
+            curr_val = str(df_new.at[idx, col]).strip()
+            if curr_val == "" or curr_val.upper() in ["NAN", "NONE"]:
+                df_new.at[idx, col] = last_val
             else:
-                current_fill = val # Cập nhật trạng thái mới để fill cho các ngày sau
+                last_val = curr_val
 
-        # Bước 2: Tính Quỹ CA ngay lập tức trên dữ liệu đã fill
+        # Tính toán Quỹ CA
         acc = 0.0
         for col in date_cols:
-            v = str(df_res.at[idx, col]).strip().upper()
+            v = str(df_new.at[idx, col]).strip().upper()
             if not v or v in ["WS", "NP", "ỐM"]: continue
             try:
-                day_int = int(col[:2])
-                dt = date(curr_year, curr_month, day_int)
+                dt = date(curr_year, curr_month, int(col[:2]))
                 is_offshore = any(g.upper() in v for g in st.session_state.gians_list)
-                
                 if is_offshore:
                     if dt in hols: acc += 2.0
                     elif dt.weekday() >= 5: acc += 1.0
@@ -82,45 +88,76 @@ def process_pro_logic(df):
                 elif v == "CA":
                     if dt.weekday() < 5 and dt not in hols: acc -= 1.0
             except: continue
-        df_res.at[idx, 'Quỹ CA Tổng'] = acc
-        
-    return df_res
+        df_new.at[idx, 'Quỹ CA Tổng'] = acc
+    return df_new
 
-# --- 5. QUẢN LÝ SESSION STATE ---
-if 'db_raw' not in st.session_state or st.session_state.get('active_sheet') != sheet_name:
+# --- 6. QUẢN LÝ DỮ LIỆU TẠM THỜI ---
+if 'db' not in st.session_state or st.session_state.get('active_sheet') != sheet_name:
     try:
-        st.session_state.db_raw = conn.read(worksheet=sheet_name, ttl=0)
+        st.session_state.db = conn.read(worksheet=sheet_name, ttl=0)
     except:
-        st.session_state.db_raw = pd.DataFrame({'STT': range(1, 61), 'Họ và Tên': [""]*60})
+        st.session_state.db = pd.DataFrame({'STT': range(1, 61), 'Họ và Tên': [""]*60})
     st.session_state.active_sheet = sheet_name
+    st.session_state.editor_key = f"ed_{int(time.time())}"
 
-# --- 6. GIAO DIỆN ĐIỀU KHIỂN ---
+# --- 7. GIAO DIỆN ĐIỀU KHIỂN ---
 c1, c2, c3 = st.columns([2.5, 2, 4])
 
-if c1.button("☁️ LƯU VÀO GOOGLE SHEETS", type="primary", use_container_width=True):
-    # Trước khi lưu, xử lý logic một lần nữa cho chắc chắn
-    final_df = process_pro_logic(st.session_state.db_raw)
-    conn.update(worksheet=sheet_name, data=final_df)
-    st.success("Đã đồng bộ Cloud thành công!")
-    st.rerun()
+if c1.button("💾 LƯU & ĐỒNG BỘ CLOUD", type="primary", use_container_width=True):
+    with st.status("🔄 Đang xử lý Autofill & Lưu...", expanded=False):
+        final_df = apply_autofill_logic(st.session_state.db)
+        conn.update(worksheet=sheet_name, data=final_df)
+        st.session_state.db = final_df # Cập nhật lại state sau khi autofill
+        st.session_state.editor_key = f"ed_{int(time.time())}" # Refresh bảng
+        st.success("Đã đồng bộ thành công!")
+        st.rerun()
 
-# --- 7. BẢNG NHẬP LIỆU "PRO" ---
-st.info("⚡ **CHẾ ĐỘ AUTO PRO:** Nhập 1 ngày (VD: PVD8), các ngày trống phía sau sẽ tự nhảy theo và Quỹ CA tự tính.")
+buf = io.BytesIO()
+st.session_state.db.to_excel(buf, index=False)
+c2.download_button("📥 XUẤT EXCEL", buf, f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
-# Hiển thị bảng tính toán thời gian thực
-display_df = process_pro_logic(st.session_state.db_raw)
+# --- 8. Ô CÔNG CỤ CẬP NHẬT (ĐÃ KHÔI PHỤC) ---
+with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH & QUẢN LÝ GIÀN KHOAN", expanded=False):
+    tab_bulk, tab_rig = st.tabs(["⚡ Đổ dữ liệu nhanh", "⚓ Quản lý danh sách giàn"])
+    
+    with tab_bulk:
+        col_a, col_b, col_c = st.columns(3)
+        f_staff = col_a.multiselect("Chọn nhân sự:", st.session_state.db['Họ và Tên'].dropna().unique().tolist())
+        f_date = col_b.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, 2)))
+        f_status = col_c.selectbox("Trạng thái:", ["Đi Biển", "CA", "WS", "NP", "Ốm"])
+        f_val = col_c.selectbox("Chọn giàn:", st.session_state.gians_list) if f_status == "Đi Biển" else f_status
+        
+        if st.button("🚀 ÁP DỤNG LÊN BẢNG"):
+            if f_staff and len(f_date) == 2:
+                for name in f_staff:
+                    idx = st.session_state.db.index[st.session_state.db['Họ và Tên'] == name][0]
+                    for i in range((f_date[1] - f_date[0]).days + 1):
+                        d = f_date[0] + timedelta(days=i)
+                        col_n = f"{d.day:02d}/{month_abbr}"
+                        if col_n in st.session_state.db.columns:
+                            st.session_state.db.at[idx, col_n] = f_val
+                st.session_state.editor_key = f"ed_{int(time.time())}" # Ép bảng hiện thông tin ngay
+                st.rerun()
+
+    with tab_rig:
+        ra, rb = st.columns([3, 1])
+        new_r = ra.text_input("Tên giàn mới:")
+        if rb.button("➕ Thêm", use_container_width=True):
+            if new_r:
+                st.session_state.gians_list.append(new_r.upper())
+                conn.update(worksheet="CONFIG", data=pd.DataFrame({"Giàn": st.session_state.gians_list}))
+                st.rerun()
+
+# --- 9. BẢNG NHẬP LIỆU ---
+st.markdown("---")
+# Hiển thị dữ liệu đã qua xử lý Autofill thời gian thực
+display_df = apply_autofill_logic(st.session_state.db)
 
 edited_df = st.data_editor(
     display_df,
     use_container_width=True,
-    height=650,
+    height=600,
     hide_index=True,
-    key="pvd_pro_editor"
+    key=st.session_state.editor_key
 )
-
-# Cập nhật lại db_raw khi người dùng sửa
-st.session_state.db_raw = edited_df
-
-# Nút bổ sung dưới bảng để hỗ trợ người dùng
-if st.button("🔄 Cập nhật lại toàn bộ bảng"):
-    st.rerun()
+st.session_state.db = edited_df

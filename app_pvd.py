@@ -20,6 +20,8 @@ st.markdown("""
         text-align: center !important; text-shadow: 3px 3px 6px #000 !important;
         font-family: 'Arial Black', sans-serif !important;
     }
+    /* Làm đẹp các ô Metrics */
+    [data-testid="stMetricValue"] { font-size: 28px !important; font-weight: bold !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -77,15 +79,13 @@ sheet_name = working_date.strftime("%m_%Y")
 curr_month, curr_year = working_date.month, working_date.year
 month_abbr = working_date.strftime("%b")
 
-# Tính tháng trước
 first_day_curr = working_date.replace(day=1)
 prev_month_date = first_day_curr - timedelta(days=1)
 prev_sheet = prev_month_date.strftime("%m_%Y")
 
 if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sheet_name:
     st.session_state.active_sheet = sheet_name
-    if 'db' in st.session_state:
-        del st.session_state.db
+    if 'db' in st.session_state: del st.session_state.db
 
 if 'db' not in st.session_state:
     try:
@@ -93,12 +93,10 @@ if 'db' not in st.session_state:
         balance_map = dict(zip(df_prev['Họ và Tên'], df_prev['Quỹ CA Tổng']))
     except:
         balance_map = {}
-
     try:
         df_load = conn.read(worksheet=sheet_name, ttl=0)
         if df_load.empty or len(df_load) < 5: raise ValueError
         df_final = df_load.fillna("").replace(["nan", "NaN", "None"], "")
-        
         for idx, row in df_final.iterrows():
             name = row['Họ và Tên']
             if name in balance_map:
@@ -118,13 +116,12 @@ DATE_COLS = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(
 for col in DATE_COLS:
     if col not in st.session_state.db.columns: st.session_state.db[col] = ""
 
-# --- 6. HÀM TÍNH TOÁN (GIỮ NGUYÊN) ---
+# --- 6. HÀM TÍNH TOÁN ---
 def recalculate_ca(df):
     hols = [date(2026,1,1), date(2026,4,30), date(2026,5,1), date(2026,9,2),
             date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19)]
     df_calc = df.copy()
     df_calc['CA Tháng Trước'] = pd.to_numeric(df_calc['CA Tháng Trước'], errors='coerce').fillna(0.0)
-    
     for idx, row in df_calc.iterrows():
         accrued = 0.0
         for col in DATE_COLS:
@@ -170,7 +167,6 @@ with t1:
         f_status = r2_1.selectbox("Trạng thái:", ["Xóa trắng", "Đi Biển", "CA", "WS", "NP", "Ốm"])
         f_val = r2_2.selectbox("Giàn:", st.session_state.GIANS) if f_status == "Đi Biển" else f_status
         f_co = r2_3.selectbox("Cty:", ["Không đổi"] + COMPANIES); f_ti = r2_4.selectbox("Chức danh:", ["Không đổi"] + TITLES)
-        
         if st.button("✅ ÁP DỤNG"):
             if f_staff and isinstance(f_date, tuple) and len(f_date) == 2:
                 for person in f_staff:
@@ -185,15 +181,13 @@ with t1:
     basic_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'CA Tháng Trước', 'Quỹ CA Tổng']
     ordered_cols = basic_cols + DATE_COLS
     display_df = st.session_state.db[ordered_cols].fillna("")
-    
     ed_df = st.data_editor(display_df, use_container_width=True, height=600, hide_index=True,
                            column_config={
                                "CA Tháng Trước": st.column_config.NumberColumn("Tồn cũ", format="%.1f"),
                                "Quỹ CA Tổng": st.column_config.NumberColumn("Tổng ca", format="%.1f", disabled=True),
                            })
     if not ed_df.equals(display_df):
-        st.session_state.db.update(ed_df)
-        st.session_state.db = recalculate_ca(st.session_state.db); st.rerun()
+        st.session_state.db.update(ed_df); st.session_state.db = recalculate_ca(st.session_state.db); st.rerun()
 
 with t2:
     st.subheader(f"📊 Phân tích nhân sự năm {curr_year}")
@@ -211,7 +205,6 @@ with t2:
                     if "/" in col and m_label in col:
                         v = str(row_p[col]).strip().upper()
                         if v and v not in ["", "NAN", "NONE"]:
-                            # Phân loại để đồng nhất màu sắc
                             if any(g.upper() in v for g in st.session_state.GIANS): cat = "Đi Biển"
                             elif v == "CA": cat = "CA"
                             elif v == "WS": cat = "WS"
@@ -225,37 +218,27 @@ with t2:
         pdf = pd.DataFrame(recs)
         summary = pdf.groupby(['Tháng', 'Loại']).size().reset_index(name='Ngày')
         
-        # BIỂU ĐỒ: Hiện số ngày trên từng khối màu
+        # Biểu đồ Plotly
         fig = px.bar(summary, x="Tháng", y="Ngày", color="Loại", text="Ngày", barmode="stack",
                      category_orders={"Tháng": [f"T{i}" for i in range(1, 13)]},
-                     color_discrete_map={
-                         "Đi Biển": "#00f2ff", 
-                         "CA": "#ff4b4b", 
-                         "WS": "#ffd700", 
-                         "NP": "#00ff00", 
-                         "ỐM": "#ff00ff"
-                     },
+                     color_discrete_map={"Đi Biển":"#00f2ff","CA":"#ff4b4b","WS":"#ffd700","NP":"#00ff00","ỐM":"#ff00ff"},
                      template="plotly_dark")
-        
         fig.update_traces(textposition='inside', textfont_size=14)
         fig.update_layout(xaxis_title="Tháng", yaxis_title="Tổng số ngày", height=500)
         st.plotly_chart(fig, use_container_width=True)
         
-        # BẢNG TỔNG HỢP & METRICS
+        # --- PHẦN TỔNG KẾT ---
         st.markdown("---")
         st.markdown("### 📋 Tổng kết số ngày hoạt động trong năm")
-        total_summary = pdf.groupby('Loại')['Ngày'].sum().reset_index()
-        total_summary.columns = ['Hạng mục', 'Số ngày']
+        total_sum = pdf.groupby('Loại')['Ngày'].sum().to_dict()
         
-        # Hiển thị dạng số lớn (Metrics)
         m1, m2, m3, m4, m5 = st.columns(5)
-        counts = dict(zip(total_summary['Hạng mục'], total_summary['Số ngày']))
-        m1.metric("🚢 Đi Biển", f"{counts.get('Đi Biển', 0)} d")
-        m2.metric("🏠 Nghỉ CA", f"{counts.get('CA', 0)} d")
-        m3.metric("🛠️ Làm WS", f"{counts.get('WS', 0)} d")
-        m4.metric("🏖️ Nghỉ NP", f"{counts.get('NP', 0)} d")
-        m5.metric("🏥 Nghỉ ỐM", f"{counts.get('ỐM', 0)} d")
+        m1.metric("🚢 Đi Biển", f"{total_sum.get('Đi Biển', 0)} day")
+        m2.metric("🏠 Nghỉ CA", f"{total_sum.get('CA', 0)} day")
+        m3.metric("🛠️ Làm WS", f"{total_sum.get('WS', 0)} day")
+        m4.metric("🏖️ Nghỉ NP", f"{total_sum.get('NP', 0)} day")
+        m5.metric("🏥 Nghỉ ỐM", f"{total_sum.get('ỐM', 0)} day")
         
-        st.table(total_summary)
+        # Đã lược bỏ st.table(total_summary) theo yêu cầu của bạn
     else:
-        st.info(f"Không có dữ liệu công tác của {sel_name} trong năm {curr_year}.")
+        st.info(f"Không có dữ liệu cho nhân sự {sel_name} trong năm {curr_year}.")

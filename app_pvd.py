@@ -33,15 +33,8 @@ with c_logo:
 
 st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
 
-# --- 3. KẾT NỐI & HÀM BỔ TRỢ ---
+# --- 3. KẾT NỐI & SMART SAVE ---
 conn = st.connection("gsheets", type=GSheetsConnection)
-
-def load_config():
-    try:
-        df_conf = conn.read(worksheet="CONFIG", ttl=600)
-        return df_conf.iloc[:, 0].dropna().tolist()
-    except:
-        return ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNLOD"]
 
 def save_to_cloud_smart(worksheet_name, df):
     df_clean = df.fillna("").replace(["nan", "NaN", "None"], "")
@@ -52,15 +45,32 @@ def save_to_cloud_smart(worksheet_name, df):
         st.error(f"Lỗi Cloud: {e}")
         return False
 
-# --- 4. KHỞI TẠO ---
+# --- 4. QUẢN LÝ GIÀN TRÊN SIDEBAR (SLIDE) ---
 if "GIANS" not in st.session_state:
-    st.session_state.GIANS = load_config()
+    st.session_state.GIANS = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNLOD"]
 
+with st.sidebar:
+    st.header("⚙️ QUẢN LÝ GIÀN")
+    new_gian = st.text_input("Tên giàn mới:")
+    if st.button("➕ Thêm Giàn", use_container_width=True):
+        if new_gian and new_gian.strip().upper() not in st.session_state.GIANS:
+            st.session_state.GIANS.append(new_gian.strip().upper())
+            st.rerun()
+    
+    st.divider()
+    del_gian = st.selectbox("Xóa giàn:", ["-- Chọn --"] + st.session_state.GIANS)
+    if del_gian != "-- Chọn --":
+        if st.button(f"🗑️ Xóa {del_gian}", use_container_width=True):
+            st.session_state.GIANS.remove(del_gian)
+            st.rerun()
+    
+    st.info("Danh sách giàn hiện tại: " + ", ".join(st.session_state.GIANS))
+
+# --- 5. CHỌN THÁNG LÀM VIỆC ---
 COMPANIES = ["PVDWS", "OWS", "National", "Baker Hughes", "Schlumberger", "Halliburton"]
 TITLES = ["Casing crew", "CRTI LD", "CRTI SP", "SOLID", "MUDCL", "UNDERRM", "PPLS", "HAMER"]
 NAMES_66 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong", "Nguyen Huu Phuc"]
 
-# --- 5. CHỌN THÁNG ---
 _, c_mid_date, _ = st.columns([3.5, 2, 3.5])
 with c_mid_date:
     working_date = st.date_input("📅 CHỌN THÁNG LÀM VIỆC:", value=date.today())
@@ -87,12 +97,12 @@ DATE_COLS = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(
 for col in DATE_COLS:
     if col not in st.session_state.db.columns: st.session_state.db[col] = ""
 
-# --- 6. LOGIC TÍNH CA ---
+# --- 6. HÀM TÍNH TOÁN ---
 def recalculate_ca(df):
     hols = [date(2026,1,1), date(2026,4,30), date(2026,5,1), date(2026,9,2),
             date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19)]
     df_calc = df.copy()
-    df_calc['CA Tháng Trước'] = pd.to_numeric(df_calc['CA Tháng Trước'], errors='coerce').fillna(0.0)
+    df_calc['CA Tháng Trước'] = pd.to_numeric(df_calc.get('CA Tháng Trước', 0.0), errors='coerce').fillna(0.0)
     
     for idx, row in df_calc.iterrows():
         accrued = 0.0
@@ -111,13 +121,13 @@ def recalculate_ca(df):
         df_calc.at[idx, 'Quỹ CA Tổng'] = row['CA Tháng Trước'] + accrued
     return df_calc
 
-# --- 7. GIAO DIỆN TABS ---
+# --- 7. TABS GIAO DIỆN ---
 t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ"])
 
 with t1:
     bc1, bc2 = st.columns([1.5, 1.5])
     with bc1:
-        if st.button("📤 LƯU CLOUD", type="primary", use_container_width=True):
+        if st.button("📤 LƯU CLOUD (DÙNG KHI XONG)", type="primary", use_container_width=True):
             st.session_state.db = recalculate_ca(st.session_state.db)
             if save_to_cloud_smart(sheet_name, st.session_state.db):
                 st.success("Đã lưu thành công!")
@@ -128,29 +138,13 @@ with t1:
         st.session_state.db.to_excel(buf, index=False)
         st.download_button("📥 XUẤT EXCEL", buf.getvalue(), f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
-    with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH & QUẢN LÝ GIÀN"):
-        st.markdown("##### ⚓ Quản lý giàn")
-        c_add1, c_add2, c_del = st.columns([2, 1, 1])
-        new_rig = c_add1.text_input("Tên giàn mới:")
-        if c_add2.button("➕ Thêm Giàn", use_container_width=True):
-            if new_rig and new_rig.strip().upper() not in st.session_state.GIANS:
-                st.session_state.GIANS.append(new_rig.strip().upper())
-                save_to_cloud_smart("CONFIG", pd.DataFrame({"Giàn": st.session_state.GIANS}))
-                st.rerun()
-        
-        del_rig = c_del.selectbox("Xóa giàn:", ["-- Chọn --"] + st.session_state.GIANS)
-        if del_rig != "-- Chọn --" and st.button(f"🗑️ Xóa {del_rig}"):
-            st.session_state.GIANS.remove(del_rig)
-            save_to_cloud_smart("CONFIG", pd.DataFrame({"Giàn": st.session_state.GIANS}))
-            st.rerun()
-
-        st.divider()
+    with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH (GHI ĐÈ)"):
         c1, c2 = st.columns([2, 1])
         f_staff = c1.multiselect("Nhân sự:", NAMES_66)
         f_date = c2.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, num_days)))
         r2_1, r2_2, r2_3, r2_4 = st.columns(4)
         f_status = r2_1.selectbox("Trạng thái:", ["Xóa trắng", "Đi Biển", "CA", "WS", "NP", "Ốm"])
-        f_val = r2_2.selectbox("Chọn giàn:", st.session_state.GIANS) if f_status == "Đi Biển" else f_status
+        f_val = r2_2.selectbox("Giàn:", st.session_state.GIANS) if f_status == "Đi Biển" else f_status
         f_co = r2_3.selectbox("Cty:", ["Không đổi"] + COMPANIES)
         f_ti = r2_4.selectbox("Chức danh:", ["Không đổi"] + TITLES)
         
@@ -168,14 +162,20 @@ with t1:
                 st.session_state.db = recalculate_ca(st.session_state.db)
                 st.rerun()
 
-    # SẮP XẾP CỘT: CA Tháng Trước và Quỹ CA Tổng nằm cạnh nhau
-    ordered_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'CA Tháng Trước', 'Quỹ CA Tổng'] + DATE_COLS
+    # --- SẮP XẾP CỘT & SỬA LỖI KEYERROR ---
+    basic_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'CA Tháng Trước', 'Quỹ CA Tổng']
+    for col in basic_cols:
+        if col not in st.session_state.db.columns:
+            st.session_state.db[col] = 0.0 if "CA" in col else ""
+    
+    ordered_cols = basic_cols + DATE_COLS
     display_df = st.session_state.db[ordered_cols].fillna("").replace(["nan", "NaN"], "")
     
     ed_df = st.data_editor(display_df, use_container_width=True, height=600, hide_index=True,
                            column_config={
                                "STT": st.column_config.NumberColumn(disabled=True),
                                "Họ và Tên": st.column_config.TextColumn(disabled=True),
+                               "CA Tháng Trước": st.column_config.NumberColumn("Tồn cũ", format="%.1f"),
                                "Quỹ CA Tổng": st.column_config.NumberColumn("Tổng ca", format="%.1f", disabled=True),
                            })
     if not ed_df.equals(display_df):
@@ -184,11 +184,12 @@ with t1:
         st.rerun()
 
 with t2:
-    st.subheader(f"📊 Biểu đồ hoạt động năm {curr_year}")
-    sel_name = st.selectbox("🔍 Chọn nhân sự:", NAMES_66)
+    st.subheader(f"📊 Phân tích hoạt động của nhân sự năm {curr_year}")
+    sel_name = st.selectbox("🔍 Chọn nhân sự xem biểu đồ:", NAMES_66)
     
     recs = []
-    with st.spinner("Đang quét dữ liệu 12 tháng..."):
+    # Dùng spinner để người dùng biết app đang xử lý dữ liệu năm
+    with st.spinner("Đang tổng hợp dữ liệu..."):
         for m in range(1, 13):
             m_sheet = f"{m:02d}_{curr_year}"
             try:

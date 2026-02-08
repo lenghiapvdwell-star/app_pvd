@@ -7,39 +7,37 @@ import io
 import os
 import time
 
-# --- 1. DANH SÁCH 65 NHÂN VIÊN ---
-NAMES_BASE = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong"]
-
-# --- 2. CẤU HÌNH ---
-st.set_page_config(page_title="PVD WELL MANAGEMENT", layout="wide")
+# --- 1. CẤU HÌNH ---
+st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 
 st.markdown("""
     <style>
-    .block-container {padding-top: 1rem; padding-bottom: 0rem;}
+    .block-container {padding-top: 0.5rem; padding-bottom: 0rem;}
     .main-title {
-        color: #00f2ff !important; font-size: 35px !important; font-weight: bold !important;
-        text-align: center !important; text-shadow: 2px 2px 4px #000 !important;
+        color: #00f2ff !important; font-size: 45px !important; font-weight: bold !important;
+        text-align: center !important; text-shadow: 3px 3px 6px #000 !important;
+        font-family: 'Arial Black', sans-serif !important;
     }
-    .stButton>button {border-radius: 5px; height: 3em;}
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. HEADER & LOGO ---
+# --- 2. HEADER & LOGO ---
 c_logo, _ = st.columns([1, 4])
 with c_logo:
+    # Ưu tiên tìm file logo_pvd.png, nếu không có hiện chữ đỏ
     if os.path.exists("logo_pvd.png"):
-        st.image("logo_pvd.png", width=160)
+        st.image("logo_pvd.png", width=180)
     else:
         st.markdown("<h2 style='color:red;'>🔴 PVD WELL</h2>", unsafe_allow_html=True)
 
 st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
 
-# --- 4. KẾT NỐI & DỮ LIỆU GIÀN ---
+# --- 3. KẾT NỐI & DỮ LIỆU ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def load_gians():
     try:
-        df_config = conn.read(worksheet="CONFIG", ttl=1)
+        df_config = conn.read(worksheet="CONFIG", ttl=10)
         return df_config.iloc[:, 0].dropna().astype(str).tolist()
     except:
         return ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNLOD"]
@@ -47,7 +45,9 @@ def load_gians():
 if "gians_list" not in st.session_state:
     st.session_state.gians_list = load_gians()
 
-# --- 5. CHỌN THÁNG ---
+NAMES_BASE = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong"]
+
+# --- 4. CHỌN THÁNG ---
 _, c_mid_date, _ = st.columns([3.5, 2, 3.5])
 with c_mid_date:
     working_date = st.date_input("📅 CHỌN THÁNG LÀM VIỆC:", value=date.today())
@@ -56,73 +56,73 @@ sheet_name = working_date.strftime("%m_%Y")
 curr_month, curr_year = working_date.month, working_date.year
 month_abbr = working_date.strftime("%b")
 
-# --- 6. HÀM XỬ LÝ LOGIC (AUTOFILL & TÍNH TOÁN) ---
-def apply_pvd_logic(df):
-    hols = [date(2026,1,1), date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19), date(2026,2,20), date(2026,2,21), date(2026,4,25), date(2026,4,30), date(2026,5,1), date(2026,9,2)]
-    num_days = calendar.monthrange(curr_year, curr_month)[1]
-    date_cols = [f"{d:02d}/{month_abbr}" for d in range(1, num_days+1)]
-    
-    df_new = df.copy()
-    
-    for idx, row in df_new.iterrows():
-        if not str(row.get('Họ và Tên', '')).strip(): continue
-        
-        # A. AUTOFILL
-        last_val = ""
-        for col in date_cols:
-            if col not in df_new.columns: df_new[col] = ""
-            curr_val = str(df_new.at[idx, col]).strip()
-            if curr_val == "" or curr_val.upper() in ["NAN", "NONE", "0"]:
-                df_new.at[idx, col] = last_val
-            else:
-                last_val = curr_val
+if 'db' not in st.session_state or st.session_state.get('active_sheet') != sheet_name:
+    try:
+        df_load = conn.read(worksheet=sheet_name, ttl=0)
+        st.session_state.db = df_load
+    except:
+        st.session_state.db = pd.DataFrame({'STT': range(1, len(NAMES_BASE)+1), 'Họ và Tên': NAMES_BASE})
+        for i in range(5): # Thêm 5 dòng trống
+            st.session_state.db.loc[len(st.session_state.db)] = [len(st.session_state.db)+1, ""]
+    st.session_state.active_sheet = sheet_name
 
-        # B. TÍNH TOÁN
-        acc_month = 0.0
-        for col in date_cols:
-            v = str(df_new.at[idx, col]).strip().upper()
+# Tạo cột ngày
+num_days = calendar.monthrange(curr_year, curr_month)[1]
+DATE_COLS = [f"{d:02d}/{month_abbr}" for d in range(1, num_days+1)]
+for col in DATE_COLS:
+    if col not in st.session_state.db.columns: st.session_state.db[col] = ""
+
+# --- 5. LOGIC TÍNH CA ---
+def calculate_pvd(df):
+    hols = [date(2026,1,1), date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19), date(2026,2,20), date(2026,2,21), date(2026,4,25), date(2026,4,30), date(2026,5,1), date(2026,9,2)]
+    def row_calc(row):
+        acc = 0.0
+        if not str(row.get('Họ và Tên', '')).strip(): return 0.0
+        for col in DATE_COLS:
+            v = str(row.get(col, "")).strip().upper()
             if not v or v in ["WS", "NP", "ỐM"]: continue
             try:
                 dt = date(curr_year, curr_month, int(col[:2]))
                 is_offshore = any(g.upper() in v for g in st.session_state.gians_list)
                 if is_offshore:
-                    if dt in hols: acc_month += 2.0
-                    elif dt.weekday() >= 5: acc_month += 1.0
-                    else: acc_month += 0.5
+                    if dt in hols: acc += 2.0
+                    elif dt.weekday() >= 5: acc += 1.0
+                    else: acc += 0.5
                 elif v == "CA":
-                    if dt.weekday() < 5 and dt not in hols: acc_month -= 1.0
+                    if dt.weekday() < 5 and dt not in hols: acc -= 1.0
             except: continue
-        
-        old_val = pd.to_numeric(row.get('Quỹ CA Tháng cũ', 0), errors='coerce') or 0.0
-        df_new.at[idx, 'Quỹ CA Tháng này'] = acc_month
-        df_new.at[idx, 'Tổng Quỹ CA'] = old_val + acc_month
-        
-    return df_new
-
-# --- 7. KHỞI TẠO DỮ LIỆU ---
-if 'db' not in st.session_state or st.session_state.get('active_sheet') != sheet_name:
-    try:
-        st.session_state.db = conn.read(worksheet=sheet_name, ttl=0)
-    except:
-        # Khởi tạo bảng đủ 65 người + 5 dòng trống
-        st.session_state.db = pd.DataFrame({
-            'STT': range(1, len(NAMES_BASE) + 6),
-            'Họ và Tên': NAMES_BASE + [""]*5,
-            'Quỹ CA Tháng cũ': [0.0]*(len(NAMES_BASE) + 5)
-        })
-    st.session_state.active_sheet = sheet_name
-
-# --- 8. TABS CÔNG CỤ ---
-with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH & QUẢN LÝ GIÀN KHOAN"):
-    t_bulk, t_rig = st.tabs(["⚡ Đổ dữ liệu nhanh", "⚓ Quản lý danh sách giàn"])
+        return acc
     
-    with t_bulk:
-        ca, cb, cc = st.columns(3)
-        f_staff = ca.multiselect("Nhân sự:", st.session_state.db['Họ và Tên'].dropna().unique().tolist())
-        f_date = cb.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, 2)))
-        f_status = cc.selectbox("Trạng thái:", ["Đi Biển", "CA", "WS", "NP", "Ốm"])
-        f_val = cc.selectbox("Chọn giàn:", st.session_state.gians_list) if f_status == "Đi Biển" else f_status
-        if st.button("🚀 ÁP DỤNG"):
+    df_calc = df.copy()
+    df_calc['Quỹ CA Tổng'] = df_calc.apply(row_calc, axis=1)
+    return df_calc
+
+# --- 6. GIAO DIỆN ĐIỀU KHIỂN ---
+c1, c2, c3 = st.columns([2, 2, 4])
+if c1.button("💾 LƯU & TÍNH TOÁN CA", type="primary", use_container_width=True):
+    with st.status("🚀 Đang xử lý dữ liệu...", expanded=False):
+        st.session_state.db = calculate_pvd(st.session_state.db)
+        conn.update(worksheet=sheet_name, data=st.session_state.db)
+        st.toast("Đã tính toán và đồng bộ Cloud!")
+        time.sleep(1)
+        st.rerun()
+
+buf = io.BytesIO()
+st.session_state.db.to_excel(buf, index=False)
+c2.download_button("📥 XUẤT EXCEL", buf, f"PVD_{sheet_name}.xlsx", use_container_width=True)
+
+# --- CÔNG CỤ QUẢN LÝ (GỒM THÊM/XÓA GIÀN) ---
+with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH & QUẢN LÝ GIÀN KHOAN"):
+    tab_bulk, tab_rig = st.tabs(["⚡ Đổ dữ liệu nhanh", "⚓ Quản lý danh sách giàn"])
+    
+    with tab_bulk:
+        col_a, col_b, col_c = st.columns(3)
+        f_staff = col_a.multiselect("Nhân sự:", st.session_state.db['Họ và Tên'].tolist())
+        f_date = col_b.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, 2)))
+        f_status = col_c.selectbox("Trạng thái:", ["Đi Biển", "CA", "WS", "NP", "Ốm"])
+        f_val = col_c.selectbox("Chọn giàn:", st.session_state.gians_list) if f_status == "Đi Biển" else f_status
+        
+        if st.button("🚀 ÁP DỤNG HÀNG LOẠT"):
             if f_staff and len(f_date) == 2:
                 for name in f_staff:
                     idx = st.session_state.db.index[st.session_state.db['Họ và Tên'] == name][0]
@@ -132,51 +132,30 @@ with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH & QUẢN LÝ GIÀN KHOAN
                         if col_n in st.session_state.db.columns: st.session_state.db.at[idx, col_n] = f_val
                 st.rerun()
 
-    with t_rig:
+    with tab_rig:
         ra, rb = st.columns([3, 1])
         new_r = ra.text_input("Tên giàn mới:")
-        if rb.button("➕ Thêm"):
+        if rb.button("➕ Thêm", use_container_width=True):
             if new_r:
                 st.session_state.gians_list.append(new_r.upper())
                 conn.update(worksheet="CONFIG", data=pd.DataFrame({"Giàn": st.session_state.gians_list}))
                 st.rerun()
-        st.markdown("---")
-        da, db = st.columns([3, 1])
-        r_del = da.selectbox("Chọn giàn cần xóa:", ["-- Chọn --"] + st.session_state.gians_list)
-        if db.button("🗑️ Xóa Giàn"):
-            if r_del != "-- Chọn --":
-                st.session_state.gians_list.remove(r_del)
+        
+        del_r = st.selectbox("Xóa giàn khoan:", ["-- Chọn giàn cần xóa --"] + st.session_state.gians_list)
+        if st.button("🗑️ Xác nhận xóa"):
+            if del_r != "-- Chọn giàn cần xóa --":
+                st.session_state.gians_list.remove(del_r)
                 conn.update(worksheet="CONFIG", data=pd.DataFrame({"Giàn": st.session_state.gians_list}))
                 st.rerun()
 
-# --- 9. ĐIỀU KHIỂN CHÍNH ---
-c1, c2, c3 = st.columns([2.5, 2, 4])
-if c1.button("💾 LƯU & ĐỒNG BỘ CLOUD", type="primary", use_container_width=True):
-    with st.status("🔄 Đang xử lý...", expanded=False):
-        final_df = apply_pvd_logic(st.session_state.db)
-        conn.update(worksheet=sheet_name, data=final_df)
-        st.session_state.db = final_df
-        st.success("Đã đồng bộ thành công!")
-        st.rerun()
-
-buf = io.BytesIO()
-st.session_state.db.to_excel(buf, index=False)
-c2.download_button("📥 XUẤT EXCEL", buf, f"PVD_{sheet_name}.xlsx", use_container_width=True)
-
-# --- 10. BẢNG NHẬP LIỆU ---
+# --- 7. BẢNG NHẬP LIỆU ---
 st.markdown("---")
-# Chạy logic Autofill để bảng luôn hiển thị kết quả mới nhất
-display_df = apply_pvd_logic(st.session_state.db)
-
+st.info("💡 **Gợi ý:** Bạn có thể copy/paste từ Excel vào bảng này. Sau đó nhấn **LƯU & TÍNH TOÁN CA** để cập nhật Quỹ CA.")
 edited_df = st.data_editor(
-    display_df,
-    use_container_width=True,
-    height=650,
+    st.session_state.db, 
+    use_container_width=True, 
+    height=600, 
     hide_index=True,
-    key="pvd_editor_v65"
+    key="pvd_editor_v3"
 )
-
-# Cập nhật session_state và rerun để hiện thông tin ngay lập tức
-if not edited_df.equals(display_df):
-    st.session_state.db = edited_df
-    st.rerun()
+st.session_state.db = edited_df

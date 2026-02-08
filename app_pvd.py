@@ -73,40 +73,53 @@ NAMES_66 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung
 
 _, c_mid_date, _ = st.columns([3.5, 2, 3.5])
 with c_mid_date:
-    # Thêm callback để xóa session khi đổi ngày
     working_date = st.date_input("📅 CHỌN THÁNG LÀM VIỆC:", value=date.today())
 
 sheet_name = working_date.strftime("%m_%Y")
 curr_month, curr_year = working_date.month, working_date.year
 month_abbr = working_date.strftime("%b")
 
-# CẢI TIẾN: Kiểm tra nếu đổi tháng thì phải reset dữ liệu trong session
+# Tính toán tên sheet tháng trước
+first_day_curr = working_date.replace(day=1)
+last_month_date = first_day_curr - timedelta(days=1)
+prev_sheet_name = last_month_date.strftime("%m_%Y")
+
+# --- NÂNG CẤP: LOGIC TẢI DỮ LIỆU VÀ CHUYỂN TỒN ---
 if 'active_sheet' in st.session_state and st.session_state.active_sheet != sheet_name:
-    if 'db' in st.session_state:
-        del st.session_state.db
+    if 'db' in st.session_state: del st.session_state.db
 
 if 'db' not in st.session_state:
     try:
-        # Tải dữ liệu từ sheet tương ứng
+        # 1. Đọc sheet hiện tại (ttl=0 để luôn lấy mới)
         df_load = conn.read(worksheet=sheet_name, ttl=0)
-        if df_load.empty: raise ValueError("Sheet empty")
+        if df_load.empty: raise ValueError
         st.session_state.db = df_load.fillna("").replace(["nan", "NaN", "None"], "")
     except:
-        # Nếu sheet chưa tồn tại, tạo khung mới
+        # 2. Nếu sheet tháng mới chưa có, lấy tồn từ tháng cũ
+        try:
+            df_prev = conn.read(worksheet=prev_sheet_name, ttl=0)
+            prev_balances = dict(zip(df_prev['Họ và Tên'], df_prev['Quỹ CA Tổng']))
+        except:
+            prev_balances = {}
+
         count = len(NAMES_66)
-        st.session_state.db = pd.DataFrame({
-            'STT': range(1, count + 1), 'Họ và Tên': NAMES_66, 
-            'Công ty': 'PVDWS', 'Chức danh': 'Casing crew', 
-            'Job Detail': '', 'CA Tháng Trước': 0.0, 'Quỹ CA Tổng': 0.0
-        })
+        new_data = {
+            'STT': range(1, count + 1), 
+            'Họ và Tên': NAMES_66, 
+            'Công ty': 'PVDWS', 
+            'Chức danh': 'Casing crew', 
+            'Job Detail': '', 
+            'CA Tháng Trước': [float(prev_balances.get(name, 0.0)) for name in NAMES_66], 
+            'Quỹ CA Tổng': 0.0
+        }
+        st.session_state.db = pd.DataFrame(new_data)
     st.session_state.active_sheet = sheet_name
 
-# Đảm bảo các cột ngày của tháng hiện tại luôn có mặt
+# Đảm bảo các cột ngày
 num_days = calendar.monthrange(curr_year, curr_month)[1]
 DATE_COLS = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(curr_year,curr_month,d).weekday()]})" for d in range(1, num_days+1)]
 for col in DATE_COLS:
-    if col not in st.session_state.db.columns: 
-        st.session_state.db[col] = ""
+    if col not in st.session_state.db.columns: st.session_state.db[col] = ""
 
 # --- 6. HÀM TÍNH TOÁN ---
 def recalculate_ca(df):
@@ -136,7 +149,7 @@ def recalculate_ca(df):
 t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ"])
 
 with t1:
-    bc1, bc2 = st.columns([1.5, 1.5])
+    bc1, bc2, bc3 = st.columns([1.5, 1.5, 1.5])
     with bc1:
         if st.button("📤 LƯU CLOUD (DÙNG KHI XONG)", type="primary", use_container_width=True):
             st.session_state.db = recalculate_ca(st.session_state.db)
@@ -145,6 +158,11 @@ with t1:
                 time.sleep(1)
                 st.rerun()
     with bc2:
+        # NÂNG CẤP: Nút làm mới dữ liệu thủ công
+        if st.button("🔄 LÀM MỚI TỪ GOOGLE SHEET", use_container_width=True):
+            if 'db' in st.session_state: del st.session_state.db
+            st.rerun()
+    with bc3:
         buf = io.BytesIO()
         st.session_state.db.to_excel(buf, index=False)
         st.download_button("📥 XUẤT EXCEL", buf.getvalue(), f"PVD_{sheet_name}.xlsx", use_container_width=True)
@@ -166,7 +184,6 @@ with t1:
                     for i in range((f_date[1] - f_date[0]).days + 1):
                         d = f_date[0] + timedelta(days=i)
                         if d.month == curr_month:
-                            # Tìm đúng cột ngày dựa trên số ngày
                             day_prefix = f"{d.day:02d}/"
                             target_col = [c for c in DATE_COLS if c.startswith(day_prefix)]
                             if target_col:
@@ -178,15 +195,11 @@ with t1:
 
     # --- ĐẢM BẢO THỨ TỰ CỘT ---
     basic_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'CA Tháng Trước', 'Quỹ CA Tổng']
-    # Bù cột thiếu nếu sheet trên Cloud bị mất cột
     for col in basic_cols:
         if col not in st.session_state.db.columns:
             st.session_state.db[col] = 0.0 if "CA" in col else ""
     
-    # Chỉ lấy các cột ngày thuộc tháng đang chọn
     ordered_cols = basic_cols + DATE_COLS
-    
-    # Lọc DataFrame theo đúng các cột của tháng hiện tại
     display_df = st.session_state.db[ordered_cols].fillna("").replace(["nan", "NaN"], "")
     
     ed_df = st.data_editor(display_df, use_container_width=True, height=600, hide_index=True,
@@ -210,11 +223,9 @@ with t2:
         for m in range(1, 13):
             m_sheet = f"{m:02d}_{curr_year}"
             try:
-                # Đọc dữ liệu từng tháng để vẽ biểu đồ
                 df_m = conn.read(worksheet=m_sheet, ttl=600)
                 if df_m is not None and sel_name in df_m['Họ và Tên'].values:
                     row_p = df_m[df_m['Họ và Tên'] == sel_name].iloc[0]
-                    # Lấy nhãn tháng viết tắt (Jan, Feb...) để so khớp cột
                     m_label = date(curr_year, m, 1).strftime("%b")
                     for col in df_m.columns:
                         if "/" in col and m_label in col:

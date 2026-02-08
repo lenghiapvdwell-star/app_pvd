@@ -89,6 +89,11 @@ def auto_engine(df):
     df_calc = df.copy()
     data_changed = False
     
+    # Đảm bảo date_cols tồn tại trong df_calc
+    for col in date_cols:
+        if col not in df_calc.columns:
+            df_calc[col] = ""
+    
     for idx, row in df_calc.iterrows():
         accrued = 0.0
         last_val = ""
@@ -152,7 +157,6 @@ DATE_COLS = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(
 t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ"])
 
 with t1:
-    # Nâng cấp: Tách Fragment để quản lý độc lập từng vùng
     @st.fragment
     def render_controls():
         bc1, bc2, bc3 = st.columns([1, 1, 1])
@@ -189,8 +193,12 @@ with t1:
                             for i in range((f_date[1] - f_date[0]).days + 1):
                                 d = f_date[0] + timedelta(days=i)
                                 if d.month == curr_month:
-                                    col_n = [c for c in DATE_COLS if c.startswith(f"{d.day:02d}/")][0]
-                                    st.session_state.db.at[idx, col_n] = "" if f_status == "Xóa trắng" else f_val
+                                    col_n_list = [c for c in DATE_COLS if c.startswith(f"{d.day:02d}/")]
+                                    if col_n_list:
+                                        col_n = col_n_list[0]
+                                        if col_n not in st.session_state.db.columns:
+                                            st.session_state.db[col_n] = ""
+                                        st.session_state.db.at[idx, col_n] = "" if f_status == "Xóa trắng" else f_val
                     df_recalc, _ = auto_engine(st.session_state.db)
                     st.session_state.db = df_recalc
                     save_to_cloud_silent(sheet_name, df_recalc)
@@ -198,12 +206,15 @@ with t1:
 
     @st.fragment
     def render_main_table():
-        # PHẦN QUAN TRỌNG: Chống giật cục bằng cách quản lý thay đổi thủ công
-        ordered_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'CA Tháng Trước', 'Quỹ CA Tổng'] + DATE_COLS
+        # --- SỬA LỖI TẠI ĐÂY ---
+        all_potential_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'CA Tháng Trước', 'Quỹ CA Tổng'] + DATE_COLS
+        # Chỉ lấy những cột thực sự có trong DataFrame để tránh KeyError
+        existing_cols = [c for c in all_potential_cols if c in st.session_state.db.columns]
         
-        # Chỉ hiển thị, không gán trực tiếp logic lưu vào on_change của data_editor
+        display_df = st.session_state.db[existing_cols].fillna("")
+
         ed_df = st.data_editor(
-            st.session_state.db[ordered_cols].fillna(""),
+            display_df,
             use_container_width=True,
             height=600,
             hide_index=True,
@@ -214,7 +225,6 @@ with t1:
             }
         )
 
-        # Tạo nút xác nhận ngay dưới bảng để "Chốt" dữ liệu đã nhập, tránh việc load liên tục
         if st.button("💾 XÁC NHẬN CẬP NHẬT BẢNG & TÍNH QUỸ CA", type="secondary", use_container_width=True):
             st.session_state.db.update(ed_df)
             df_recalc, _ = auto_engine(st.session_state.db)
@@ -223,7 +233,6 @@ with t1:
             st.toast("✅ Đã cập nhật và tính toán lại Quỹ CA!", icon="🚀")
             st.rerun()
 
-    # Thực thi các vùng
     render_controls()
     render_quick_update()
     render_main_table()

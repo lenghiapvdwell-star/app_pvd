@@ -123,7 +123,7 @@ if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sh
 if 'db' not in st.session_state:
     prev_sheet = (working_date.replace(day=1) - timedelta(days=1)).strftime("%m_%Y")
     try:
-        df_p = conn.read(worksheet=prev_sheet, ttl=0)
+        df_p = conn.read(worksheet=prev_sheet, ttl="5m")
         b_map = dict(zip(df_p['Họ và Tên'], df_p['Quỹ CA Tổng']))
     except: b_map = {}
 
@@ -216,53 +216,57 @@ with t1:
 with t2:
     st.subheader(f"📊 Phân tích nhân sự năm {curr_year}")
     sel_name = st.selectbox("🔍 Chọn nhân sự xem biểu đồ:", NAMES_66)
-    recs = []
+    
+    # FIX LỖI QUOTA: Dùng caching để hạn chế lượt đọc
+    @st.cache_data(ttl="10m")
+    def get_yearly_data(year):
+        # Không dùng worksheet=None để tránh 429, ta quét từng tháng có trọng tâm
+        results = []
+        for m in range(1, 13):
+            m_s = f"{m:02d}_{year}"
+            try:
+                # Đọc riêng lẻ từng sheet và cache lại 10 phút
+                df_m = conn.read(worksheet=m_s, ttl="10m").fillna("")
+                if not df_m.empty:
+                    # Lọc ngay dữ liệu của nhân sự đang chọn để giảm tải bộ nhớ
+                    df_person = df_m[df_m['Họ và Tên'] == sel_name]
+                    if not df_person.empty:
+                        row_p = df_person.iloc[0]
+                        for col in df_m.columns:
+                            if "/" in col:
+                                v = str(row_p[col]).strip().upper()
+                                if v and v not in ["", "NAN", "NONE", "0", "0.0"]:
+                                    cat = None
+                                    if any(g.upper() in v for g in st.session_state.GIANS): cat = "Đi Biển"
+                                    elif v == "CA": cat = "CA"
+                                    elif v == "WS": cat = "WS"
+                                    elif v == "NP": cat = "NP"
+                                    elif v == "ỐM": cat = "ỐM"
+                                    if cat: results.append({"Tháng": f"T{m}", "Loại": cat, "Ngày": 1})
+            except: continue
+        return results
 
-    # NÂNG CẤP BIỂU ĐỒ: Quét thông minh không dựa vào tên sheet cứng nhắc
     try:
-        # Lấy danh sách tất cả các sheets đang có trên file
-        all_sheets = conn.read(worksheet=None) # Trả về dict các dataframes
-        for s_name, df_m in all_sheets.items():
-            # Chỉ xử lý các sheet có chứa năm hiện tại (ví dụ: "02_2026")
-            if str(curr_year) in s_name:
-                # Tìm tháng từ tên sheet (ví dụ "02_2026" -> lấy "02")
-                try: m_num = int(s_name.split("_")[0])
-                except: m_num = 1
-                
-                df_m = df_m.fillna("")
-                if sel_name in df_m['Họ và Tên'].values:
-                    row_p = df_m[df_m['Họ và Tên'] == sel_name].iloc[0]
-                    for col in df_m.columns:
-                        if "/" in col: # Cột ngày tháng
-                            v = str(row_p[col]).strip().upper()
-                            if v and v not in ["", "NAN", "NONE", "0", "0.0"]:
-                                cat = None
-                                if any(g.upper() in v for g in st.session_state.GIANS): cat = "Đi Biển"
-                                elif v == "CA": cat = "CA"
-                                elif v == "WS": cat = "WS"
-                                elif v == "NP": cat = "NP"
-                                elif v == "ỐM": cat = "ỐM"
-                                if cat: recs.append({"Tháng": f"T{m_num}", "Loại": cat, "Ngày": 1})
+        recs = get_yearly_data(curr_year)
+        if recs:
+            pdf = pd.DataFrame(recs)
+            summary = pdf.groupby(['Tháng', 'Loại']).size().reset_index(name='Ngày')
+            month_order = [f"T{i}" for i in range(1, 13)]
+            fig = px.bar(summary, x="Tháng", y="Ngày", color="Loại", text="Ngày", barmode="stack",
+                         category_orders={"Tháng": month_order},
+                         color_discrete_map={"Đi Biển":"#00f2ff","CA":"#ff4b4b","WS":"#ffd700","NP":"#00ff00","ỐM":"#ff00ff"},
+                         template="plotly_dark")
+            fig.update_layout(xaxis_title="Tháng", yaxis_title="Tổng số ngày", height=500, legend=dict(orientation="h", y=1.1))
+            st.plotly_chart(fig, use_container_width=True)
+            st.markdown("---")
+            total_sum = pdf.groupby('Loại')['Ngày'].sum().to_dict()
+            m1, m2, m3, m4, m5 = st.columns(5)
+            m1.metric("🚢 Đi Biển", f"{total_sum.get('Đi Biển', 0)} ngày")
+            m2.metric("🏠 Nghỉ CA", f"{total_sum.get('CA', 0)} ngày")
+            m3.metric("🛠️ Làm WS", f"{total_sum.get('WS', 0)} ngày")
+            m4.metric("🏖️ Nghỉ NP", f"{total_sum.get('NP', 0)} ngày")
+            m5.metric("🏥 Nghỉ ỐM", f"{total_sum.get('ỐM', 0)} ngày")
+        else:
+            st.info(f"Không tìm thấy dữ liệu cho **{sel_name}** trong năm {curr_year}.")
     except Exception as e:
-        st.error(f"Lỗi truy xuất biểu đồ: {e}")
-
-    if recs:
-        pdf = pd.DataFrame(recs)
-        summary = pdf.groupby(['Tháng', 'Loại']).size().reset_index(name='Ngày')
-        month_order = [f"T{i}" for i in range(1, 13)]
-        fig = px.bar(summary, x="Tháng", y="Ngày", color="Loại", text="Ngày", barmode="stack",
-                     category_orders={"Tháng": month_order},
-                     color_discrete_map={"Đi Biển":"#00f2ff","CA":"#ff4b4b","WS":"#ffd700","NP":"#00ff00","ỐM":"#ff00ff"},
-                     template="plotly_dark")
-        fig.update_layout(xaxis_title="Tháng", yaxis_title="Tổng số ngày", height=500, legend=dict(orientation="h", y=1.1))
-        st.plotly_chart(fig, use_container_width=True)
-        st.markdown("---")
-        total_sum = pdf.groupby('Loại')['Ngày'].sum().to_dict()
-        m1, m2, m3, m4, m5 = st.columns(5)
-        m1.metric("🚢 Đi Biển", f"{total_sum.get('Đi Biển', 0)} ngày")
-        m2.metric("🏠 Nghỉ CA", f"{total_sum.get('CA', 0)} ngày")
-        m3.metric("🛠️ Làm WS", f"{total_sum.get('WS', 0)} ngày")
-        m4.metric("🏖️ Nghỉ NP", f"{total_sum.get('NP', 0)} ngày")
-        m5.metric("🏥 Nghỉ ỐM", f"{total_sum.get('ỐM', 0)} ngày")
-    else:
-        st.info(f"Không tìm thấy dữ liệu cho **{sel_name}**. Hãy đảm bảo tên nhân sự trong các Sheet khớp 100% với danh sách chọn.")
+        st.error(f"Đang tải dữ liệu, vui lòng đợi giây lát... (Lỗi: {e})")

@@ -65,8 +65,21 @@ if "current_sheet" not in st.session_state or st.session_state.current_sheet != 
     st.session_state.current_sheet = sheet_name
     if 'db' in st.session_state: del st.session_state.db
 
-# --- 5. TẢI DỮ LIỆU ---
-NAMES_66 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong"]
+# --- 5. TẢI DỮ LIỆU & FIX LỖI ĐỘ DÀI MẢNG ---
+# Danh sách dưới đây đã được kiểm tra để đảm bảo đủ 66 nhân sự
+NAMES_66 = [
+    "Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", 
+    "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", 
+    "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", 
+    "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", 
+    "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", 
+    "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", 
+    "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", 
+    "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", 
+    "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", 
+    "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", 
+    "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong", "Nhan Vien Du Phong"
+]
 
 if 'db' not in st.session_state:
     try:
@@ -75,10 +88,16 @@ if 'db' not in st.session_state:
             st.session_state.db = df_load
         else: raise Exception
     except:
+        # Đảm bảo tất cả các list có độ dài bằng len(NAMES_66)
+        count = len(NAMES_66)
         st.session_state.db = pd.DataFrame({
-            'STT': list(range(1, 67)), 'Họ và Tên': NAMES_66, 
-            'Công ty': ['PVDWS'] * 66, 'Chức danh': ['Casing crew'] * 66, 
-            'Job Detail': [''] * 66, 'CA Tháng Trước': [0.0] * 66, 'Quỹ CA Tổng': [0.0] * 66
+            'STT': list(range(1, count + 1)), 
+            'Họ và Tên': NAMES_66, 
+            'Công ty': ['PVDWS'] * count, 
+            'Chức danh': ['Casing crew'] * count, 
+            'Job Detail': [''] * count, 
+            'CA Tháng Trước': [0.0] * count, 
+            'Quỹ CA Tổng': [0.0] * count
         })
 
 num_days = calendar.monthrange(curr_year, curr_month)[1]
@@ -102,7 +121,7 @@ def calculate_and_sync_pvd(df):
             d_int = int(col[:2])
             val = str(df_calc.at[idx, col]).strip().upper()
             
-            # Autofill 8h sáng
+            # Autofill sau 8h sáng: điền trạng thái ngày hôm trước cho ngày hôm sau nếu trống
             if val in ["", "NAN", "NONE"]:
                 if d_int < today_day or (d_int == today_day and now.hour >= 8):
                     if last_status:
@@ -117,8 +136,10 @@ def calculate_and_sync_pvd(df):
                 try:
                     dt = date(curr_year, curr_month, d_int)
                     is_we, is_ho = dt.weekday() >= 5, dt in hols
+                    # Đi biển cộng CA
                     if any(g.upper() in curr_v for g in st.session_state.GIANS):
                         accrued += 2.0 if is_ho else (1.0 if is_we else 0.5)
+                    # Nghỉ CA chỉ trừ ngày thường, không trừ Lễ/Tết/Cuối tuần
                     elif curr_v == "CA":
                         if not is_we and not is_ho: accrued -= 1.0
                 except: pass
@@ -126,7 +147,6 @@ def calculate_and_sync_pvd(df):
         ton_cu = pd.to_numeric(row['CA Tháng Trước'], errors='coerce') or 0.0
         df_calc.at[idx, 'Quỹ CA Tổng'] = ton_cu + accrued
     
-    # Chỉ Sync khi có thay đổi thực sự để tránh lỗi API
     if needs_sync:
         try:
             conn.update(worksheet=sheet_name, data=df_calc)
@@ -175,9 +195,11 @@ with t1:
                 conn.update(worksheet=sheet_name, data=st.session_state.db)
                 st.rerun()
 
-    # BẢNG DỮ LIỆU
+    # HIỂN THỊ BẢNG (Vị trí cột chuẩn: Tồn cũ sát Tổng CA)
     ordered_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'CA Tháng Trước', 'Quỹ CA Tổng'] + DATE_COLS
     config = {
+        "STT": st.column_config.NumberColumn(disabled=True),
+        "Họ và Tên": st.column_config.TextColumn(disabled=True),
         "CA Tháng Trước": st.column_config.NumberColumn("Tồn Cũ", format="%.1f"),
         "Quỹ CA Tổng": st.column_config.NumberColumn("Tổng ca", format="%.1f", disabled=True),
     }
@@ -219,5 +241,13 @@ with t2:
         summary = pdf.groupby(['Tháng', 'Loại']).sum().reset_index()
         fig = px.bar(summary, x="Tháng", y="Ngày", color="Loại", barmode="stack", text="Ngày",
                      color_discrete_map={"Đi Biển": "#00CC96", "CA": "#EF553B", "WS": "#FECB52", "NP": "#636EFA", "ỐM": "#AB63FA"})
-        fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="white")
+        
+        sea_only = summary[summary['Loại'] == "Đi Biển"].copy()
+        if not sea_only.empty:
+            sea_only['MIdx'] = sea_only['Tháng'].str[1:].astype(int)
+            sea_only = sea_only.sort_values('MIdx')
+            sea_only['Lũy kế'] = sea_only['Ngày'].cumsum()
+            fig.add_trace(go.Scatter(x=sea_only["Tháng"], y=sea_only["Lũy kế"], name="Lũy kế Biển", mode="lines+markers+text", text=sea_only["Lũy kế"], textposition="top center", line=dict(color="#00f2ff", width=3)))
+
+        fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="white", height=600)
         st.plotly_chart(fig, use_container_width=True)

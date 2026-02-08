@@ -7,7 +7,7 @@ import io
 import os
 import time
 
-# --- 1. CẤU HÌNH TRANG ---
+# --- 1. CẤU HÌNH ---
 st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 
 st.markdown("""
@@ -17,9 +17,7 @@ st.markdown("""
         color: #00f2ff !important; font-size: 45px !important; font-weight: bold !important;
         text-align: center !important; text-shadow: 3px 3px 6px #000 !important;
         font-family: 'Arial Black', sans-serif !important;
-        margin-bottom: 15px;
     }
-    .stButton>button {border-radius: 5px; height: 3em;}
     </style>
     """, unsafe_allow_html=True)
 
@@ -33,7 +31,7 @@ with c_logo:
 
 st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
 
-# --- 3. KẾT NỐI & DANH SÁCH GIÀN ---
+# --- 3. KẾT NỐI & DỮ LIỆU ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def load_gians():
@@ -57,32 +55,34 @@ sheet_name = working_date.strftime("%m_%Y")
 curr_month, curr_year = working_date.month, working_date.year
 month_abbr = working_date.strftime("%b")
 
-# --- 5. QUẢN LÝ DỮ LIỆU ---
 if 'db' not in st.session_state or st.session_state.get('active_sheet') != sheet_name:
     try:
         df_load = conn.read(worksheet=sheet_name, ttl=0)
         st.session_state.db = df_load
     except:
         st.session_state.db = pd.DataFrame({'STT': range(1, len(NAMES_BASE)+1), 'Họ và Tên': NAMES_BASE})
+        for i in range(5): st.session_state.db.loc[len(st.session_state.db)] = [len(st.session_state.db)+1, ""]
     st.session_state.active_sheet = sheet_name
-    # Tạo Key mới cho editor khi đổi tháng để reset bảng
-    st.session_state.editor_key = f"editor_{int(time.time())}"
+    st.session_state.editor_key = f"pvd_{int(time.time())}" # Reset key khi đổi tháng
 
 num_days = calendar.monthrange(curr_year, curr_month)[1]
 DATE_COLS = [f"{d:02d}/{month_abbr}" for d in range(1, num_days+1)]
 for col in DATE_COLS:
     if col not in st.session_state.db.columns: st.session_state.db[col] = ""
 
-# Đảm bảo có key cho editor
+# Đảm bảo có key cho editor để fix lỗi không hiện thông tin
 if "editor_key" not in st.session_state:
-    st.session_state.editor_key = "editor_initial"
+    st.session_state.editor_key = "pvd_v_fixed"
 
-# --- 6. HÀM XỬ LÝ (GIỮ NGUYÊN LOGIC CỦA BẠN) ---
-def run_autofill_and_calc(df):
+# --- 5. LOGIC AUTOFILL & TÍNH CA ---
+def calculate_pvd_with_autofill(df):
     hols = [date(2026,1,1), date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19), date(2026,2,20), date(2026,2,21), date(2026,4,25), date(2026,4,30), date(2026,5,1), date(2026,9,2)]
     df_new = df.copy()
+    
     for idx, row in df_new.iterrows():
         if not str(row.get('Họ và Tên', '')).strip(): continue
+        
+        # 1. Thực hiện AUTOFILL (Ngày trước cho ngày sau)
         last_val = ""
         for col in DATE_COLS:
             current_val = str(df_new.at[idx, col]).strip()
@@ -91,6 +91,7 @@ def run_autofill_and_calc(df):
             else:
                 last_val = current_val
 
+        # 2. Tính toán QUỸ CA sau khi đã autofill xong
         acc = 0.0
         for col in DATE_COLS:
             v = str(df_new.at[idx, col]).strip().upper()
@@ -108,18 +109,17 @@ def run_autofill_and_calc(df):
         df_new.at[idx, 'Quỹ CA Tổng'] = acc
     return df_new
 
-# --- 7. GIAO DIỆN ĐIỀU KHIỂN ---
-c1, c2, c3 = st.columns([2.5, 2, 4])
-
-if c1.button("☁️ LƯU & ĐỒNG BỘ CLOUD (AUTOFILL)", type="primary", use_container_width=True):
-    with st.status("🔄 Đang xử lý Autofill & Đồng bộ...", expanded=False):
-        # 1. Chạy Autofill và Tính CA
-        st.session_state.db = run_autofill_and_calc(st.session_state.db)
-        # 2. Đẩy lên Google Sheets
+# --- 6. GIAO DIỆN ĐIỀU KHIỂN ---
+c1, c2, c3 = st.columns([2, 2, 4])
+if c1.button("💾 LƯU CLOUD & AUTOFILL", type="primary", use_container_width=True):
+    with st.status("🚀 Đang Autofill & Đồng bộ...", expanded=False):
+        # Chạy hàm Autofill + Tính toán
+        st.session_state.db = calculate_pvd_with_autofill(st.session_state.db)
         conn.update(worksheet=sheet_name, data=st.session_state.db)
-        # 3. Ép reset bảng bằng cách đổi Key
-        st.session_state.editor_key = f"editor_{int(time.time())}"
-        st.success("Đã đồng bộ thành công!")
+        
+        # FIX: Reset key của bảng để hiện dữ liệu đã Autofill
+        st.session_state.editor_key = f"pvd_{int(time.time())}"
+        st.toast("Đã Autofill và đồng bộ Cloud!")
         time.sleep(0.5)
         st.rerun()
 
@@ -127,32 +127,29 @@ buf = io.BytesIO()
 st.session_state.db.to_excel(buf, index=False)
 c2.download_button("📥 XUẤT EXCEL", buf, f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
-# --- 8. CÔNG CỤ CẬP NHẬT NHANH ---
+# --- CÔNG CỤ QUẢN LÝ ---
 with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH & QUẢN LÝ GIÀN KHOAN"):
     tab_bulk, tab_rig = st.tabs(["⚡ Đổ dữ liệu nhanh", "⚓ Quản lý danh sách giàn"])
     
     with tab_bulk:
         col_a, col_b, col_c = st.columns(3)
-        f_staff = col_a.multiselect("Chọn nhân sự:", st.session_state.db['Họ và Tên'].tolist())
+        f_staff = col_a.multiselect("Nhân sự:", st.session_state.db['Họ và Tên'].tolist())
         f_date = col_b.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, 2)))
         f_status = col_c.selectbox("Trạng thái:", ["Đi Biển", "CA", "WS", "NP", "Ốm"])
         f_val = col_c.selectbox("Chọn giàn:", st.session_state.gians_list) if f_status == "Đi Biển" else f_status
         
-        if st.button("🚀 ÁP DỤNG LÊN BẢNG"):
+        if st.button("🚀 ÁP DỤNG HÀNG LOẠT"):
             if f_staff and isinstance(f_date, tuple) and len(f_date) == 2:
-                # Cập nhật trực tiếp vào session_state.db
                 for name in f_staff:
                     idx = st.session_state.db.index[st.session_state.db['Họ và Tên'] == name][0]
                     for i in range((f_date[1] - f_date[0]).days + 1):
                         d = f_date[0] + timedelta(days=i)
                         col_n = f"{d.day:02d}/{month_abbr}"
-                        if col_n in st.session_state.db.columns:
+                        if col_n in st.session_state.db.columns: 
                             st.session_state.db.at[idx, col_n] = f_val
                 
-                # CỰC KỲ QUAN TRỌNG: Đổi Key để bảng nhận dữ liệu mới
-                st.session_state.editor_key = f"editor_{int(time.time())}"
-                st.toast("Đã áp dụng lên bảng thành công!")
-                time.sleep(0.3)
+                # FIX: Reset key của bảng để hiện thông tin vừa đổ vào
+                st.session_state.editor_key = f"pvd_{int(time.time())}"
                 st.rerun()
 
     with tab_rig:
@@ -171,16 +168,14 @@ with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH & QUẢN LÝ GIÀN KHOAN
                 conn.update(worksheet="CONFIG", data=pd.DataFrame({"Giàn": st.session_state.gians_list}))
                 st.rerun()
 
-# --- 9. BẢNG NHẬP LIỆU ---
+# --- 7. BẢNG NHẬP LIỆU ---
 st.markdown("---")
-# BẢN SỬA: Dùng key động để reset widget khi dữ liệu nguồn thay đổi
+# Dùng key động để fix lỗi không hiện thông tin khi nhấn nút
 edited_df = st.data_editor(
     st.session_state.db, 
     use_container_width=True, 
     height=600, 
     hide_index=True,
-    key=st.session_state.editor_key  # Key này thay đổi sẽ ép bảng tải lại dữ liệu từ st.session_state.db
+    key=st.session_state.editor_key
 )
-
-# Luôn cập nhật ngược lại db để giữ dữ liệu người dùng gõ tay
 st.session_state.db = edited_df

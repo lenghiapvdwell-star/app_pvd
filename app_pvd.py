@@ -76,7 +76,7 @@ sheet_name = working_date.strftime("%m_%Y")
 curr_month, curr_year = working_date.month, working_date.year
 month_abbr = working_date.strftime("%b")
 
-# --- 5. HÀM TỰ ĐỘNG ENGINE (NÂNG CẤP REAL-TIME) ---
+# --- 5. HÀM TỰ ĐỘNG ENGINE (NÂNG CẤP REAL-TIME & CỘNG DỒN) ---
 def auto_engine(df):
     hols = [date(2026,1,1), date(2026,4,30), date(2026,5,1), date(2026,9,2),
             date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19)]
@@ -88,7 +88,7 @@ def auto_engine(df):
     df_calc = df.copy()
     data_changed = False
     
-    # Đảm bảo đủ cột ngày
+    # Đảm bảo các cột ngày tồn tại
     for col in date_cols:
         if col not in df_calc.columns: df_calc[col] = ""
     
@@ -100,67 +100,84 @@ def auto_engine(df):
             target_date = date(curr_year, curr_month, d_num)
             val = str(row.get(col, "")).strip()
             
-            # --- LOGIC AUTO-FILL TỐI ƯU ---
-            # Nếu ô trống và (là ngày cũ HOẶC hôm nay đã sau 7:00 AM)
+            # 1. Logic Autofill Real-time (Sau 7h sáng điền dữ liệu ngày trước)
             if not val and (target_date < today or (target_date == today and now.hour >= 7)):
                 if last_val:
                     lv_up = last_val.upper()
                     is_sea = any(g.upper() in lv_up for g in st.session_state.GIANS)
-                    # Tự động điền nếu ngày trước là Đi biển, Nghỉ CA, hoặc trực WS
                     if is_sea or lv_up == "CA" or lv_up == "WS":
                         val = last_val
                         df_calc.at[idx, col] = val
                         data_changed = True
             
-            # --- TÍNH QUỸ CÔNG ---
+            # 2. Logic Tính toán công trạng
             v_up = val.upper()
             if v_up and v_up not in ["NAN", "NONE", "NP", "ỐM"]:
                 try:
                     is_we, is_ho = target_date.weekday() >= 5, target_date in hols
                     if any(g.upper() in v_up for g in st.session_state.GIANS):
+                        # Đi biển: Ngày lễ +2, Cuối tuần +1, Ngày thường +0.5
                         accrued += 2.0 if is_ho else (1.0 if is_we else 0.5)
                     elif v_up == "CA":
+                        # Nghỉ CA ngày thường bị trừ 1 công lũy kế
                         if not is_we and not is_ho: 
                             accrued -= 1.0
                 except: pass
             if val: last_val = val
         
-        # Cập nhật cột Quỹ CA Tổng (Số dư mới)
-        df_calc.at[idx, 'Quỹ CA Tổng'] = float(row.get('CA Tháng Trước', 0)) + accrued
+        # 3. Cập nhật QUỸ CA TỔNG = CA Tháng Trước (Lấy từ sheet cũ) + Công tích lũy tháng này
+        ca_thang_truoc = float(row.get('CA Tháng Trước', 0))
+        df_calc.at[idx, 'Quỹ CA Tổng'] = ca_thang_truoc + accrued
         
     return df_calc, data_changed
 
-# --- 6. LOAD DỮ LIỆU & TRIGGER TỰ ĐỘNG ---
+# --- 6. LOAD DỮ LIỆU & LOGIC CỘNG DỒN THÁNG ---
 if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sheet_name:
     st.session_state.active_sheet = sheet_name
     if 'db' in st.session_state: del st.session_state.db
 
 if 'db' not in st.session_state:
-    # Lấy tồn tháng trước
-    prev_sheet = (working_date.replace(day=1) - timedelta(days=1)).strftime("%m_%Y")
+    # --- LOGIC LẤY TỒN CÔNG TỪ THÁNG TRƯỚC ---
+    first_day_current = working_date.replace(day=1)
+    last_day_prev = first_day_current - timedelta(days=1)
+    prev_sheet_name = last_day_prev.strftime("%m_%Y")
+    
+    b_map = {}
     try:
-        df_p = conn.read(worksheet=prev_sheet, ttl="1m")
-        b_map = dict(zip(df_p['Họ và Tên'], df_p['Quỹ CA Tổng']))
-    except: b_map = {}
+        # Đọc dữ liệu tháng trước để lấy cột "Quỹ CA Tổng" làm tồn đầu tháng này
+        df_prev = conn.read(worksheet=prev_sheet_name, ttl="1m")
+        if not df_prev.empty:
+            b_map = dict(zip(df_prev['Họ và Tên'], df_prev['Quỹ CA Tổng']))
+    except:
+        pass # Nếu là tháng đầu tiên chưa có dữ liệu cũ
 
     try:
+        # Đọc dữ liệu tháng hiện tại
         df_l = conn.read(worksheet=sheet_name, ttl=0).fillna("").replace(["nan", "NaN", "None"], "")
         if df_l.empty or len(df_l) < 5: raise ValueError
+        
+        # Cập nhật lại cột 'CA Tháng Trước' từ b_map để đảm bảo cộng dồn đúng
         for idx, r in df_l.iterrows():
-            if r['Họ và Tên'] in b_map: 
-                df_l.at[idx, 'CA Tháng Trước'] = float(b_map[r['Họ và Tên']])
+            name = r['Họ và Tên']
+            if name in b_map:
+                df_l.at[idx, 'CA Tháng Trước'] = float(b_map[name])
     except:
+        # Nếu chưa có sheet tháng này, tạo mới và lấy tồn từ tháng trước
         df_l = pd.DataFrame({
-            'STT': range(1, len(NAMES_66) + 1), 'Họ và Tên': NAMES_66,
-            'Công ty': 'PVDWS', 'Chức danh': 'Casing crew', 'Job Detail': '',
-            'CA Tháng Trước': [float(b_map.get(n, 0.0)) for n in NAMES_66], 'Quỹ CA Tổng': 0.0
+            'STT': range(1, len(NAMES_66) + 1),
+            'Họ và Tên': NAMES_66,
+            'Công ty': 'PVDWS',
+            'Chức danh': 'Casing crew',
+            'Job Detail': '',
+            'CA Tháng Trước': [float(b_map.get(n, 0.0)) for n in NAMES_66],
+            'Quỹ CA Tổng': 0.0
         })
 
-    # CHẠY ENGINE NGAY LẬP TỨC KHI VỪA MỞ APP
+    # Chạy Engine để Autofill và tính toán cộng dồn ngay lập tức
     df_auto, has_updates = auto_engine(df_l)
     if has_updates:
         save_to_cloud_silent(sheet_name, df_auto)
-        st.toast("🤖 Robot: Đã tự động điền dữ liệu ngày mới và tính lại quỹ công!", icon="⚡")
+        st.toast("⚡ Robot: Đã tự động cộng dồn công từ tháng trước và fill ngày mới!", icon="🤖")
     st.session_state.db = df_auto
 
 # --- 7. TABS ---
@@ -208,7 +225,6 @@ with t1:
                                     col_n_list = [c for c in DATE_COLS if c.startswith(f"{d.day:02d}/")]
                                     if col_n_list:
                                         col_n = col_n_list[0]
-                                        if col_n not in st.session_state.db.columns: st.session_state.db[col_n] = ""
                                         st.session_state.db.at[idx, col_n] = "" if f_status == "Xóa trắng" else f_val
                     df_recalc, _ = auto_engine(st.session_state.db); st.session_state.db = df_recalc
                     save_to_cloud_silent(sheet_name, df_recalc); st.rerun()
@@ -221,8 +237,8 @@ with t1:
         ed_df = st.data_editor(
             display_df, use_container_width=True, height=600, hide_index=True, key="main_editor",
             column_config={
-                "CA Tháng Trước": st.column_config.NumberColumn("Tồn cũ", format="%.1f"),
-                "Quỹ CA Tổng": st.column_config.NumberColumn("Tổng ca", format="%.1f", disabled=True)
+                "CA Tháng Trước": st.column_config.NumberColumn("Tồn tháng trước", format="%.1f"),
+                "Quỹ CA Tổng": st.column_config.NumberColumn("Tổng cộng dồn", format="%.1f", disabled=True)
             }
         )
         if st.button("💾 XÁC NHẬN CẬP NHẬT BẢNG & TÍNH QUỸ CA", type="secondary", use_container_width=True):
@@ -266,7 +282,6 @@ with t2:
     try:
         with st.spinner("Đang truy xuất dữ liệu cá nhân..."):
             recs = get_person_yearly_recs(sel_name, curr_year)
-            
         if recs:
             pdf = pd.DataFrame(recs)
             summary = pdf.groupby(['Tháng', 'Loại']).size().reset_index(name='Ngày')
@@ -286,6 +301,6 @@ with t2:
             m4.metric("🏖️ Nghỉ NP", f"{total_sum.get('NP', 0)} ngày")
             m5.metric("🏥 Nghỉ ỐM", f"{total_sum.get('ỐM', 0)} ngày")
         else:
-            st.warning(f"Không tìm thấy hoạt động của **{sel_name}** trong năm {curr_year}. Hãy kiểm tra lại Tab Điều Động.")
-    except Exception as e:
-        st.error("Hệ thống đang bận tải dữ liệu. Vui lòng đợi 5-10 giây rồi chọn lại tên.")
+            st.warning(f"Không tìm thấy hoạt động của **{sel_name}**.")
+    except Exception:
+        st.error("Lỗi tải biểu đồ.")

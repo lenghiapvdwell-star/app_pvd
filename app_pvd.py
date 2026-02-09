@@ -88,6 +88,7 @@ def auto_engine(df):
     df_calc = df.copy()
     data_changed = False
     
+    # Đảm bảo đủ cột ngày
     for col in date_cols:
         if col not in df_calc.columns: df_calc[col] = ""
     
@@ -99,17 +100,19 @@ def auto_engine(df):
             target_date = date(curr_year, curr_month, d_num)
             val = str(row.get(col, "")).strip()
             
-            # TỰ ĐỘNG ĐIỀN (Sau 7h sáng hoặc ngày đã qua)
+            # --- LOGIC AUTO-FILL TỐI ƯU ---
+            # Nếu ô trống và (là ngày cũ HOẶC hôm nay đã sau 7:00 AM)
             if not val and (target_date < today or (target_date == today and now.hour >= 7)):
                 if last_val:
                     lv_up = last_val.upper()
                     is_sea = any(g.upper() in lv_up for g in st.session_state.GIANS)
+                    # Tự động điền nếu ngày trước là Đi biển, Nghỉ CA, hoặc trực WS
                     if is_sea or lv_up == "CA" or lv_up == "WS":
                         val = last_val
                         df_calc.at[idx, col] = val
                         data_changed = True
             
-            # TÍNH QUỸ CÔNG
+            # --- TÍNH QUỸ CÔNG ---
             v_up = val.upper()
             if v_up and v_up not in ["NAN", "NONE", "NP", "ỐM"]:
                 try:
@@ -117,20 +120,23 @@ def auto_engine(df):
                     if any(g.upper() in v_up for g in st.session_state.GIANS):
                         accrued += 2.0 if is_ho else (1.0 if is_we else 0.5)
                     elif v_up == "CA":
-                        if not is_we and not is_ho: accrued -= 1.0
+                        if not is_we and not is_ho: 
+                            accrued -= 1.0
                 except: pass
             if val: last_val = val
         
+        # Cập nhật cột Quỹ CA Tổng (Số dư mới)
         df_calc.at[idx, 'Quỹ CA Tổng'] = float(row.get('CA Tháng Trước', 0)) + accrued
         
     return df_calc, data_changed
 
-# --- 6. LOAD DỮ LIỆU & TRIGGER ---
+# --- 6. LOAD DỮ LIỆU & TRIGGER TỰ ĐỘNG ---
 if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sheet_name:
     st.session_state.active_sheet = sheet_name
     if 'db' in st.session_state: del st.session_state.db
 
 if 'db' not in st.session_state:
+    # Lấy tồn tháng trước
     prev_sheet = (working_date.replace(day=1) - timedelta(days=1)).strftime("%m_%Y")
     try:
         df_p = conn.read(worksheet=prev_sheet, ttl="1m")
@@ -141,7 +147,8 @@ if 'db' not in st.session_state:
         df_l = conn.read(worksheet=sheet_name, ttl=0).fillna("").replace(["nan", "NaN", "None"], "")
         if df_l.empty or len(df_l) < 5: raise ValueError
         for idx, r in df_l.iterrows():
-            if r['Họ và Tên'] in b_map: df_l.at[idx, 'CA Tháng Trước'] = float(b_map[r['Họ và Tên']])
+            if r['Họ và Tên'] in b_map: 
+                df_l.at[idx, 'CA Tháng Trước'] = float(b_map[r['Họ và Tên']])
     except:
         df_l = pd.DataFrame({
             'STT': range(1, len(NAMES_66) + 1), 'Họ và Tên': NAMES_66,
@@ -149,11 +156,11 @@ if 'db' not in st.session_state:
             'CA Tháng Trước': [float(b_map.get(n, 0.0)) for n in NAMES_66], 'Quỹ CA Tổng': 0.0
         })
 
-    # AUTO-TRIGGER NGAY KHI MỞ
+    # CHẠY ENGINE NGAY LẬP TỨC KHI VỪA MỞ APP
     df_auto, has_updates = auto_engine(df_l)
     if has_updates:
         save_to_cloud_silent(sheet_name, df_auto)
-        st.toast("⚡ Robot: Đã tự động cập nhật ngày mới!", icon="🤖")
+        st.toast("🤖 Robot: Đã tự động điền dữ liệu ngày mới và tính lại quỹ công!", icon="⚡")
     st.session_state.db = df_auto
 
 # --- 7. TABS ---
@@ -165,13 +172,16 @@ t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ"])
 with t1:
     @st.fragment
     def render_controls():
-        bc1, bc2 = st.columns([1, 1]) # Bỏ cột thứ 3 (Làm mới)
+        bc1, bc2, bc3 = st.columns([1, 1, 1])
         with bc1:
-            if st.button("📤 LƯU CLOUD (THỦ CÔNG)", type="primary", use_container_width=True):
+            if st.button("📤 LƯU CLOUD", type="primary", key="btn_save", use_container_width=True):
                 df_final, _ = auto_engine(st.session_state.db)
                 if save_to_cloud_silent(sheet_name, df_final):
                     st.success("Đã lưu!"); time.sleep(0.5); st.rerun()
         with bc2:
+            if st.button("🔄 LÀM MỚI (TẢI LẠI)", key="btn_refresh", use_container_width=True):
+                st.cache_data.clear(); del st.session_state.db; st.rerun()
+        with bc3:
             buf = io.BytesIO()
             st.session_state.db.to_excel(buf, index=False); st.download_button("📥 XUẤT EXCEL", buf.getvalue(), f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
@@ -198,6 +208,7 @@ with t1:
                                     col_n_list = [c for c in DATE_COLS if c.startswith(f"{d.day:02d}/")]
                                     if col_n_list:
                                         col_n = col_n_list[0]
+                                        if col_n not in st.session_state.db.columns: st.session_state.db[col_n] = ""
                                         st.session_state.db.at[idx, col_n] = "" if f_status == "Xóa trắng" else f_val
                     df_recalc, _ = auto_engine(st.session_state.db); st.session_state.db = df_recalc
                     save_to_cloud_silent(sheet_name, df_recalc); st.rerun()
@@ -255,6 +266,7 @@ with t2:
     try:
         with st.spinner("Đang truy xuất dữ liệu cá nhân..."):
             recs = get_person_yearly_recs(sel_name, curr_year)
+            
         if recs:
             pdf = pd.DataFrame(recs)
             summary = pdf.groupby(['Tháng', 'Loại']).size().reset_index(name='Ngày')
@@ -274,6 +286,6 @@ with t2:
             m4.metric("🏖️ Nghỉ NP", f"{total_sum.get('NP', 0)} ngày")
             m5.metric("🏥 Nghỉ ỐM", f"{total_sum.get('ỐM', 0)} ngày")
         else:
-            st.warning(f"Không tìm thấy hoạt động của **{sel_name}** trong năm {curr_year}.")
-    except Exception:
-        st.error("Hệ thống đang bận tải dữ liệu. Vui lòng đợi một chút.")
+            st.warning(f"Không tìm thấy hoạt động của **{sel_name}** trong năm {curr_year}. Hãy kiểm tra lại Tab Điều Động.")
+    except Exception as e:
+        st.error("Hệ thống đang bận tải dữ liệu. Vui lòng đợi 5-10 giây rồi chọn lại tên.")

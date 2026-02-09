@@ -7,7 +7,6 @@ import io
 import os
 import time
 import plotly.express as px
-import plotly.graph_objects as go
 
 # --- 1. CẤU HÌNH ---
 st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
@@ -21,7 +20,6 @@ st.markdown("""
         font-family: 'Arial Black', sans-serif !important;
     }
     [data-testid="stMetricValue"] { font-size: 28px !important; font-weight: bold !important; }
-    [data-testid="stDataEditor"] { border: 1px solid #444; border-radius: 5px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -42,14 +40,18 @@ def save_to_cloud_silent(worksheet_name, df):
     df_clean = df.fillna("").replace(["nan", "NaN", "None"], "")
     try:
         conn.update(worksheet=worksheet_name, data=df_clean)
-        st.cache_data.clear() # Xóa cache sau khi lưu để lần load sau lấy data mới nhất
+        st.cache_data.clear()
         return True
     except:
         return False
 
-# --- 4. DATA LOGIC & SIDEBAR ---
+# --- 4. DANH MỤC CỐ ĐỊNH ---
 if "GIANS" not in st.session_state:
     st.session_state.GIANS = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNLOD"]
+
+COMPANIES = ["PVDWS", "OWS", "National", "Baker Hughes", "Schlumberger", "Halliburton"]
+TITLES = ["Casing crew", "CRTI LD", "CRTI SP", "SOLID", "MUDCL", "UNDERRM", "PPLS", "HAMER"]
+NAMES_66 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong", "Nguyen Huu Phuc"]
 
 with st.sidebar:
     st.header("⚙️ QUẢN LÝ GIÀN")
@@ -64,24 +66,25 @@ with st.sidebar:
         st.session_state.GIANS.remove(del_gian)
         st.rerun()
 
-COMPANIES = ["PVDWS", "OWS", "National", "Baker Hughes", "Schlumberger", "Halliburton"]
-TITLES = ["Casing crew", "CRTI LD", "CRTI SP", "SOLID", "MUDCL", "UNDERRM", "PPLS", "HAMER"]
-NAMES_66 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong", "Nguyen Huu Phuc"]
-
 _, c_mid_date, _ = st.columns([3.5, 2, 3.5])
 with c_mid_date:
-    # Key="date_selector" giúp Streamlit quản lý việc thay đổi ngày mượt hơn
     working_date = st.date_input("📅 CHỌN THÁNG LÀM VIỆC:", value=date.today(), key="date_selector")
 
 sheet_name = working_date.strftime("%m_%Y")
 curr_month, curr_year = working_date.month, working_date.year
 month_abbr = working_date.strftime("%b")
 
-# --- 5. HÀM TỰ ĐỘNG ENGINE (GIỮ NGUYÊN LOGIC REAL-TIME) ---
+# --- 5. HÀM TỰ ĐỘNG ENGINE (NÂNG CẤP QUY ƯỚC TÍNH TOÁN) ---
 def auto_engine(df):
-    # Lịch nghỉ lễ 2026
-    hols = [date(2026,1,1), date(2026,4,30), date(2026,5,1), date(2026,9,2),
-            date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19)]
+    # Lịch nghỉ lễ 2026 Việt Nam (Dương lịch, Tết Âm, Giỗ Tổ, 30/4, 1/5, Quốc khánh)
+    hols = [
+        date(2026,1,1),   # Tết Dương lịch
+        date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19), date(2026,2,20), # Dự kiến Tết Âm
+        date(2026,4,26),  # Giỗ Tổ Hùng Vương (10/3 Al)
+        date(2026,4,30),  # Giải phóng
+        date(2026,5,1),   # Quốc tế lao động
+        date(2026,9,2),   # Quốc khánh
+    ]
     now = datetime.now()
     today = now.date()
     num_days = calendar.monthrange(curr_year, curr_month)[1]
@@ -101,7 +104,7 @@ def auto_engine(df):
             target_date = date(curr_year, curr_month, d_num)
             val = str(row.get(col, "")).strip()
             
-            # --- LOGIC AUTO-FILL TỐI ƯU ---
+            # --- AUTO-FILL REAL-TIME (Tự điền đến ngày hôm nay) ---
             if not val and (target_date < today or (target_date == today and now.hour >= 7)):
                 if last_val:
                     lv_up = last_val.upper()
@@ -111,68 +114,73 @@ def auto_engine(df):
                         df_calc.at[idx, col] = val
                         data_changed = True
             
-            # --- TÍNH QUỸ CÔNG ---
+            # --- QUY ƯỚC TÍNH CA MỚI ---
             v_up = val.upper()
-            if v_up and v_up not in ["NAN", "NONE", "NP", "ỐM"]:
-                try:
-                    is_we, is_ho = target_date.weekday() >= 5, target_date in hols
-                    if any(g.upper() in v_up for g in st.session_state.GIANS):
-                        accrued += 2.0 if is_ho else (1.0 if is_we else 0.5)
-                    elif v_up == "CA":
-                        if not is_we and not is_ho: 
-                            accrued -= 1.0
-                except: pass
+            if v_up:
+                is_we = target_date.weekday() >= 5 # Thứ 7, CN
+                is_ho = target_date in hols           # Ngày lễ
+                
+                # 1. Đi biển (Cộng quỹ)
+                if any(g.upper() in v_up for g in st.session_state.GIANS):
+                    if is_ho: 
+                        accrued += 2.0  # Lễ tết: 1 ngày được 2 ngày nghỉ
+                    elif is_we:
+                        accrued += 1.0  # T7, CN: 1 ngày được 1 ngày nghỉ
+                    else:
+                        accrued += 0.5  # T2-T6: 1 ngày được 0.5 ngày nghỉ (2 biển : 1 nghỉ)
+                
+                # 2. Nghỉ CA (Trừ quỹ)
+                elif v_up == "CA":
+                    # Chỉ trừ vào ngày thường T2-T6 và KHÔNG phải ngày lễ
+                    if not is_we and not is_ho:
+                        accrued -= 1.0
+                
+                # 3. Các trường hợp khác (WS, NP, ỐM): Không cộng, không trừ
+                else:
+                    pass
+
             if val: last_val = val
         
-        # Cập nhật số dư cuối cùng
+        # Cập nhật số dư cuối cùng: Tồn cũ + Phát sinh trong tháng
         df_calc.at[idx, 'Quỹ CA Tổng'] = round(float(row.get('CA Tháng Trước', 0)) + accrued, 1)
         
     return df_calc, data_changed
 
-# --- 6. TỐI ƯU LOAD DỮ LIỆU (MƯỢT MÀ HƠN) ---
+# --- 6. LOAD DỮ LIỆU ---
 if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sheet_name:
     st.session_state.active_sheet = sheet_name
-    # Xóa db cũ để giải phóng RAM nhưng load ngay lập tức từ Cloud
     if 'db' in st.session_state: del st.session_state.db
 
 if 'db' not in st.session_state:
-    with st.spinner(f"🚀 Đang kết nối dữ liệu tháng {sheet_name}..."):
-        # 1. Tìm tồn tháng trước
+    with st.spinner(f"🚀 Đang tải dữ liệu {sheet_name}..."):
+        # Lấy tồn tháng trước
         prev_date = working_date.replace(day=1) - timedelta(days=1)
         prev_sheet = prev_date.strftime("%m_%Y")
         b_map = {}
         try:
-            # Dùng ttl=60 để tránh load lại liên tục trong 1 phút
             df_p = conn.read(worksheet=prev_sheet, ttl="1m")
             if not df_p.empty:
                 b_map = dict(zip(df_p['Họ và Tên'], df_p['Quỹ CA Tổng']))
         except: pass
 
-        # 2. Đọc tháng hiện tại
         try:
             df_l = conn.read(worksheet=sheet_name, ttl=0).fillna("").replace(["nan", "NaN", "None"], "")
             if df_l.empty or len(df_l) < 5: raise ValueError
-            
-            # Cập nhật tồn mới nhất từ tháng trước vào tháng hiện tại
             for idx, r in df_l.iterrows():
                 name = r['Họ và Tên']
-                if name in b_map:
-                    df_l.at[idx, 'CA Tháng Trước'] = float(b_map[name])
+                if name in b_map: df_l.at[idx, 'CA Tháng Trước'] = float(b_map[name])
         except:
-            # Tạo mới nếu chưa có
             df_l = pd.DataFrame({
                 'STT': range(1, len(NAMES_66) + 1), 'Họ và Tên': NAMES_66,
                 'Công ty': 'PVDWS', 'Chức danh': 'Casing crew', 'Job Detail': '',
                 'CA Tháng Trước': [float(b_map.get(n, 0.0)) for n in NAMES_66], 'Quỹ CA Tổng': 0.0
             })
 
-        # 3. Chạy Engine ngay lập tức
         df_auto, has_updates = auto_engine(df_l)
-        if has_updates:
-            save_to_cloud_silent(sheet_name, df_auto)
+        if has_updates: save_to_cloud_silent(sheet_name, df_auto)
         st.session_state.db = df_auto
 
-# --- 7. GIAO DIỆN TABS ---
+# --- 7. TABS ---
 num_days = calendar.monthrange(curr_year, curr_month)[1]
 DATE_COLS = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(curr_year,curr_month,d).weekday()]})" for d in range(1, num_days+1)]
 
@@ -211,16 +219,13 @@ with t1:
                         idx_match = st.session_state.db.index[st.session_state.db['Họ và Tên'] == person]
                         if not idx_match.empty:
                             idx = idx_match[0]
-                            # Cập nhật thông tin cơ bản
                             if f_co != "Không đổi": st.session_state.db.at[idx, 'Công ty'] = f_co
                             if f_ti != "Không đổi": st.session_state.db.at[idx, 'Chức danh'] = f_ti
-                            # Cập nhật ngày
                             for i in range((f_date[1] - f_date[0]).days + 1):
                                 d = f_date[0] + timedelta(days=i)
                                 if d.month == curr_month:
                                     col_n_list = [c for c in DATE_COLS if c.startswith(f"{d.day:02d}/")]
-                                    if col_n_list:
-                                        st.session_state.db.at[idx, col_n_list[0]] = "" if f_status == "Xóa trắng" else f_val
+                                    if col_n_list: st.session_state.db.at[idx, col_n_list[0]] = "" if f_status == "Xóa trắng" else f_val
                     df_recalc, _ = auto_engine(st.session_state.db)
                     st.session_state.db = df_recalc
                     save_to_cloud_silent(sheet_name, df_recalc)
@@ -235,7 +240,7 @@ with t1:
             display_df, use_container_width=True, height=600, hide_index=True,
             column_config={
                 "CA Tháng Trước": st.column_config.NumberColumn("Tồn cũ", format="%.1f"),
-                "Quỹ CA Tổng": st.column_config.NumberColumn("Tổng ca", format="%.1f", disabled=True),
+                "Quỹ CA Tổng": st.column_config.NumberColumn("Số dư Quỹ", format="%.1f", disabled=True),
                 "STT": st.column_config.Column(width="small", disabled=True)
             }
         )
@@ -244,7 +249,7 @@ with t1:
             df_recalc, _ = auto_engine(st.session_state.db)
             st.session_state.db = df_recalc
             save_to_cloud_silent(sheet_name, df_recalc)
-            st.toast("✅ Đã cập nhật!"); time.sleep(0.5); st.rerun()
+            st.toast("✅ Đã cập nhật quỹ CA!"); time.sleep(0.5); st.rerun()
 
     render_controls()
     render_quick_update()
@@ -257,7 +262,6 @@ with t2:
     @st.cache_data(ttl="2m")
     def get_person_yearly_recs(person_name, year):
         results = []
-        # Chạy vòng lặp qua 12 tháng để gom dữ liệu
         for m in range(1, 13):
             m_s = f"{m:02d}_{year}"
             try:
@@ -289,7 +293,6 @@ with t2:
                      template="plotly_dark")
         st.plotly_chart(fig, use_container_width=True)
         
-        # Metric tóm tắt
         total_sum = pdf.groupby('Loại')['Ngày'].sum().to_dict()
         m1, m2, m3, m4, m5 = st.columns(5)
         m1.metric("🚢 Đi Biển", f"{total_sum.get('Đi Biển', 0)} n")
@@ -297,5 +300,3 @@ with t2:
         m3.metric("🛠️ Làm WS", f"{total_sum.get('WS', 0)} n")
         m4.metric("🏖️ Nghỉ NP", f"{total_sum.get('NP', 0)} n")
         m5.metric("🏥 Nghỉ ỐM", f"{total_sum.get('ỐM', 0)} n")
-    else:
-        st.info("Chưa có dữ liệu hoạt động trong năm.")

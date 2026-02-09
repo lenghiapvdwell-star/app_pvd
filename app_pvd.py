@@ -76,7 +76,7 @@ sheet_name = working_date.strftime("%m_%Y")
 curr_month, curr_year = working_date.month, working_date.year
 month_abbr = working_date.strftime("%b")
 
-# --- 5. HÀM TỰ ĐỘNG ENGINE (ĐÃ NÂNG CẤP AUTO-FILL CA/WS) ---
+# --- 5. HÀM TỰ ĐỘNG ENGINE (NÂNG CẤP REAL-TIME) ---
 def auto_engine(df):
     hols = [date(2026,1,1), date(2026,4,30), date(2026,5,1), date(2026,9,2),
             date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19)]
@@ -87,6 +87,8 @@ def auto_engine(df):
     
     df_calc = df.copy()
     data_changed = False
+    
+    # Đảm bảo đủ cột ngày
     for col in date_cols:
         if col not in df_calc.columns: df_calc[col] = ""
     
@@ -98,17 +100,19 @@ def auto_engine(df):
             target_date = date(curr_year, curr_month, d_num)
             val = str(row.get(col, "")).strip()
             
-            # --- LOGIC AUTO-FILL NÂNG CẤP ---
+            # --- LOGIC AUTO-FILL TỐI ƯU ---
+            # Nếu ô trống và (là ngày cũ HOẶC hôm nay đã sau 7:00 AM)
             if not val and (target_date < today or (target_date == today and now.hour >= 7)):
                 if last_val:
                     lv_up = last_val.upper()
-                    # Tự động điền nếu ngày trước là: Tên Giàn HOẶC CA HOẶC WS
-                    is_gian = any(g.upper() in lv_up for g in st.session_state.GIANS)
-                    if is_gian or lv_up == "CA" or lv_up == "WS":
+                    is_sea = any(g.upper() in lv_up for g in st.session_state.GIANS)
+                    # Tự động điền nếu ngày trước là Đi biển, Nghỉ CA, hoặc trực WS
+                    if is_sea or lv_up == "CA" or lv_up == "WS":
                         val = last_val
                         df_calc.at[idx, col] = val
                         data_changed = True
             
+            # --- TÍNH QUỸ CÔNG ---
             v_up = val.upper()
             if v_up and v_up not in ["NAN", "NONE", "NP", "ỐM"]:
                 try:
@@ -116,18 +120,23 @@ def auto_engine(df):
                     if any(g.upper() in v_up for g in st.session_state.GIANS):
                         accrued += 2.0 if is_ho else (1.0 if is_we else 0.5)
                     elif v_up == "CA":
-                        if not is_we and not is_ho: accrued -= 1.0
+                        if not is_we and not is_ho: 
+                            accrued -= 1.0
                 except: pass
             if val: last_val = val
+        
+        # Cập nhật cột Quỹ CA Tổng (Số dư mới)
         df_calc.at[idx, 'Quỹ CA Tổng'] = float(row.get('CA Tháng Trước', 0)) + accrued
+        
     return df_calc, data_changed
 
-# --- 6. LOAD DỮ LIỆU ---
+# --- 6. LOAD DỮ LIỆU & TRIGGER TỰ ĐỘNG ---
 if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sheet_name:
     st.session_state.active_sheet = sheet_name
     if 'db' in st.session_state: del st.session_state.db
 
 if 'db' not in st.session_state:
+    # Lấy tồn tháng trước
     prev_sheet = (working_date.replace(day=1) - timedelta(days=1)).strftime("%m_%Y")
     try:
         df_p = conn.read(worksheet=prev_sheet, ttl="1m")
@@ -138,15 +147,20 @@ if 'db' not in st.session_state:
         df_l = conn.read(worksheet=sheet_name, ttl=0).fillna("").replace(["nan", "NaN", "None"], "")
         if df_l.empty or len(df_l) < 5: raise ValueError
         for idx, r in df_l.iterrows():
-            if r['Họ và Tên'] in b_map: df_l.at[idx, 'CA Tháng Trước'] = float(b_map[r['Họ và Tên']])
+            if r['Họ và Tên'] in b_map: 
+                df_l.at[idx, 'CA Tháng Trước'] = float(b_map[r['Họ và Tên']])
     except:
         df_l = pd.DataFrame({
             'STT': range(1, len(NAMES_66) + 1), 'Họ và Tên': NAMES_66,
             'Công ty': 'PVDWS', 'Chức danh': 'Casing crew', 'Job Detail': '',
             'CA Tháng Trước': [float(b_map.get(n, 0.0)) for n in NAMES_66], 'Quỹ CA Tổng': 0.0
         })
-    df_auto, has_changes = auto_engine(df_l)
-    if has_changes: save_to_cloud_silent(sheet_name, df_auto)
+
+    # CHẠY ENGINE NGAY LẬP TỨC KHI VỪA MỞ APP
+    df_auto, has_updates = auto_engine(df_l)
+    if has_updates:
+        save_to_cloud_silent(sheet_name, df_auto)
+        st.toast("🤖 Robot: Đã tự động điền dữ liệu ngày mới và tính lại quỹ công!", icon="⚡")
     st.session_state.db = df_auto
 
 # --- 7. TABS ---

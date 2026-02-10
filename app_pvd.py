@@ -74,7 +74,7 @@ sheet_name = working_date.strftime("%m_%Y")
 curr_month, curr_year = working_date.month, working_date.year
 month_abbr = working_date.strftime("%b")
 
-# --- 5. HÀM TỰ ĐỘNG ENGINE (6H SÁNG AUTOFILL & QUY ƯỚC TÍNH TOÁN) ---
+# --- 5. HÀM TỰ ĐỘNG ENGINE (NÂNG CẤP AUTOFILL CHÍNH XÁC) ---
 def auto_engine(df):
     hols = [
         date(2026,1,1),
@@ -91,21 +91,28 @@ def auto_engine(df):
     
     for idx, row in df_calc.iterrows():
         accrued = 0.0
-        last_val = ""
+        # TÌM GIÁ TRỊ GẦN NHẤT CÓ DỮ LIỆU ĐỂ LÀM MỐC AUTOFILL
+        current_last_val = ""
+        
         for col in date_cols:
             d_num = int(col[:2])
             target_date = date(curr_year, curr_month, d_num)
             val = str(row.get(col, "")).strip()
             
-            # --- AUTO-FILL REAL-TIME (Cập nhật lúc 6h sáng) ---
-            if not val and (target_date < today or (target_date == today and now.hour >= 6)):
-                if last_val:
-                    lv_up = last_val.upper()
+            # --- LOGIC AUTO-FILL: Nếu ô trống VÀ (là ngày quá khứ HOẶC hôm nay sau 6h sáng) ---
+            if (not val or val == "") and (target_date < today or (target_date == today and now.hour >= 6)):
+                if current_last_val != "":
+                    lv_up = current_last_val.upper()
                     is_sea = any(g.upper() in lv_up for g in st.session_state.GIANS)
-                    if is_sea or lv_up == "CA" or lv_up == "WS":
-                        val = last_val
+                    # Chỉ tự điền nếu trạng thái trước đó là Đi biển, CA hoặc WS
+                    if is_sea or lv_up in ["CA", "WS"]:
+                        val = current_last_val
                         df_calc.at[idx, col] = val
                         data_changed = True
+            
+            # Cập nhật mốc giá trị gần nhất nếu ô hiện tại có dữ liệu (hoặc vừa được auto-fill)
+            if val and val != "":
+                current_last_val = val
             
             # --- QUY ƯỚC TÍNH CA ---
             v_up = val.upper()
@@ -118,10 +125,8 @@ def auto_engine(df):
                     else: accrued += 0.5
                 elif v_up == "CA":
                     if not is_we and not is_ho: accrued -= 1.0
-            
-            if val: last_val = val
         
-        # Cập nhật số dư cuối cùng
+        # Cập nhật số dư Quỹ CA Tổng
         ton_cu = float(row.get('CA Tháng Trước', 0))
         df_calc.at[idx, 'Quỹ CA Tổng'] = round(ton_cu + accrued, 1)
         
@@ -157,6 +162,7 @@ if 'db' not in st.session_state:
                 'CA Tháng Trước': [float(b_map.get(n, 0.0)) for n in NAMES_66], 'Quỹ CA Tổng': 0.0
             })
 
+        # Chạy engine để tự động điền ngày mới
         df_auto, has_updates = auto_engine(df_l)
         if has_updates: 
             save_to_cloud_silent(sheet_name, df_auto)

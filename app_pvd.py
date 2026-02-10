@@ -74,16 +74,12 @@ sheet_name = working_date.strftime("%m_%Y")
 curr_month, curr_year = working_date.month, working_date.year
 month_abbr = working_date.strftime("%b")
 
-# --- 5. HÀM TỰ ĐỘNG ENGINE (NÂNG CẤP QUY ƯỚC TÍNH TOÁN) ---
+# --- 5. HÀM TỰ ĐỘNG ENGINE (6H SÁNG AUTOFILL & QUY ƯỚC TÍNH TOÁN) ---
 def auto_engine(df):
-    # Lịch nghỉ lễ 2026 Việt Nam (Dương lịch, Tết Âm, Giỗ Tổ, 30/4, 1/5, Quốc khánh)
     hols = [
-        date(2026,1,1),   # Tết Dương lịch
-        date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19), date(2026,2,20), # Dự kiến Tết Âm
-        date(2026,4,26),  # Giỗ Tổ Hùng Vương (10/3 Al)
-        date(2026,4,30),  # Giải phóng
-        date(2026,5,1),   # Quốc tế lao động
-        date(2026,9,2),   # Quốc khánh
+        date(2026,1,1),
+        date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19), date(2026,2,20),
+        date(2026,4,26), date(2026,4,30), date(2026,5,1), date(2026,9,2),
     ]
     now = datetime.now()
     today = now.date()
@@ -93,9 +89,6 @@ def auto_engine(df):
     df_calc = df.copy()
     data_changed = False
     
-    for col in date_cols:
-        if col not in df_calc.columns: df_calc[col] = ""
-    
     for idx, row in df_calc.iterrows():
         accrued = 0.0
         last_val = ""
@@ -104,8 +97,8 @@ def auto_engine(df):
             target_date = date(curr_year, curr_month, d_num)
             val = str(row.get(col, "")).strip()
             
-            # --- AUTO-FILL REAL-TIME (Tự điền đến ngày hôm nay) ---
-            if not val and (target_date < today or (target_date == today and now.hour >= 7)):
+            # --- AUTO-FILL REAL-TIME (Cập nhật lúc 6h sáng) ---
+            if not val and (target_date < today or (target_date == today and now.hour >= 6)):
                 if last_val:
                     lv_up = last_val.upper()
                     is_sea = any(g.upper() in lv_up for g in st.session_state.GIANS)
@@ -114,35 +107,23 @@ def auto_engine(df):
                         df_calc.at[idx, col] = val
                         data_changed = True
             
-            # --- QUY ƯỚC TÍNH CA MỚI ---
+            # --- QUY ƯỚC TÍNH CA ---
             v_up = val.upper()
             if v_up:
-                is_we = target_date.weekday() >= 5 # Thứ 7, CN
-                is_ho = target_date in hols           # Ngày lễ
-                
-                # 1. Đi biển (Cộng quỹ)
+                is_we = target_date.weekday() >= 5
+                is_ho = target_date in hols
                 if any(g.upper() in v_up for g in st.session_state.GIANS):
-                    if is_ho: 
-                        accrued += 2.0  # Lễ tết: 1 ngày được 2 ngày nghỉ
-                    elif is_we:
-                        accrued += 1.0  # T7, CN: 1 ngày được 1 ngày nghỉ
-                    else:
-                        accrued += 0.5  # T2-T6: 1 ngày được 0.5 ngày nghỉ (2 biển : 1 nghỉ)
-                
-                # 2. Nghỉ CA (Trừ quỹ)
+                    if is_ho: accrued += 2.0
+                    elif is_we: accrued += 1.0
+                    else: accrued += 0.5
                 elif v_up == "CA":
-                    # Chỉ trừ vào ngày thường T2-T6 và KHÔNG phải ngày lễ
-                    if not is_we and not is_ho:
-                        accrued -= 1.0
-                
-                # 3. Các trường hợp khác (WS, NP, ỐM): Không cộng, không trừ
-                else:
-                    pass
-
+                    if not is_we and not is_ho: accrued -= 1.0
+            
             if val: last_val = val
         
-        # Cập nhật số dư cuối cùng: Tồn cũ + Phát sinh trong tháng
-        df_calc.at[idx, 'Quỹ CA Tổng'] = round(float(row.get('CA Tháng Trước', 0)) + accrued, 1)
+        # Cập nhật số dư cuối cùng
+        ton_cu = float(row.get('CA Tháng Trước', 0))
+        df_calc.at[idx, 'Quỹ CA Tổng'] = round(ton_cu + accrued, 1)
         
     return df_calc, data_changed
 
@@ -152,13 +133,13 @@ if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sh
     if 'db' in st.session_state: del st.session_state.db
 
 if 'db' not in st.session_state:
-    with st.spinner(f"🚀 Đang tải dữ liệu {sheet_name}..."):
+    with st.spinner(f"🚀 Đang tải và kiểm tra dữ liệu {sheet_name}..."):
         # Lấy tồn tháng trước
         prev_date = working_date.replace(day=1) - timedelta(days=1)
         prev_sheet = prev_date.strftime("%m_%Y")
         b_map = {}
         try:
-            df_p = conn.read(worksheet=prev_sheet, ttl="1m")
+            df_p = conn.read(worksheet=prev_sheet, ttl="5m")
             if not df_p.empty:
                 b_map = dict(zip(df_p['Họ và Tên'], df_p['Quỹ CA Tổng']))
         except: pass
@@ -177,7 +158,8 @@ if 'db' not in st.session_state:
             })
 
         df_auto, has_updates = auto_engine(df_l)
-        if has_updates: save_to_cloud_silent(sheet_name, df_auto)
+        if has_updates: 
+            save_to_cloud_silent(sheet_name, df_auto)
         st.session_state.db = df_auto
 
 # --- 7. TABS ---
@@ -200,7 +182,8 @@ with t1:
                 st.cache_data.clear(); del st.session_state.db; st.rerun()
         with bc3:
             buf = io.BytesIO()
-            st.session_state.db.to_excel(buf, index=False); st.download_button("📥 XUẤT EXCEL", buf.getvalue(), f"PVD_{sheet_name}.xlsx", use_container_width=True)
+            st.session_state.db.to_excel(buf, index=False)
+            st.download_button("📥 XUẤT EXCEL", buf.getvalue(), f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
     @st.fragment
     def render_quick_update():
@@ -295,8 +278,8 @@ with t2:
         
         total_sum = pdf.groupby('Loại')['Ngày'].sum().to_dict()
         m1, m2, m3, m4, m5 = st.columns(5)
-        m1.metric("🚢 Đi Biển", f"{total_sum.get('Đi Biển', 0)} n")
-        m2.metric("🏠 Nghỉ CA", f"{total_sum.get('CA', 0)} n")
-        m3.metric("🛠️ Làm WS", f"{total_sum.get('WS', 0)} n")
-        m4.metric("🏖️ Nghỉ NP", f"{total_sum.get('NP', 0)} n")
-        m5.metric("🏥 Nghỉ ỐM", f"{total_sum.get('ỐM', 0)} n")
+        m1.metric("🚢 Đi Biển", f"{total_sum.get('Đi Biển', 0)} ngay")
+        m2.metric("🏠 Nghỉ CA", f"{total_sum.get('CA', 0)} ngay")
+        m3.metric("🛠️ Làm WS", f"{total_sum.get('WS', 0)} ngay")
+        m4.metric("🏖️ Nghỉ NP", f"{total_sum.get('NP', 0)} ngay")
+        m5.metric("🏥 Nghỉ ỐM", f"{total_sum.get('ỐM', 0)} ngay")

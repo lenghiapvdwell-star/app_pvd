@@ -74,7 +74,11 @@ sheet_name = working_date.strftime("%m_%Y")
 curr_month, curr_year = working_date.month, working_date.year
 month_abbr = working_date.strftime("%b")
 
-# --- 5. HÀM TỰ ĐỘNG ENGINE (NÂNG CẤP AUTOFILL CHÍNH XÁC) ---
+# Định nghĩa các cột ngày cho tháng đang chọn
+num_days_curr = calendar.monthrange(curr_year, curr_month)[1]
+DATE_COLS = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(curr_year,curr_month,d).weekday()]})" for d in range(1, num_days_curr+1)]
+
+# --- 5. HÀM TỰ ĐỘNG ENGINE (GIỮ NGUYÊN) ---
 def auto_engine(df):
     hols = [
         date(2026,1,1),
@@ -83,38 +87,32 @@ def auto_engine(df):
     ]
     now = datetime.now()
     today = now.date()
-    num_days = calendar.monthrange(curr_year, curr_month)[1]
-    date_cols = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(curr_year,curr_month,d).weekday()]})" for d in range(1, num_days+1)]
     
     df_calc = df.copy()
     data_changed = False
     
     for idx, row in df_calc.iterrows():
         accrued = 0.0
-        # TÌM GIÁ TRỊ GẦN NHẤT CÓ DỮ LIỆU ĐỂ LÀM MỐC AUTOFILL
         current_last_val = ""
         
-        for col in date_cols:
+        for col in DATE_COLS:
+            if col not in df_calc.columns: continue
             d_num = int(col[:2])
             target_date = date(curr_year, curr_month, d_num)
             val = str(row.get(col, "")).strip()
             
-            # --- LOGIC AUTO-FILL: Nếu ô trống VÀ (là ngày quá khứ HOẶC hôm nay sau 6h sáng) ---
             if (not val or val == "") and (target_date < today or (target_date == today and now.hour >= 6)):
                 if current_last_val != "":
                     lv_up = current_last_val.upper()
                     is_sea = any(g.upper() in lv_up for g in st.session_state.GIANS)
-                    # Chỉ tự điền nếu trạng thái trước đó là Đi biển, CA hoặc WS
                     if is_sea or lv_up in ["CA", "WS"]:
                         val = current_last_val
                         df_calc.at[idx, col] = val
                         data_changed = True
             
-            # Cập nhật mốc giá trị gần nhất nếu ô hiện tại có dữ liệu (hoặc vừa được auto-fill)
             if val and val != "":
                 current_last_val = val
             
-            # --- QUY ƯỚC TÍNH CA ---
             v_up = val.upper()
             if v_up:
                 is_we = target_date.weekday() >= 5
@@ -126,20 +124,18 @@ def auto_engine(df):
                 elif v_up == "CA":
                     if not is_we and not is_ho: accrued -= 1.0
         
-        # Cập nhật số dư Quỹ CA Tổng
         ton_cu = float(row.get('CA Tháng Trước', 0))
         df_calc.at[idx, 'Quỹ CA Tổng'] = round(ton_cu + accrued, 1)
         
     return df_calc, data_changed
 
-# --- 6. LOAD DỮ LIỆU ---
+# --- 6. LOAD DỮ LIỆU (CẢI TIẾN HIỂN THỊ THÁNG MỚI) ---
 if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sheet_name:
     st.session_state.active_sheet = sheet_name
     if 'db' in st.session_state: del st.session_state.db
 
 if 'db' not in st.session_state:
     with st.spinner(f"🚀 Đang tải và kiểm tra dữ liệu {sheet_name}..."):
-        # Lấy tồn tháng trước
         prev_date = working_date.replace(day=1) - timedelta(days=1)
         prev_sheet = prev_date.strftime("%m_%Y")
         b_map = {}
@@ -152,26 +148,27 @@ if 'db' not in st.session_state:
         try:
             df_l = conn.read(worksheet=sheet_name, ttl=0).fillna("").replace(["nan", "NaN", "None"], "")
             if df_l.empty or len(df_l) < 5: raise ValueError
-            for idx, r in df_l.iterrows():
-                name = r['Họ và Tên']
-                if name in b_map: df_l.at[idx, 'CA Tháng Trước'] = float(b_map[name])
+            # Đảm bảo tháng cũ có đủ các cột ngày mới
+            for c in DATE_COLS:
+                if c not in df_l.columns: df_l[c] = ""
         except:
-            df_l = pd.DataFrame({
+            # Tạo bảng mới hoàn toàn cho tháng chưa có dữ liệu (Ví dụ Tháng 3)
+            init_data = {
                 'STT': range(1, len(NAMES_66) + 1), 'Họ và Tên': NAMES_66,
                 'Công ty': 'PVDWS', 'Chức danh': 'Casing crew', 'Job Detail': '',
-                'CA Tháng Trước': [float(b_map.get(n, 0.0)) for n in NAMES_66], 'Quỹ CA Tổng': 0.0
-            })
+                'CA Tháng Trước': [float(b_map.get(n, 0.0)) for n in NAMES_66], 
+                'Quỹ CA Tổng': 0.0
+            }
+            # Thêm các cột ngày trống vào bảng mới
+            for c in DATE_COLS: init_data[c] = ""
+            df_l = pd.DataFrame(init_data)
 
-        # Chạy engine để tự động điền ngày mới
         df_auto, has_updates = auto_engine(df_l)
         if has_updates: 
             save_to_cloud_silent(sheet_name, df_auto)
         st.session_state.db = df_auto
 
 # --- 7. TABS ---
-num_days = calendar.monthrange(curr_year, curr_month)[1]
-DATE_COLS = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(curr_year,curr_month,d).weekday()]})" for d in range(1, num_days+1)]
-
 t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ"])
 
 with t1:
@@ -180,9 +177,11 @@ with t1:
         bc1, bc2, bc3 = st.columns([1, 1, 1])
         with bc1:
             if st.button("📤 LƯU CLOUD", type="primary", use_container_width=True):
-                df_final, _ = auto_engine(st.session_state.db)
-                if save_to_cloud_silent(sheet_name, df_final):
-                    st.success("Đã lưu!"); time.sleep(0.5); st.rerun()
+                with st.spinner("Đang đồng bộ dữ liệu..."):
+                    df_final, _ = auto_engine(st.session_state.db)
+                    if save_to_cloud_silent(sheet_name, df_final):
+                        st.toast("✅ Đã lưu thành công lên Cloud!", icon="☁️")
+                        time.sleep(0.5); st.rerun()
         with bc2:
             if st.button("🔄 LÀM MỚI", use_container_width=True):
                 st.cache_data.clear(); del st.session_state.db; st.rerun()
@@ -196,7 +195,7 @@ with t1:
         with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH"):
             c1, c2 = st.columns([2, 1])
             f_staff = c1.multiselect("Nhân sự:", NAMES_66)
-            f_date = c2.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, num_days)))
+            f_date = c2.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, num_days_curr)))
             r2_1, r2_2, r2_3, r2_4 = st.columns(4)
             f_status = r2_1.selectbox("Trạng thái:", ["Xóa trắng", "Đi Biển", "CA", "WS", "NP", "Ốm"])
             f_val = r2_2.selectbox("Giàn:", st.session_state.GIANS) if f_status == "Đi Biển" else f_status
@@ -218,12 +217,15 @@ with t1:
                     df_recalc, _ = auto_engine(st.session_state.db)
                     st.session_state.db = df_recalc
                     save_to_cloud_silent(sheet_name, df_recalc)
-                    st.rerun()
+                    st.toast("⚡ Đã cập nhật nhanh thành công!")
+                    time.sleep(0.5); st.rerun()
 
     @st.fragment
     def render_main_table():
         all_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'CA Tháng Trước', 'Quỹ CA Tổng'] + DATE_COLS
-        display_df = st.session_state.db[[c for c in all_cols if c in st.session_state.db.columns]].fillna("")
+        # Chỉ lấy những cột thực sự tồn tại trong DataFrame
+        cols_to_show = [c for c in all_cols if c in st.session_state.db.columns]
+        display_df = st.session_state.db[cols_to_show].fillna("")
         
         ed_df = st.data_editor(
             display_df, use_container_width=True, height=600, hide_index=True,
@@ -237,14 +239,15 @@ with t1:
             st.session_state.db.update(ed_df)
             df_recalc, _ = auto_engine(st.session_state.db)
             st.session_state.db = df_recalc
-            save_to_cloud_silent(sheet_name, df_recalc)
-            st.toast("✅ Đã cập nhật quỹ CA!"); time.sleep(0.5); st.rerun()
+            if save_to_cloud_silent(sheet_name, df_recalc):
+                st.toast("✅ Đã lưu thay đổi bảng vào Cloud!"); time.sleep(0.5); st.rerun()
 
     render_controls()
     render_quick_update()
     render_main_table()
 
 with t2:
+    st.success(f"Dữ liệu đang được phân tích từ Cloud...")
     st.subheader(f"📊 Phân tích nhân sự năm {curr_year}")
     sel_name = st.selectbox("🔍 Chọn nhân sự:", NAMES_66)
     
@@ -289,3 +292,5 @@ with t2:
         m3.metric("🛠️ Làm WS", f"{total_sum.get('WS', 0)} ngay")
         m4.metric("🏖️ Nghỉ NP", f"{total_sum.get('NP', 0)} ngay")
         m5.metric("🏥 Nghỉ ỐM", f"{total_sum.get('ỐM', 0)} ngay")
+    else:
+        st.info("Chưa có dữ liệu hoạt động trong năm này.")

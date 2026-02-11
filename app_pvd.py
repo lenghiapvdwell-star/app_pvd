@@ -8,7 +8,7 @@ import os
 import time
 import plotly.express as px
 
-# --- 1. CẤU HÌNH ---
+# --- 1. CẤU HÌNH HỆ THỐNG ---
 st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 
 st.markdown("""
@@ -23,7 +23,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. HEADER ---
+# --- 2. GIAO DIỆN HEADER ---
 c_logo, _ = st.columns([1, 4])
 with c_logo:
     if os.path.exists("logo_pvd.png"):
@@ -33,7 +33,7 @@ with c_logo:
 
 st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
 
-# --- 3. KẾT NỐI ---
+# --- 3. KẾT NỐI VÀ HÀM LƯU TRỮ ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def save_to_cloud_silent(worksheet_name, df):
@@ -42,7 +42,8 @@ def save_to_cloud_silent(worksheet_name, df):
         conn.update(worksheet=worksheet_name, data=df_clean)
         st.cache_data.clear()
         return True
-    except:
+    except Exception as e:
+        st.error(f"Lỗi lưu Cloud: {e}")
         return False
 
 # --- 4. DANH MỤC CỐ ĐỊNH ---
@@ -66,6 +67,7 @@ with st.sidebar:
         st.session_state.GIANS.remove(del_gian)
         st.rerun()
 
+# --- 5. ĐIỀU KHIỂN THỜI GIAN ---
 _, c_mid_date, _ = st.columns([3.5, 2, 3.5])
 with c_mid_date:
     working_date = st.date_input("📅 CHỌN THÁNG LÀM VIỆC:", value=date.today(), key="date_selector")
@@ -74,11 +76,11 @@ sheet_name = working_date.strftime("%m_%Y")
 curr_month, curr_year = working_date.month, working_date.year
 month_abbr = working_date.strftime("%b")
 
-# Định nghĩa các cột ngày cho tháng đang chọn
+# Định nghĩa các cột ngày cho tháng hiện tại
 num_days_curr = calendar.monthrange(curr_year, curr_month)[1]
 DATE_COLS = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(curr_year,curr_month,d).weekday()]})" for d in range(1, num_days_curr+1)]
 
-# --- 5. HÀM TỰ ĐỘNG ENGINE (GIỮ NGUYÊN) ---
+# --- 6. ENGINE TỰ ĐỘNG (AUTOFILL & CALC) ---
 def auto_engine(df):
     hols = [
         date(2026,1,1),
@@ -96,11 +98,14 @@ def auto_engine(df):
         current_last_val = ""
         
         for col in DATE_COLS:
-            if col not in df_calc.columns: continue
+            if col not in df_calc.columns: 
+                df_calc[col] = "" # Đảm bảo cột tồn tại
+            
             d_num = int(col[:2])
             target_date = date(curr_year, curr_month, d_num)
             val = str(row.get(col, "")).strip()
             
+            # Logic Autofill: Nếu ô trống VÀ (Quá khứ HOẶC hôm nay >= 6h sáng)
             if (not val or val == "") and (target_date < today or (target_date == today and now.hour >= 6)):
                 if current_last_val != "":
                     lv_up = current_last_val.upper()
@@ -113,6 +118,7 @@ def auto_engine(df):
             if val and val != "":
                 current_last_val = val
             
+            # Tính toán Quỹ CA
             v_up = val.upper()
             if v_up:
                 is_we = target_date.weekday() >= 5
@@ -129,13 +135,14 @@ def auto_engine(df):
         
     return df_calc, data_changed
 
-# --- 6. LOAD DỮ LIỆU (CẢI TIẾN HIỂN THỊ THÁNG MỚI) ---
+# --- 7. TẢI DỮ LIỆU VÀ KÍCH HOẠT TỰ ĐỘNG ---
 if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sheet_name:
     st.session_state.active_sheet = sheet_name
     if 'db' in st.session_state: del st.session_state.db
 
 if 'db' not in st.session_state:
-    with st.spinner(f"🚀 Đang tải và kiểm tra dữ liệu {sheet_name}..."):
+    with st.spinner(f"🚀 Đang kiểm tra dữ liệu {sheet_name}..."):
+        # Lấy tồn tháng trước
         prev_date = working_date.replace(day=1) - timedelta(days=1)
         prev_sheet = prev_date.strftime("%m_%Y")
         b_map = {}
@@ -145,111 +152,108 @@ if 'db' not in st.session_state:
                 b_map = dict(zip(df_p['Họ và Tên'], df_p['Quỹ CA Tổng']))
         except: pass
 
+        # Đọc dữ liệu tháng hiện tại
         try:
             df_l = conn.read(worksheet=sheet_name, ttl=0).fillna("").replace(["nan", "NaN", "None"], "")
             if df_l.empty or len(df_l) < 5: raise ValueError
-            # Đảm bảo tháng cũ có đủ các cột ngày mới
+            # Đảm bảo đủ các cột ngày (quan trọng khi chuyển tháng)
             for c in DATE_COLS:
                 if c not in df_l.columns: df_l[c] = ""
         except:
-            # Tạo bảng mới hoàn toàn cho tháng chưa có dữ liệu (Ví dụ Tháng 3)
+            # Tạo mới hoàn toàn nếu chưa có sheet (Ví dụ sang tháng mới)
             init_data = {
                 'STT': range(1, len(NAMES_66) + 1), 'Họ và Tên': NAMES_66,
                 'Công ty': 'PVDWS', 'Chức danh': 'Casing crew', 'Job Detail': '',
                 'CA Tháng Trước': [float(b_map.get(n, 0.0)) for n in NAMES_66], 
                 'Quỹ CA Tổng': 0.0
             }
-            # Thêm các cột ngày trống vào bảng mới
             for c in DATE_COLS: init_data[c] = ""
             df_l = pd.DataFrame(init_data)
 
+        # Chạy Engine và ÉP LƯU CLOUD nếu có cập nhật tự động
         df_auto, has_updates = auto_engine(df_l)
         if has_updates: 
-            save_to_cloud_silent(sheet_name, df_auto)
+            if save_to_cloud_silent(sheet_name, df_auto):
+                st.toast(f"🤖 Đã tự động cập nhật ngày mới trên Cloud!", icon="✅")
         st.session_state.db = df_auto
 
-# --- 7. TABS ---
-t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ"])
+# --- 8. CÁC TAB CHỨC NĂNG ---
+t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG NHÂN SỰ", "📊 PHÂN TÍCH & BIỂU ĐỒ"])
 
 with t1:
-    @st.fragment
-    def render_controls():
-        bc1, bc2, bc3 = st.columns([1, 1, 1])
-        with bc1:
-            if st.button("📤 LƯU CLOUD", type="primary", use_container_width=True):
-                with st.spinner("Đang đồng bộ dữ liệu..."):
-                    df_final, _ = auto_engine(st.session_state.db)
-                    if save_to_cloud_silent(sheet_name, df_final):
-                        st.toast("✅ Đã lưu thành công lên Cloud!", icon="☁️")
-                        time.sleep(0.5); st.rerun()
-        with bc2:
-            if st.button("🔄 LÀM MỚI", use_container_width=True):
-                st.cache_data.clear(); del st.session_state.db; st.rerun()
-        with bc3:
-            buf = io.BytesIO()
-            st.session_state.db.to_excel(buf, index=False)
-            st.download_button("📥 XUẤT EXCEL", buf.getvalue(), f"PVD_{sheet_name}.xlsx", use_container_width=True)
-
-    @st.fragment
-    def render_quick_update():
-        with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH"):
-            c1, c2 = st.columns([2, 1])
-            f_staff = c1.multiselect("Nhân sự:", NAMES_66)
-            f_date = c2.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, num_days_curr)))
-            r2_1, r2_2, r2_3, r2_4 = st.columns(4)
-            f_status = r2_1.selectbox("Trạng thái:", ["Xóa trắng", "Đi Biển", "CA", "WS", "NP", "Ốm"])
-            f_val = r2_2.selectbox("Giàn:", st.session_state.GIANS) if f_status == "Đi Biển" else f_status
-            f_co = r2_3.selectbox("Cty:", ["Không đổi"] + COMPANIES)
-            f_ti = r2_4.selectbox("Chức danh:", ["Không đổi"] + TITLES)
-            if st.button("✅ ÁP DỤNG"):
-                if f_staff and isinstance(f_date, tuple) and len(f_date) == 2:
-                    for person in f_staff:
-                        idx_match = st.session_state.db.index[st.session_state.db['Họ và Tên'] == person]
-                        if not idx_match.empty:
-                            idx = idx_match[0]
-                            if f_co != "Không đổi": st.session_state.db.at[idx, 'Công ty'] = f_co
-                            if f_ti != "Không đổi": st.session_state.db.at[idx, 'Chức danh'] = f_ti
-                            for i in range((f_date[1] - f_date[0]).days + 1):
-                                d = f_date[0] + timedelta(days=i)
-                                if d.month == curr_month:
-                                    col_n_list = [c for c in DATE_COLS if c.startswith(f"{d.day:02d}/")]
-                                    if col_n_list: st.session_state.db.at[idx, col_n_list[0]] = "" if f_status == "Xóa trắng" else f_val
-                    df_recalc, _ = auto_engine(st.session_state.db)
-                    st.session_state.db = df_recalc
-                    save_to_cloud_silent(sheet_name, df_recalc)
-                    st.toast("⚡ Đã cập nhật nhanh thành công!")
+    # --- Điều khiển ---
+    bc1, bc2, bc3 = st.columns([1, 1, 1])
+    with bc1:
+        if st.button("📤 LƯU CLOUD THỦ CÔNG", type="primary", use_container_width=True):
+            with st.spinner("Đang đồng bộ..."):
+                df_final, _ = auto_engine(st.session_state.db)
+                if save_to_cloud_silent(sheet_name, df_final):
+                    st.toast("Đã lưu thành công!", icon="☁️")
                     time.sleep(0.5); st.rerun()
+    with bc2:
+        if st.button("🔄 LÀM MỚI DỮ LIỆU", use_container_width=True):
+            st.cache_data.clear(); del st.session_state.db; st.rerun()
+    with bc3:
+        buf = io.BytesIO()
+        st.session_state.db.to_excel(buf, index=False)
+        st.download_button("📥 XUẤT EXCEL", buf.getvalue(), f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
-    @st.fragment
-    def render_main_table():
-        all_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'CA Tháng Trước', 'Quỹ CA Tổng'] + DATE_COLS
-        # Chỉ lấy những cột thực sự tồn tại trong DataFrame
-        cols_to_show = [c for c in all_cols if c in st.session_state.db.columns]
-        display_df = st.session_state.db[cols_to_show].fillna("")
+    # --- Cập nhật nhanh ---
+    with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH (HÀNG LOẠT)"):
+        c1, c2 = st.columns([2, 1])
+        f_staff = c1.multiselect("Chọn nhân sự:", NAMES_66)
+        f_date = c2.date_input("Khoảng thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, num_days_curr)))
+        r2_1, r2_2, r2_3, r2_4 = st.columns(4)
+        f_status = r2_1.selectbox("Trạng thái:", ["Xóa trắng", "Đi Biển", "CA", "WS", "NP", "Ốm"])
+        f_val = r2_2.selectbox("Tên Giàn:", st.session_state.GIANS) if f_status == "Đi Biển" else f_status
+        f_co = r2_3.selectbox("Công ty:", ["Không đổi"] + COMPANIES)
+        f_ti = r2_4.selectbox("Chức danh:", ["Không đổi"] + TITLES)
         
-        ed_df = st.data_editor(
-            display_df, use_container_width=True, height=600, hide_index=True,
-            column_config={
-                "CA Tháng Trước": st.column_config.NumberColumn("Tồn cũ", format="%.1f"),
-                "Quỹ CA Tổng": st.column_config.NumberColumn("Số dư Quỹ", format="%.1f", disabled=True),
-                "STT": st.column_config.Column(width="small", disabled=True)
-            }
-        )
-        if st.button("💾 XÁC NHẬN CẬP NHẬT BẢNG", type="secondary", use_container_width=True):
-            st.session_state.db.update(ed_df)
-            df_recalc, _ = auto_engine(st.session_state.db)
-            st.session_state.db = df_recalc
-            if save_to_cloud_silent(sheet_name, df_recalc):
-                st.toast("✅ Đã lưu thay đổi bảng vào Cloud!"); time.sleep(0.5); st.rerun()
+        if st.button("✅ ÁP DỤNG CẬP NHẬT", use_container_width=True):
+            if f_staff and isinstance(f_date, tuple) and len(f_date) == 2:
+                for person in f_staff:
+                    idx_match = st.session_state.db.index[st.session_state.db['Họ và Tên'] == person]
+                    if not idx_match.empty:
+                        idx = idx_match[0]
+                        if f_co != "Không đổi": st.session_state.db.at[idx, 'Công ty'] = f_co
+                        if f_ti != "Không đổi": st.session_state.db.at[idx, 'Chức danh'] = f_ti
+                        for i in range((f_date[1] - f_date[0]).days + 1):
+                            d = f_date[0] + timedelta(days=i)
+                            if d.month == curr_month:
+                                col_target = [c for c in DATE_COLS if c.startswith(f"{d.day:02d}/")]
+                                if col_target: st.session_state.db.at[idx, col_target[0]] = "" if f_status == "Xóa trắng" else f_val
+                df_recalc, _ = auto_engine(st.session_state.db)
+                st.session_state.db = df_recalc
+                save_to_cloud_silent(sheet_name, df_recalc)
+                st.toast("Cập nhật thành công!")
+                time.sleep(0.5); st.rerun()
 
-    render_controls()
-    render_quick_update()
-    render_main_table()
+    # --- Bảng dữ liệu chính ---
+    st.markdown("### 📋 BẢNG ĐIỀU ĐỘNG CHI TIẾT")
+    all_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'CA Tháng Trước', 'Quỹ CA Tổng'] + DATE_COLS
+    cols_to_show = [c for c in all_cols if c in st.session_state.db.columns]
+    
+    ed_df = st.data_editor(
+        st.session_state.db[cols_to_show].fillna(""), 
+        use_container_width=True, height=600, hide_index=True,
+        column_config={
+            "CA Tháng Trước": st.column_config.NumberColumn("Tồn cũ", format="%.1f"),
+            "Quỹ CA Tổng": st.column_config.NumberColumn("Số dư Quỹ", format="%.1f", disabled=True),
+            "STT": st.column_config.Column(width="small", disabled=True),
+            "Họ và Tên": st.column_config.Column(disabled=True)
+        }
+    )
+    
+    if st.button("💾 XÁC NHẬN CẬP NHẬT BẢNG", type="secondary", use_container_width=True):
+        st.session_state.db.update(ed_df)
+        df_recalc, _ = auto_engine(st.session_state.db)
+        st.session_state.db = df_recalc
+        if save_to_cloud_silent(sheet_name, df_recalc):
+            st.toast("✅ Đã cập nhật và tính lại quỹ CA!"); time.sleep(0.5); st.rerun()
 
 with t2:
-    st.success(f"Dữ liệu đang được phân tích từ Cloud...")
-    st.subheader(f"📊 Phân tích nhân sự năm {curr_year}")
-    sel_name = st.selectbox("🔍 Chọn nhân sự:", NAMES_66)
+    st.subheader(f"📊 Phân tích hoạt động nhân sự năm {curr_year}")
+    sel_name = st.selectbox("🔍 Tìm kiếm nhân viên:", NAMES_66)
     
     @st.cache_data(ttl="2m")
     def get_person_yearly_recs(person_name, year):
@@ -287,10 +291,10 @@ with t2:
         
         total_sum = pdf.groupby('Loại')['Ngày'].sum().to_dict()
         m1, m2, m3, m4, m5 = st.columns(5)
-        m1.metric("🚢 Đi Biển", f"{total_sum.get('Đi Biển', 0)} ngay")
-        m2.metric("🏠 Nghỉ CA", f"{total_sum.get('CA', 0)} ngay")
-        m3.metric("🛠️ Làm WS", f"{total_sum.get('WS', 0)} ngay")
-        m4.metric("🏖️ Nghỉ NP", f"{total_sum.get('NP', 0)} ngay")
-        m5.metric("🏥 Nghỉ ỐM", f"{total_sum.get('ỐM', 0)} ngay")
+        m1.metric("🚢 Đi Biển", f"{total_sum.get('Đi Biển', 0)} ngày")
+        m2.metric("🏠 Nghỉ CA", f"{total_sum.get('CA', 0)} ngày")
+        m3.metric("🛠️ Làm WS", f"{total_sum.get('WS', 0)} ngày")
+        m4.metric("🏖️ Nghỉ NP", f"{total_sum.get('NP', 0)} ngày")
+        m5.metric("🏥 Nghỉ ỐM", f"{total_sum.get('ỐM', 0)} ngày")
     else:
-        st.info("Chưa có dữ liệu hoạt động trong năm này.")
+        st.info("Chưa có dữ liệu lịch sử cho nhân sự này.")

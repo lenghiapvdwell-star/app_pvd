@@ -100,20 +100,24 @@ def auto_engine(df):
             target_date = date(curr_year, curr_month, d_num)
             val = str(row.get(col, "")).strip()
             
-            if (not val or val == "") and (target_date < today or (target_date == today and now.hour >= 6)):
+            # KIỂM TRA ĐIỀN TỰ ĐỘNG (Auto-fill)
+            # Điều kiện: Ô trống VÀ (là ngày trong quá khứ HOẶC là hôm nay sau 6h sáng)
+            if (not val or val == "" or val.lower() == "nan") and (target_date < today or (target_date == today and now.hour >= 6)):
                 if current_last_val != "":
                     lv_up = current_last_val.upper()
+                    # Chỉ fill nếu trạng thái trước đó là Đi biển, CA hoặc WS
                     is_sea = any(g.upper() in lv_up for g in st.session_state.GIANS)
                     if is_sea or lv_up in ["CA", "WS"]:
                         val = current_last_val
                         df_calc.at[idx, col] = val
                         data_changed = True
             
-            if val and val != "":
+            if val and val != "" and val.lower() != "nan":
                 current_last_val = val
             
+            # TÍNH TOÁN QUỸ CA
             v_up = val.upper()
-            if v_up:
+            if v_up and v_up != "NAN":
                 is_we = target_date.weekday() >= 5
                 is_ho = target_date in hols
                 if any(g.upper() in v_up for g in st.session_state.GIANS):
@@ -123,7 +127,7 @@ def auto_engine(df):
                 elif v_up == "CA":
                     if not is_we and not is_ho: accrued -= 1.0
         
-        ton_cu = float(row.get('CA Tháng Trước', 0))
+        ton_cu = float(row.get('CA Tháng Trước', 0)) if row.get('CA Tháng Trước') else 0.0
         df_calc.at[idx, 'Quỹ CA Tổng'] = round(ton_cu + accrued, 1)
         
     return df_calc, data_changed

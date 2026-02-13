@@ -19,7 +19,9 @@ st.markdown("""
         text-align: center !important; text-shadow: 3px 3px 6px #000 !important;
         font-family: 'Arial Black', sans-serif !important;
     }
-    [data-testid="stMetricValue"] { font-size: 28px !important; font-weight: bold !important; }
+    .signature-section {
+        margin-top: 50px; text-align: center; font-weight: bold;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -53,22 +55,22 @@ if "GIANS" not in st.session_state:
     st.session_state.GIANS = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNLOD"]
 
 with st.sidebar:
-    st.header("⚙️ QUẢN LÝ GIÀN")
-    new_gian = st.text_input("Tên giàn mới:")
+    st.header("⚙️ QUẢN LÝ HỆ THỐNG")
+    new_gian = st.text_input("Thêm tên giàn mới:")
     if st.button("➕ Thêm Giàn", use_container_width=True):
         if new_gian and new_gian.strip().upper() not in st.session_state.GIANS:
             st.session_state.GIANS.append(new_gian.strip().upper())
             st.rerun()
     st.divider()
-    st.subheader("Danh sách giàn hiện có:")
-    st.write(", ".join(st.session_state.GIANS))
+    st.subheader("Trạng thái nhân sự:")
+    st.info("WS: Làm xưởng\nNP: Nghỉ phép\nCA: Nghỉ bù\nĐi biển: Tên giàn")
 
 NAMES_66 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong", "Nguyen Huu Phuc"]
 
 # --- 5. CHỌN THỜI GIAN ---
 _, c_mid_date, _ = st.columns([3.5, 2, 3.5])
 with c_mid_date:
-    working_date = st.date_input("📅 CHỌN THÁNG LÀM VIỆC:", value=date.today())
+    working_date = st.date_input("📅 THÁNG LÀM VIỆC:", value=date.today())
 
 sheet_name = working_date.strftime("%m_%Y")
 curr_month, curr_year = working_date.month, working_date.year
@@ -76,7 +78,7 @@ num_days_curr = calendar.monthrange(curr_year, curr_month)[1]
 month_abbr = working_date.strftime("%b")
 DATE_COLS = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(curr_year,curr_month,d).weekday()]})" for d in range(1, num_days_curr+1)]
 
-# --- 6. ENGINE AUTO-FILL REAL TIMES (CHUẨN BẢN TRƯỚC) ---
+# --- 6. ENGINE AUTO-FILL REAL TIMES (KHÔNG ĐỔI) ---
 def auto_engine(df, curr_year, curr_month, DATE_COLS):
     hols = [date(2026,1,1), date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19), date(2026,2,20), date(2026,4,26), date(2026,4,30), date(2026,5,1), date(2026,9,2)]
     now = datetime.now()
@@ -93,12 +95,10 @@ def auto_engine(df, curr_year, curr_month, DATE_COLS):
             target_date = date(curr_year, curr_month, d_num)
             val = str(row.get(col, "")).strip()
             
-            # --- LOGIC AUTO-FILL REAL TIME ---
-            # Nếu ô trống VÀ (là ngày trong quá khứ HOẶC là hôm nay sau 6h sáng)
+            # AUTO-FILL: Nếu trống và đã qua 6h sáng ngày hôm đó
             if (not val or val == "" or val.lower() == "nan") and (target_date < today or (target_date == today and now.hour >= 6)):
                 if current_last_val != "":
                     lv_up = current_last_val.upper()
-                    # Điền tiếp nếu phía trước là đi giàn, nghỉ CA hoặc làm xưởng WS
                     if any(g.upper() in lv_up for g in st.session_state.GIANS) or lv_up in ["CA", "WS"]:
                         val = current_last_val
                         df_calc.at[idx, col] = val
@@ -107,7 +107,7 @@ def auto_engine(df, curr_year, curr_month, DATE_COLS):
             if val and val != "" and val.lower() != "nan":
                 current_last_val = val
             
-            # --- QUY TẮC TÍNH CA ---
+            # TÍNH TOÁN QUỸ CA
             v_up = val.upper()
             if v_up and v_up != "NAN":
                 is_we = target_date.weekday() >= 5 
@@ -142,12 +142,12 @@ if 'db' not in st.session_state or st.session_state.get('active_sheet') != sheet
     st.session_state.active_sheet = sheet_name
 
 # --- 8. TABS GIAO DIỆN ---
-t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ"])
+t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG & BÁO CÁO", "📊 BIỂU ĐỒ PHÂN TÍCH"])
 
 with t1:
-    st.subheader("📝 BẢNG CHI TIẾT ĐIỀU ĐỘNG")
+    st.subheader("📝 BẢNG CHI TIẾT ĐIỀU ĐỘNG NHÂN SỰ")
     
-    # SỬA TRỰC TIẾP TRÊN BẢNG
+    # BẢNG DỮ LIỆU (Sửa trực tiếp)
     ed_df = st.data_editor(
         st.session_state.db, 
         use_container_width=True, 
@@ -160,29 +160,61 @@ with t1:
     )
 
     # NÚT XÁC NHẬN LƯU
-    if st.button("📤 XÁC NHẬN VÀ LƯU LÊN GOOGLE SHEETS", type="primary", use_container_width=True):
-        with st.spinner("Đang đồng bộ dữ liệu..."):
+    if st.button("📤 CẬP NHẬT VÀ LƯU LÊN GOOGLE SHEETS", type="primary", use_container_width=True):
+        with st.spinner("Đang lưu dữ liệu lên Cloud..."):
             st.session_state.db.update(ed_df)
             final_df, _ = auto_engine(st.session_state.db, curr_year, curr_month, DATE_COLS)
             if save_to_cloud_silent(sheet_name, final_df):
                 st.session_state.db = final_df
-                st.toast("✅ Đã cập nhật thành công!")
+                st.toast("✅ Đã đồng bộ thành công!")
                 time.sleep(1)
                 st.rerun()
 
-    # XUẤT EXCEL
     st.divider()
-    buf = io.BytesIO()
-    st.session_state.db.to_excel(buf, index=False)
-    st.download_button("📥 TẢI FILE EXCEL", buf.getvalue(), f"PVD_{sheet_name}.xlsx")
+
+    # --- PHẦN XUẤT EXCEL (GIỐNG BẢN TRƯỚC) ---
+    st.subheader("📥 XUẤT BÁO CÁO EXCEL")
+    c_ex1, c_ex2 = st.columns([1, 1])
+    with c_ex1:
+        # Xuất CSV (Nhẹ, nhanh)
+        csv_data = st.session_state.db.to_csv(index=False).encode('utf-8-sig')
+        st.download_button("📂 Xuất file CSV", data=csv_data, file_name=f"PVD_Report_{sheet_name}.csv", mime='text/csv', use_container_width=True)
+    with c_ex2:
+        # Xuất XLSX (Đẹp, đầy đủ)
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            st.session_state.db.to_excel(writer, index=False, sheet_name='Personnel')
+        st.download_button("📂 Xuất file EXCEL (XLSX)", data=output.getvalue(), file_name=f"PVD_Report_{sheet_name}.xlsx", mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
+
+    # --- PHẦN XÁC NHẬN (KÝ TÊN) ---
+    st.markdown("""
+        <div class="signature-section">
+            <table style="width:100%; border:none;">
+                <tr>
+                    <td style="width:33%;">NGƯỜI LẬP BIỂU</td>
+                    <td style="width:33%;">QUẢN LÝ TRỰC TIẾP</td>
+                    <td style="width:33%;">BAN GIÁM ĐỐC XÁC NHẬN</td>
+                </tr>
+                <tr style="height:100px;">
+                    <td></td><td></td><td></td>
+                </tr>
+                <tr>
+                    <td>(Ký và ghi rõ họ tên)</td>
+                    <td>(Ký và ghi rõ họ tên)</td>
+                    <td>(Ký và ghi rõ họ tên)</td>
+                </tr>
+            </table>
+        </div>
+    """, unsafe_allow_html=True)
 
 with t2:
     st.subheader(f"📊 Phân tích nhân sự {sheet_name}")
-    # Biểu đồ phân bổ trạng thái hôm nay
-    today_col = [c for c in DATE_COLS if c.startswith(datetime.now().strftime("%d/"))]
-    if today_col:
-        status_counts = st.session_state.db[today_col[0]].value_counts()
-        fig = px.pie(values=status_counts.values, names=status_counts.index, title="Tỉ lệ nhân sự ngày hôm nay")
+    # Biểu đồ tròn cho ngày hôm nay
+    day_now = datetime.now().day
+    col_name = [c for c in DATE_COLS if c.startswith(f"{day_now:02d}/")]
+    if col_name:
+        data_today = st.session_state.db[col_name[0]].value_counts()
+        fig = px.pie(values=data_today.values, names=data_today.index, title=f"Tình hình nhân sự ngày {col_name[0]}")
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("Chưa có dữ liệu biểu đồ cho ngày này.")
+        st.info("Dữ liệu biểu đồ sẽ cập nhật khi có thông tin ngày hiện tại.")

@@ -37,12 +37,17 @@ st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_a
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def save_to_cloud_silent(worksheet_name, df):
-    df_clean = df.fillna("").replace(["nan", "NaN", "None"], "")
+    # Ép kiểu về string để Google Sheets không bị lỗi định dạng
+    df_clean = df.fillna("").astype(str).replace(["nan", "NaN", "None"], "")
     try:
         conn.update(worksheet=worksheet_name, data=df_clean)
+        # Xóa cache để lần load sau lấy dữ liệu mới nhất
         st.cache_data.clear()
+        if 'db' in st.session_state:
+            del st.session_state.db
         return True
-    except:
+    except Exception as e:
+        st.error(f"Lỗi lưu Cloud: {e}")
         return False
 
 # --- 4. DANH MỤC CỐ ĐỊNH ---
@@ -77,7 +82,7 @@ month_abbr = working_date.strftime("%b")
 num_days_curr = calendar.monthrange(curr_year, curr_month)[1]
 DATE_COLS = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(curr_year,curr_month,d).weekday()]})" for d in range(1, num_days_curr+1)]
 
-# --- 5. HÀM TỰ ĐỘNG ENGINE ---
+# --- 5. HÀM TỰ ĐỘNG ENGINE (NÂNG CẤP) ---
 def auto_engine(df):
     hols = [
         date(2026,1,1),
@@ -100,22 +105,23 @@ def auto_engine(df):
             target_date = date(curr_year, curr_month, d_num)
             val = str(row.get(col, "")).strip()
             
-            # KIỂM TRA ĐIỀN TỰ ĐỘNG (Auto-fill)
-            # Điều kiện: Ô trống VÀ (là ngày trong quá khứ HOẶC là hôm nay sau 6h sáng)
-            if (not val or val == "" or val.lower() == "nan") and (target_date < today or (target_date == today and now.hour >= 6)):
-                if current_last_val != "":
-                    lv_up = current_last_val.upper()
-                    # Chỉ fill nếu trạng thái trước đó là Đi biển, CA hoặc WS
-                    is_sea = any(g.upper() in lv_up for g in st.session_state.GIANS)
-                    if is_sea or lv_up in ["CA", "WS"]:
-                        val = current_last_val
-                        df_calc.at[idx, col] = val
-                        data_changed = True
+            # KIỂM TRA ĐIỀN TỰ ĐỘNG (Nâng cấp Logic 3h sáng hôm sau)
+            # Điều kiện: Ô trống VÀ (Đã qua ngày đó HOẶC là hôm nay nhưng đã quá 3h sáng)
+            if (not val or val == "" or val.lower() == "nan"):
+                # Chỉ tự động điền nếu thời gian hiện tại đã vượt qua 3h sáng của ngày tiếp theo đối với target_date
+                if (now > datetime.combine(target_date + timedelta(days=1), datetime.min.time()).replace(hour=3)):
+                    if current_last_val != "":
+                        lv_up = current_last_val.upper()
+                        is_sea = any(g.upper() in lv_up for g in st.session_state.GIANS)
+                        if is_sea or lv_up in ["CA", "WS"]:
+                            val = current_last_val
+                            df_calc.at[idx, col] = val
+                            data_changed = True
             
             if val and val != "" and val.lower() != "nan":
                 current_last_val = val
             
-            # TÍNH TOÁN QUỸ CA
+            # TÍNH TOÁN QUỸ CA (Giữ nguyên)
             v_up = val.upper()
             if v_up and v_up != "NAN":
                 is_we = target_date.weekday() >= 5
@@ -138,7 +144,7 @@ if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sh
     if 'db' in st.session_state: del st.session_state.db
 
 if 'db' not in st.session_state:
-    with st.spinner(f"🚀 Đang tải và kiểm tra dữ liệu {sheet_name}..."):
+    with st.spinner(f"🚀 Đang tải dữ liệu {sheet_name}..."):
         prev_date = working_date.replace(day=1) - timedelta(days=1)
         prev_sheet = prev_date.strftime("%m_%Y")
         b_map = {}
@@ -174,25 +180,22 @@ t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ"])
 with t1:
     @st.fragment
     def render_controls():
-        bc1, bc2, bc3 = st.columns([1, 1, 1])
+        bc1, bc3 = st.columns([1, 1])
         with bc1:
-            if st.button("📤 LƯU CLOUD", type="primary", use_container_width=True):
+            if st.button("📤 LƯU TẤT CẢ LÊN CLOUD", type="primary", use_container_width=True):
                 with st.spinner("Đang đồng bộ dữ liệu..."):
                     df_final, _ = auto_engine(st.session_state.db)
                     if save_to_cloud_silent(sheet_name, df_final):
                         st.toast("✅ Đã lưu thành công lên Cloud!", icon="☁️")
                         time.sleep(0.5); st.rerun()
-        with bc2:
-            if st.button("🔄 LÀM MỚI", use_container_width=True):
-                st.cache_data.clear(); del st.session_state.db; st.rerun()
         with bc3:
             buf = io.BytesIO()
             st.session_state.db.to_excel(buf, index=False)
-            st.download_button("📥 XUẤT EXCEL", buf.getvalue(), f"PVD_{sheet_name}.xlsx", use_container_width=True)
+            st.download_button("📥 XUẤT FILE EXCEL", buf.getvalue(), f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
     @st.fragment
     def render_quick_update():
-        with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH"):
+        with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH (MULTIPLE SELECT)"):
             c1, c2 = st.columns([2, 1])
             f_staff = c1.multiselect("Nhân sự:", NAMES_66)
             f_date = c2.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, num_days_curr)))
@@ -201,7 +204,7 @@ with t1:
             f_val = r2_2.selectbox("Giàn:", st.session_state.GIANS) if f_status == "Đi Biển" else f_status
             f_co = r2_3.selectbox("Cty:", ["Không đổi"] + COMPANIES)
             f_ti = r2_4.selectbox("Chức danh:", ["Không đổi"] + TITLES)
-            if st.button("✅ ÁP DỤNG"):
+            if st.button("✅ ÁP DỤNG CẬP NHẬT"):
                 if f_staff and isinstance(f_date, tuple) and len(f_date) == 2:
                     for person in f_staff:
                         idx_match = st.session_state.db.index[st.session_state.db['Họ và Tên'] == person]
@@ -239,7 +242,7 @@ with t1:
             df_recalc, _ = auto_engine(st.session_state.db)
             st.session_state.db = df_recalc
             if save_to_cloud_silent(sheet_name, df_recalc):
-                st.toast("✅ Đã lưu thay đổi bảng vào Cloud!"); time.sleep(0.5); st.rerun()
+                st.success("✅ Đã đồng bộ dữ liệu mới nhất lên Cloud!"); time.sleep(0.8); st.rerun()
 
     render_controls()
     render_quick_update()
@@ -286,10 +289,10 @@ with t2:
         
         total_sum = pdf.groupby('Loại')['Ngày'].sum().to_dict()
         m1, m2, m3, m4, m5 = st.columns(5)
-        m1.metric("🚢 Đi Biển", f"{total_sum.get('Đi Biển', 0)} ngay")
-        m2.metric("🏠 Nghỉ CA", f"{total_sum.get('CA', 0)} ngay")
-        m3.metric("🛠️ Làm WS", f"{total_sum.get('WS', 0)} ngay")
-        m4.metric("🏖️ Nghỉ NP", f"{total_sum.get('NP', 0)} ngay")
-        m5.metric("🏥 Nghỉ ỐM", f"{total_sum.get('ỐM', 0)} ngay")
+        m1.metric("🚢 Đi Biển", f"{total_sum.get('Đi Biển', 0)} ngày")
+        m2.metric("🏠 Nghỉ CA", f"{total_sum.get('CA', 0)} ngày")
+        m3.metric("🛠️ Làm WS", f"{total_sum.get('WS', 0)} ngày")
+        m4.metric("🏖️ Nghỉ NP", f"{total_sum.get('NP', 0)} ngày")
+        m5.metric("🏥 Nghỉ ỐM", f"{total_sum.get('ỐM', 0)} ngày")
     else:
         st.info("Chưa có dữ liệu hoạt động trong năm này.")

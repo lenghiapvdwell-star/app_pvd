@@ -77,15 +77,20 @@ def auto_engine(df, curr_month, curr_year, DATE_COLS):
     today = now.date()
     df_calc = df.copy()
     
+    # Đảm bảo cột tồn tại
+    if 'Tồn cũ' not in df_calc.columns: df_calc['Tồn cũ'] = 0.0
+
     for idx, row in df_calc.iterrows():
         accrued = 0.0
         current_last_val = ""
         for col in DATE_COLS:
             if col not in df_calc.columns: continue
+            
             d_num = int(col[:2])
             target_date = date(curr_year, curr_month, d_num)
             val = str(row.get(col, "")).strip()
             
+            # Autofill 6AM logic
             if (not val or val == "" or val.lower() == "nan") and (target_date < today or (target_date == today and now.hour >= 6)):
                 if current_last_val != "":
                     lv_up = current_last_val.upper()
@@ -130,20 +135,20 @@ if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sh
 if 'db' not in st.session_state:
     with st.spinner(f"🚀 Đang tải dữ liệu {sheet_name}..."):
         try:
-            df_load = conn.read(worksheet=sheet_name, ttl="10s").fillna("")
-            # Chuẩn hóa tên cột nếu từ Cloud về là tên cũ
+            df_load = conn.read(worksheet=sheet_name, ttl="0s").fillna("")
+            # Đồng bộ tên cột nếu dữ liệu cũ trên cloud chưa đổi tên
             df_load = df_load.rename(columns={'CA Tháng Trước': 'Tồn cũ', 'Quỹ CA Tổng': 'Tổng CA'})
             if df_load.empty or len(df_load) < 5: raise ValueError
         except:
-            # TỰ ĐỘNG LẤY TỒN CŨ TỪ THÁNG TRƯỚC NẾU LÀ THÁNG MỚI CHƯA CÓ DỮ LIỆU
+            # LẤY TỔN CŨ TỪ THÁNG TRƯỚC
             prev_month_date = working_date.replace(day=1) - timedelta(days=1)
             prev_sheet = prev_month_date.strftime("%m_%Y")
             ton_cu_dict = {}
             try:
-                df_prev = conn.read(worksheet=prev_sheet, ttl="10s").fillna("")
-                # Lấy cột Tổng CA (hoặc Quỹ CA Tổng) của tháng trước làm Tồn cũ tháng này
-                col_name = 'Tổng CA' if 'Tổng CA' in df_prev.columns else 'Quỹ CA Tổng'
-                ton_cu_dict = dict(zip(df_prev['Họ và Tên'], df_prev[col_name]))
+                df_prev = conn.read(worksheet=prev_sheet, ttl="0s").fillna("")
+                # Lấy kết quả "Tổng CA" của tháng trước làm "Tồn cũ" tháng này
+                col_prev = 'Tổng CA' if 'Tổng CA' in df_prev.columns else 'Quỹ CA Tổng'
+                ton_cu_dict = dict(zip(df_prev['Họ và Tên'], df_prev[col_prev]))
             except: pass
 
             init_data = {'STT': range(1, len(NAMES_66) + 1), 'Họ và Tên': NAMES_66, 'Công ty': 'PVDWS', 'Chức danh': 'Casing crew', 'Job Detail': '', 
@@ -175,7 +180,6 @@ with t1:
     @st.fragment
     def data_section():
         st.markdown("#### 🛠️ Cập nhật & Bảng điều động")
-        
         with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH"):
             c1, c2 = st.columns([2, 1])
             f_staff = c1.multiselect("Nhân sự:", NAMES_66, key="quick_staff")
@@ -186,7 +190,7 @@ with t1:
             f_co = r2_3.selectbox("Công ty:", ["Không đổi"] + COMPANIES, key="quick_co")
             f_ti = r2_4.selectbox("Chức danh:", ["Không đổi"] + TITLES, key="quick_title")
             
-            if st.button("✅ ÁP DỤNG", use_container_width=True, key="btn_apply"):
+            if st.button("✅ ÁP DỤNG", use_container_width=True):
                 if f_staff and isinstance(f_date, tuple) and len(f_date) == 2:
                     for person in f_staff:
                         idx_list = st.session_state.db.index[st.session_state.db['Họ và Tên'] == person].tolist()
@@ -194,9 +198,8 @@ with t1:
                             i = idx_list[0]
                             if f_co != "Không đổi": st.session_state.db.at[i, 'Công ty'] = f_co
                             if f_ti != "Không đổi": st.session_state.db.at[i, 'Chức danh'] = f_ti
-                            start_d, end_d = f_date
-                            curr_d = start_d
-                            while curr_d <= end_d:
+                            curr_d = f_date[0]
+                            while curr_d <= f_date[1]:
                                 if curr_d.month == curr_month:
                                     col_t = [c for c in DATE_COLS if c.startswith(f"{curr_d.day:02d}/")]
                                     if col_t: st.session_state.db.at[i, col_t[0]] = "" if f_status == "Xóa trắng" else f_val
@@ -205,8 +208,7 @@ with t1:
                     st.rerun()
 
         st.divider()
-        
-        # Cấu hình các cột hiển thị
+        # Hiển thị bảng
         all_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'Tồn cũ', 'Tổng CA'] + DATE_COLS
         edited_df = st.data_editor(
             st.session_state.db[all_cols],
@@ -215,12 +217,11 @@ with t1:
             hide_index=True,
             key="editor_fragment",
             column_config={
-                "Tổng CA": st.column_config.NumberColumn("Tổng CA", format="%.1f", disabled=True),
-                "Tồn cũ": st.column_config.NumberColumn("Tồn cũ", format="%.1f"),
+                "Tổng CA": st.column_config.NumberColumn("Tổng CA", format="%.1f", help="Tổng số CA có thể nghỉ", disabled=True),
+                "Tồn cũ": st.column_config.NumberColumn("Tồn cũ", format="%.1f", help="Số CA từ tháng cũ mang sang"),
                 "STT": st.column_config.Column(width="small", disabled=True)
             }
         )
-        
         if not edited_df.equals(st.session_state.db[all_cols]):
             st.session_state.db.update(edited_df)
             st.session_state.db = auto_engine(st.session_state.db, curr_month, curr_year, DATE_COLS)
@@ -229,31 +230,28 @@ with t1:
 
 with t2:
     st.subheader(f"📊 Phân tích hoạt động cá nhân - Năm {curr_year}")
-    sel_name = st.selectbox("🔍 Chọn nhân sự để xem báo cáo:", NAMES_66, key="report_staff")
-    
-    if st.button("🔄 TẢI/CẬP NHẬT DỮ LIỆU BIỂU ĐỒ", use_container_width=True):
+    sel_name = st.selectbox("🔍 Chọn nhân sự:", NAMES_66, key="report_staff")
+    if st.button("🔄 CẬP NHẬT BIỂU ĐỒ"):
         results = []
-        with st.spinner("Đang quét dữ liệu 12 tháng..."):
-            for m in range(1, 13):
-                m_s = f"{m:02d}_{curr_year}"
-                try:
-                    df_m = conn.read(worksheet=m_s, ttl="5m").fillna("")
-                    df_p = df_m[df_m['Họ và Tên'] == sel_name]
-                    if not df_p.empty:
-                        row_p = df_p.iloc[0]
-                        for col in df_m.columns:
-                            if "/" in col:
-                                v = str(row_p[col]).strip().upper()
-                                if v and v not in ["", "NAN", "NONE"]:
-                                    cat = None
-                                    if any(g.upper() in v for g in st.session_state.GIANS): cat = "Đi Biển"
-                                    elif v == "CA": cat = "Nghỉ CA"
-                                    elif v == "WS": cat = "Làm xưởng (WS)"
-                                    elif v == "NP": cat = "Nghỉ phép (NP)"
-                                    elif v == "ỐM": cat = "Nghỉ ốm"
-                                    if cat:
-                                        results.append({"Tháng": f"Tháng {m}", "Loại": cat, "Ngày": 1})
-                except: continue
+        for m in range(1, 13):
+            m_s = f"{m:02d}_{curr_year}"
+            try:
+                df_m = conn.read(worksheet=m_s, ttl="5m").fillna("")
+                df_p = df_m[df_m['Họ và Tên'] == sel_name]
+                if not df_p.empty:
+                    row_p = df_p.iloc[0]
+                    for col in df_m.columns:
+                        if "/" in col:
+                            v = str(row_p[col]).strip().upper()
+                            if v and v not in ["", "NAN", "NONE"]:
+                                cat = None
+                                if any(g.upper() in v for g in st.session_state.GIANS): cat = "Đi Biển"
+                                elif v == "CA": cat = "Nghỉ CA"
+                                elif v == "WS": cat = "Làm xưởng (WS)"
+                                elif v == "NP": cat = "Nghỉ phép (NP)"
+                                elif v == "ỐM": cat = "Nghỉ ốm"
+                                if cat: results.append({"Tháng": f"Tháng {m}", "Loại": cat, "Ngày": 1})
+            except: continue
         
         if results:
             pdf = pd.DataFrame(results)
@@ -271,5 +269,3 @@ with t2:
             stat_table = stat_table[[f"Tháng {i}" for i in range(1, 13)]]
             stat_table['TỔNG CẢ NĂM'] = stat_table.sum(axis=1)
             st.table(stat_table)
-        else:
-            st.info(f"Chưa có dữ liệu lịch sử cho nhân sự {sel_name}")

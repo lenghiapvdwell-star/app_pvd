@@ -39,7 +39,9 @@ def save_to_cloud(worksheet_name, df):
     if df.empty:
         st.error("Lỗi: Dữ liệu trống!")
         return False
-    df_clean = df.fillna("").replace(["nan", "NaN", "None"], "")
+    # Loại bỏ các dòng hoàn toàn trống (không có tên nhân viên) trước khi lưu
+    df_to_save = df[df['Họ và Tên'].str.strip() != ""].copy()
+    df_clean = df_to_save.fillna("").replace(["nan", "NaN", "None"], "")
     try:
         conn.update(worksheet=worksheet_name, data=df_clean)
         st.cache_data.clear()
@@ -68,7 +70,8 @@ with st.sidebar:
 
 COMPANIES = ["PVDWS", "OWS", "National", "Baker Hughes", "Schlumberger", "Halliburton"]
 TITLES = ["Casing crew", "CRTI LD", "CRTI SP", "SOLID", "MUDCL", "UNDERRM", "PPLS", "HAMER"]
-NAMES_66 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong", "Nguyen Huu Phuc"]
+# Danh sách gốc (chỉ dùng nếu Cloud trống hoàn toàn)
+NAMES_BASE = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong", "Nguyen Huu Phuc"]
 
 # --- 5. ENGINE TÍNH TOÁN ---
 def auto_engine(df, curr_month, curr_year, DATE_COLS):
@@ -77,20 +80,21 @@ def auto_engine(df, curr_month, curr_year, DATE_COLS):
     today = now.date()
     df_calc = df.copy()
     
-    # Đảm bảo cột tồn tại
     if 'Tồn cũ' not in df_calc.columns: df_calc['Tồn cũ'] = 0.0
 
     for idx, row in df_calc.iterrows():
+        # Bỏ qua dòng trống hoàn toàn (không có tên)
+        if not str(row.get('Họ và Tên', '')).strip():
+            continue
+            
         accrued = 0.0
         current_last_val = ""
         for col in DATE_COLS:
             if col not in df_calc.columns: continue
-            
             d_num = int(col[:2])
             target_date = date(curr_year, curr_month, d_num)
             val = str(row.get(col, "")).strip()
             
-            # Autofill 6AM logic
             if (not val or val == "" or val.lower() == "nan") and (target_date < today or (target_date == today and now.hour >= 6)):
                 if current_last_val != "":
                     lv_up = current_last_val.upper()
@@ -136,25 +140,37 @@ if 'db' not in st.session_state:
     with st.spinner(f"🚀 Đang tải dữ liệu {sheet_name}..."):
         try:
             df_load = conn.read(worksheet=sheet_name, ttl="0s").fillna("")
-            # Đồng bộ tên cột nếu dữ liệu cũ trên cloud chưa đổi tên
             df_load = df_load.rename(columns={'CA Tháng Trước': 'Tồn cũ', 'Quỹ CA Tổng': 'Tổng CA'})
-            if df_load.empty or len(df_load) < 5: raise ValueError
+            if df_load.empty: raise ValueError
         except:
-            # LẤY TỔN CŨ TỪ THÁNG TRƯỚC
             prev_month_date = working_date.replace(day=1) - timedelta(days=1)
             prev_sheet = prev_month_date.strftime("%m_%Y")
             ton_cu_dict = {}
+            # Thử lấy danh sách tên từ tháng trước nếu có
+            current_names = NAMES_BASE
             try:
                 df_prev = conn.read(worksheet=prev_sheet, ttl="0s").fillna("")
-                # Lấy kết quả "Tổng CA" của tháng trước làm "Tồn cũ" tháng này
                 col_prev = 'Tổng CA' if 'Tổng CA' in df_prev.columns else 'Quỹ CA Tổng'
                 ton_cu_dict = dict(zip(df_prev['Họ và Tên'], df_prev[col_prev]))
+                # Cập nhật danh sách tên từ dữ liệu thực tế tháng trước (bao gồm người mới đã thêm)
+                current_names = [n for n in df_prev['Họ và Tên'].tolist() if str(n).strip()]
             except: pass
 
-            init_data = {'STT': range(1, len(NAMES_66) + 1), 'Họ và Tên': NAMES_66, 'Công ty': 'PVDWS', 'Chức danh': 'Casing crew', 'Job Detail': '', 
-                         'Tồn cũ': [ton_cu_dict.get(name, 0.0) for name in NAMES_66], 'Tổng CA': 0.0}
+            init_data = {'STT': range(1, len(current_names) + 1), 
+                         'Họ và Tên': current_names, 
+                         'Công ty': 'PVDWS', 'Chức danh': 'Casing crew', 'Job Detail': '',  
+                         'Tồn cũ': [ton_cu_dict.get(name, 0.0) for name in current_names], 
+                         'Tổng CA': 0.0}
             for c in DATE_COLS: init_data[c] = ""
             df_load = pd.DataFrame(init_data)
+
+        # --- LOGIC THÊM 3 DÒNG TRỐNG ---
+        # Kiểm tra xem có cần bổ sung dòng trống để nhập nhân viên mới không
+        empty_rows_needed = 3
+        for _ in range(empty_rows_needed):
+            new_row = {col: "" for col in df_load.columns}
+            new_row['STT'] = "" # Để trống STT cho dòng mới
+            df_load = pd.concat([df_load, pd.DataFrame([new_row])], ignore_index=True)
         
         st.session_state.db = auto_engine(df_load, curr_month, curr_year, DATE_COLS)
 
@@ -168,21 +184,26 @@ with t1:
             with st.spinner("⏳ Đang đồng bộ..."):
                 final_df = auto_engine(st.session_state.db, curr_month, curr_year, DATE_COLS)
                 if save_to_cloud(sheet_name, final_df):
-                    st.session_state.db = final_df
-                    st.success("Đã đồng bộ thành công!")
+                    # Sau khi lưu, tải lại để app tự tạo 3 dòng trống mới
+                    del st.session_state.db
+                    st.success("Đã đồng bộ và cập nhật danh sách!")
                     time.sleep(0.5)
                     st.rerun()
     with bc2:
+        # Khi xuất Excel, ta lọc bỏ các dòng trống ở cuối
+        export_df = st.session_state.db[st.session_state.db['Họ và Tên'].str.strip() != ""].copy()
         buf = io.BytesIO()
-        st.session_state.db.to_excel(buf, index=False)
+        export_df.to_excel(buf, index=False)
         st.download_button("📥 XUẤT EXCEL", buf.getvalue(), f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
     @st.fragment
     def data_section():
         st.markdown("#### 🛠️ Cập nhật & Bảng điều động")
+        # Giữ nguyên Công cụ nhập nhanh...
         with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH"):
+            active_names = [n for n in st.session_state.db['Họ và Tên'].tolist() if str(n).strip()]
             c1, c2 = st.columns([2, 1])
-            f_staff = c1.multiselect("Nhân sự:", NAMES_66, key="quick_staff")
+            f_staff = c1.multiselect("Nhân sự:", active_names, key="quick_staff")
             f_date = c2.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, num_days_curr)), key="quick_date")
             r2_1, r2_2, r2_3, r2_4 = st.columns(4)
             f_status = r2_1.selectbox("Trạng thái:", ["Xóa trắng", "Đi Biển", "CA", "WS", "NP", "Ốm"], key="quick_status")
@@ -208,8 +229,11 @@ with t1:
                     st.rerun()
 
         st.divider()
-        # Hiển thị bảng
         all_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'Tồn cũ', 'Tổng CA'] + DATE_COLS
+        
+        # Hướng dẫn nhỏ cho người dùng
+        st.caption("💡 Mẹo: Nhập tên vào 3 dòng cuối cùng để thêm nhân viên mới.")
+        
         edited_df = st.data_editor(
             st.session_state.db[all_cols],
             use_container_width=True,
@@ -217,20 +241,25 @@ with t1:
             hide_index=True,
             key="editor_fragment",
             column_config={
-                "Tổng CA": st.column_config.NumberColumn("Tổng CA", format="%.1f", help="Tổng số CA có thể nghỉ", disabled=True),
-                "Tồn cũ": st.column_config.NumberColumn("Tồn cũ", format="%.1f", help="Số CA từ tháng cũ mang sang"),
-                "STT": st.column_config.Column(width="small", disabled=True)
+                "Tổng CA": st.column_config.NumberColumn("Tổng CA", format="%.1f", disabled=True),
+                "Tồn cũ": st.column_config.NumberColumn("Tồn cũ", format="%.1f"),
+                "STT": st.column_config.Column(width="small", disabled=True),
+                "Họ và Tên": st.column_config.TextColumn("Họ và Tên", help="Nhập tên để thêm nhân sự mới")
             }
         )
+        
         if not edited_df.equals(st.session_state.db[all_cols]):
             st.session_state.db.update(edited_df)
             st.session_state.db = auto_engine(st.session_state.db, curr_month, curr_year, DATE_COLS)
 
     data_section()
 
+# --- TAB 2: BIỂU ĐỒ (Giữ nguyên) ---
 with t2:
     st.subheader(f"📊 Phân tích hoạt động cá nhân - Năm {curr_year}")
-    sel_name = st.selectbox("🔍 Chọn nhân sự:", NAMES_66, key="report_staff")
+    # Lấy danh sách tên thực tế (không lấy dòng trống) để hiển thị trong selectbox
+    names_for_chart = [n for n in st.session_state.db['Họ và Tên'].tolist() if str(n).strip()]
+    sel_name = st.selectbox("🔍 Chọn nhân sự:", names_for_chart, key="report_staff")
     if st.button("🔄 CẬP NHẬT BIỂU ĐỒ"):
         results = []
         for m in range(1, 13):
@@ -250,7 +279,7 @@ with t2:
                                 elif v == "WS": cat = "Làm xưởng (WS)"
                                 elif v == "NP": cat = "Nghỉ phép (NP)"
                                 elif v == "ỐM": cat = "Nghỉ ốm"
-                                if cat: results.append({"Tháng": f"Tháng {m}", "Loại": cat, "Ngày": 1})
+                                if cat: results.append({"Tháng": f"Tháng {m}", "Loại": cat, "Day": 1})
             except: continue
         
         if results:

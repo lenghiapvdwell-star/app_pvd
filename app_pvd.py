@@ -86,7 +86,6 @@ def auto_engine(df, curr_month, curr_year, DATE_COLS):
             target_date = date(curr_year, curr_month, d_num)
             val = str(row.get(col, "")).strip()
             
-            # Autofill logic 6h AM
             if (not val or val == "" or val.lower() == "nan") and (target_date < today or (target_date == today and now.hour >= 6)):
                 if current_last_val != "":
                     lv_up = current_last_val.upper()
@@ -108,8 +107,8 @@ def auto_engine(df, curr_month, curr_year, DATE_COLS):
                 elif v_up == "CA":
                     if not is_we and not is_ho: accrued -= 1.0
         
-        ton_cu = pd.to_numeric(row.get('CA Tháng Trước', 0), errors='coerce') or 0.0
-        df_calc.at[idx, 'Quỹ CA Tổng'] = round(ton_cu + accrued, 1)
+        ton_cu = pd.to_numeric(row.get('Tồn cũ', 0), errors='coerce') or 0.0
+        df_calc.at[idx, 'Tổng CA'] = round(ton_cu + accrued, 1)
     return df_calc
 
 # --- 6. CHỌN THÁNG ---
@@ -132,9 +131,23 @@ if 'db' not in st.session_state:
     with st.spinner(f"🚀 Đang tải dữ liệu {sheet_name}..."):
         try:
             df_load = conn.read(worksheet=sheet_name, ttl="10s").fillna("")
+            # Chuẩn hóa tên cột nếu từ Cloud về là tên cũ
+            df_load = df_load.rename(columns={'CA Tháng Trước': 'Tồn cũ', 'Quỹ CA Tổng': 'Tổng CA'})
             if df_load.empty or len(df_load) < 5: raise ValueError
         except:
-            init_data = {'STT': range(1, len(NAMES_66) + 1), 'Họ và Tên': NAMES_66, 'Công ty': 'PVDWS', 'Chức danh': 'Casing crew', 'Job Detail': '', 'CA Tháng Trước': 0.0, 'Quỹ CA Tổng': 0.0}
+            # TỰ ĐỘNG LẤY TỒN CŨ TỪ THÁNG TRƯỚC NẾU LÀ THÁNG MỚI CHƯA CÓ DỮ LIỆU
+            prev_month_date = working_date.replace(day=1) - timedelta(days=1)
+            prev_sheet = prev_month_date.strftime("%m_%Y")
+            ton_cu_dict = {}
+            try:
+                df_prev = conn.read(worksheet=prev_sheet, ttl="10s").fillna("")
+                # Lấy cột Tổng CA (hoặc Quỹ CA Tổng) của tháng trước làm Tồn cũ tháng này
+                col_name = 'Tổng CA' if 'Tổng CA' in df_prev.columns else 'Quỹ CA Tổng'
+                ton_cu_dict = dict(zip(df_prev['Họ và Tên'], df_prev[col_name]))
+            except: pass
+
+            init_data = {'STT': range(1, len(NAMES_66) + 1), 'Họ và Tên': NAMES_66, 'Công ty': 'PVDWS', 'Chức danh': 'Casing crew', 'Job Detail': '', 
+                         'Tồn cũ': [ton_cu_dict.get(name, 0.0) for name in NAMES_66], 'Tổng CA': 0.0}
             for c in DATE_COLS: init_data[c] = ""
             df_load = pd.DataFrame(init_data)
         
@@ -148,7 +161,6 @@ with t1:
     with bc1:
         if st.button("📤 LƯU TẤT CẢ LÊN CLOUD", type="primary", use_container_width=True):
             with st.spinner("⏳ Đang đồng bộ..."):
-                # Trước khi lưu, tính toán lại lần cuối
                 final_df = auto_engine(st.session_state.db, curr_month, curr_year, DATE_COLS)
                 if save_to_cloud(sheet_name, final_df):
                     st.session_state.db = final_df
@@ -160,12 +172,10 @@ with t1:
         st.session_state.db.to_excel(buf, index=False)
         st.download_button("📥 XUẤT EXCEL", buf.getvalue(), f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
-    # FRAGMENT để bao bọc bảng dữ liệu giúp sửa ô ko bị reload toàn trang
     @st.fragment
     def data_section():
         st.markdown("#### 🛠️ Cập nhật & Bảng điều động")
         
-        # Công cụ cập nhật nhanh bên trong Fragment
         with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH"):
             c1, c2 = st.columns([2, 1])
             f_staff = c1.multiselect("Nhân sự:", NAMES_66, key="quick_staff")
@@ -196,8 +206,8 @@ with t1:
 
         st.divider()
         
-        # Data Editor chính
-        all_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'CA Tháng Trước', 'Quỹ CA Tổng'] + DATE_COLS
+        # Cấu hình các cột hiển thị
+        all_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'Tồn cũ', 'Tổng CA'] + DATE_COLS
         edited_df = st.data_editor(
             st.session_state.db[all_cols],
             use_container_width=True,
@@ -205,16 +215,14 @@ with t1:
             hide_index=True,
             key="editor_fragment",
             column_config={
-                "Quỹ CA Tổng": st.column_config.NumberColumn("Số dư Quỹ", format="%.1f", disabled=True),
-                "CA Tháng Trước": st.column_config.NumberColumn("Tồn cũ", format="%.1f"),
+                "Tổng CA": st.column_config.NumberColumn("Tổng CA", format="%.1f", disabled=True),
+                "Tồn cũ": st.column_config.NumberColumn("Tồn cũ", format="%.1f"),
                 "STT": st.column_config.Column(width="small", disabled=True)
             }
         )
         
-        # Cập nhật session_state từ thay đổi trên bảng mà KHÔNG RERUN toàn trang
         if not edited_df.equals(st.session_state.db[all_cols]):
             st.session_state.db.update(edited_df)
-            # Tự động tính lại quỹ CA khi người dùng nhập dữ liệu
             st.session_state.db = auto_engine(st.session_state.db, curr_month, curr_year, DATE_COLS)
 
     data_section()
@@ -229,7 +237,6 @@ with t2:
             for m in range(1, 13):
                 m_s = f"{m:02d}_{curr_year}"
                 try:
-                    # Đọc dữ liệu từng tháng từ Cloud
                     df_m = conn.read(worksheet=m_s, ttl="5m").fillna("")
                     df_p = df_m[df_m['Họ và Tên'] == sel_name]
                     if not df_p.empty:
@@ -250,7 +257,6 @@ with t2:
         
         if results:
             pdf = pd.DataFrame(results)
-            # 1. Biểu đồ cột chồng
             summary = pdf.groupby(['Tháng', 'Loại']).size().reset_index(name='Số Ngày')
             fig = px.bar(summary, x="Tháng", y="Số Ngày", color="Loại", text="Số Ngày", 
                          barmode="stack", category_orders={"Tháng": [f"Tháng {i}" for i in range(1, 13)]},
@@ -258,21 +264,12 @@ with t2:
                          color_discrete_map={"Đi Biển": "#00f2ff", "Nghỉ CA": "#ffaa00", "Làm xưởng (WS)": "#a6a6a6", "Nghỉ phép (NP)": "#00ff00", "Nghỉ ốm": "#ff4b4b"})
             st.plotly_chart(fig, use_container_width=True)
             
-            # 2. Bảng tổng hợp chi tiết có cột TỔNG NĂM
             st.markdown("### 📝 Bảng tổng hợp số ngày chi tiết")
             stat_table = summary.pivot(index='Loại', columns='Tháng', values='Số Ngày').fillna(0).astype(int)
-            
-            # Đảm bảo đủ các tháng từ 1-12 trong bảng
             for i in range(1, 13):
-                m_col = f"Tháng {i}"
-                if m_col not in stat_table.columns:
-                    stat_table[m_col] = 0
-            
-            # Sắp xếp cột theo thứ tự tháng
+                if f"Tháng {i}" not in stat_table.columns: stat_table[f"Tháng {i}"] = 0
             stat_table = stat_table[[f"Tháng {i}" for i in range(1, 13)]]
-            # Tính tổng hàng (Tổng cả năm cho mỗi loại hình)
             stat_table['TỔNG CẢ NĂM'] = stat_table.sum(axis=1)
-            
             st.table(stat_table)
         else:
-            st.info(f"Chưa có dữ liệu lịch sử cho nhân sự {sel_name} trong năm {curr_year}")
+            st.info(f"Chưa có dữ liệu lịch sử cho nhân sự {sel_name}")

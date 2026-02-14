@@ -221,7 +221,7 @@ with t2:
                             cat = None
                             if any(g.upper() in v for g in st.session_state.GIANS): cat = "Đi Biển"
                             elif v == "CA": cat = "Nghỉ CA"
-                            elif v == "WS": cat = "Chờ việc (WS)"
+                            elif v == "WS": cat = "Làm xưởng (WS)"
                             elif v == "NP": cat = "Nghỉ phép (NP)"
                             elif v == "ỐM": cat = "Nghỉ ốm"
                             
@@ -244,7 +244,7 @@ with t2:
                      color_discrete_map={
                          "Đi Biển": "#00f2ff",
                          "Nghỉ CA": "#ffaa00",
-                         "Chờ việc (WS)": "#a6a6a6",
+                         "Làm xưởng (WS)": "#a6a6a6",
                          "Nghỉ phép (NP)": "#00ff00",
                          "Nghỉ ốm": "#ff4b4b"
                      })

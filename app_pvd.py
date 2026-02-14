@@ -36,11 +36,9 @@ st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_a
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def save_to_cloud(worksheet_name, df):
-    """Hàm lưu dữ liệu có kiểm tra lỗi để tránh mất thông tin"""
     if df.empty:
         st.error("Lỗi: Dữ liệu trống, không thể lưu!")
         return False
-    
     df_clean = df.fillna("").replace(["nan", "NaN", "None"], "")
     try:
         conn.update(worksheet=worksheet_name, data=df_clean)
@@ -50,9 +48,32 @@ def save_to_cloud(worksheet_name, df):
         st.error(f"Lỗi kết nối khi lưu: {e}")
         return False
 
-# --- 4. DANH MỤC CỐ ĐỊNH ---
+# --- 4. DANH MỤC CỐ ĐỊNH & QUẢN LÝ GIÀN ---
 if "GIANS" not in st.session_state:
     st.session_state.GIANS = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNLOD"]
+
+with st.sidebar:
+    st.header("⚙️ QUẢN LÝ GIÀN KHOAN")
+    
+    # Khu vực thêm giàn
+    new_g = st.text_input("Tên giàn mới:").strip().upper()
+    if st.button("➕ THÊM GIÀN", use_container_width=True):
+        if new_g and new_g not in st.session_state.GIANS:
+            st.session_state.GIANS.append(new_g)
+            st.success(f"Đã thêm {new_g}")
+            st.rerun()
+            
+    st.divider()
+    
+    # Khu vực xóa giàn
+    if st.session_state.GIANS:
+        del_g = st.selectbox("Chọn giàn muốn xóa:", st.session_state.GIANS)
+        if st.button("❌ XÓA GIÀN ĐANG CHỌN", use_container_width=True):
+            st.session_state.GIANS.remove(del_g)
+            st.warning(f"Đã xóa {del_g}")
+            st.rerun()
+    
+    st.write(f"Danh sách hiện tại: {', '.join(st.session_state.GIANS)}")
 
 COMPANIES = ["PVDWS", "OWS", "National", "Baker Hughes", "Schlumberger", "Halliburton"]
 TITLES = ["Casing crew", "CRTI LD", "CRTI SP", "SOLID", "MUDCL", "UNDERRM", "PPLS", "HAMER"]
@@ -69,18 +90,15 @@ def auto_engine(df, curr_month, curr_year, DATE_COLS):
     for idx, row in df_calc.iterrows():
         accrued = 0.0
         current_last_val = ""
-        
         for col in DATE_COLS:
             if col not in df_calc.columns: continue
             d_num = int(col[:2])
             target_date = date(curr_year, curr_month, d_num)
             val = str(row.get(col, "")).strip()
             
-            # Autofill lúc 6h sáng: Nếu ngày đã qua hoặc là hôm nay (sau 6h) mà chưa có dữ liệu
             if (not val or val == "" or val.lower() == "nan") and (target_date < today or (target_date == today and now.hour >= 6)):
                 if current_last_val != "":
                     lv_up = current_last_val.upper()
-                    # Chỉ fill nếu trước đó là đi biển, CA hoặc WS
                     if any(g.upper() in lv_up for g in st.session_state.GIANS) or lv_up in ["CA", "WS"]:
                         val = current_last_val
                         df_calc.at[idx, col] = val
@@ -89,28 +107,19 @@ def auto_engine(df, curr_month, curr_year, DATE_COLS):
             if val and val != "" and val.lower() != "nan":
                 current_last_val = val
             
-            # --- LUẬT TÍNH CA ---
             v_up = val.upper()
             if v_up:
-                is_we = target_date.weekday() >= 5 # Thứ 7, CN
-                is_ho = target_date in hols       # Ngày lễ
-                
-                # 1. Đi biển mới được cộng CA
+                is_we = target_date.weekday() >= 5
+                is_ho = target_date in hols
                 if any(g.upper() in v_up for g in st.session_state.GIANS):
-                    if is_ho: accrued += 2.0    # Lễ: +2.0
-                    elif is_we: accrued += 1.0  # Thứ 7, CN: +1.0
-                    else: accrued += 0.5        # Ngày thường: +0.5
-                
-                # 2. Nghỉ CA vào ngày thường mới bị trừ
+                    if is_ho: accrued += 2.0
+                    elif is_we: accrued += 1.0
+                    else: accrued += 0.5
                 elif v_up == "CA":
-                    if not is_we and not is_ho: 
-                        accrued -= 1.0
-                
-                # 3. Các trường hợp Lễ, Làm xưởng (WS), Cuối tuần, Nghỉ phép, Nghỉ ốm: KHÔNG TRỪ CA
+                    if not is_we and not is_ho: accrued -= 1.0
         
         ton_cu = pd.to_numeric(row.get('CA Tháng Trước', 0), errors='coerce') or 0.0
         df_calc.at[idx, 'Quỹ CA Tổng'] = round(ton_cu + accrued, 1)
-        
     return df_calc, data_changed
 
 # --- 6. GIAO DIỆN CHỌN THÁNG ---
@@ -127,9 +136,7 @@ DATE_COLS = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(
 # --- 7. TẢI DỮ LIỆU ---
 if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sheet_name:
     st.session_state.active_sheet = sheet_name
-    # Khi đổi tháng, xóa cache 'db' để tải tháng mới từ cloud
-    if 'db' in st.session_state: 
-        del st.session_state.db
+    if 'db' in st.session_state: del st.session_state.db
 
 if 'db' not in st.session_state:
     with st.spinner(f"🚀 Đang tải dữ liệu {sheet_name}..."):
@@ -140,46 +147,36 @@ if 'db' not in st.session_state:
             init_data = {'STT': range(1, len(NAMES_66) + 1), 'Họ và Tên': NAMES_66, 'Công ty': 'PVDWS', 'Chức danh': 'Casing crew', 'Job Detail': '', 'CA Tháng Trước': 0.0, 'Quỹ CA Tổng': 0.0}
             for c in DATE_COLS: init_data[c] = ""
             df_load = pd.DataFrame(init_data)
-
-        # Chạy engine lần đầu khi tải
         df_auto, has_updates = auto_engine(df_load, curr_month, curr_year, DATE_COLS)
-        if has_updates: 
-            save_to_cloud(sheet_name, df_auto)
+        if has_updates: save_to_cloud(sheet_name, df_auto)
         st.session_state.db = df_auto
 
 # --- 8. TABS ---
 t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ"])
 
 with t1:
-    # Nút bấm lưu và xuất excel
     bc1, bc2 = st.columns([1, 1])
     with bc1:
         if st.button("📤 LƯU TẤT CẢ LÊN CLOUD", type="primary", use_container_width=True):
             with st.spinner("Đang đồng bộ..."):
-                # Tính toán lại trước khi lưu
                 df_to_save, _ = auto_engine(st.session_state.db, curr_month, curr_year, DATE_COLS)
                 if save_to_cloud(sheet_name, df_to_save):
                     st.session_state.db = df_to_save
                     st.toast("✅ Đã lưu và đồng bộ thành công!")
-                    time.sleep(0.5)
-                    st.rerun()
+                    time.sleep(0.5); st.rerun()
     with bc2:
-        buf = io.BytesIO()
-        st.session_state.db.to_excel(buf, index=False)
+        buf = io.BytesIO(); st.session_state.db.to_excel(buf, index=False)
         st.download_button("📥 XUẤT EXCEL", buf.getvalue(), f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
-    # Cập nhật nhanh
     with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH"):
         c1, c2 = st.columns([2, 1])
         f_staff = c1.multiselect("Chọn nhân sự:", NAMES_66)
         f_date = c2.date_input("Khoảng thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, num_days_curr)))
-        
         r2_1, r2_2, r2_3, r2_4 = st.columns(4)
         f_status = r2_1.selectbox("Trạng thái:", ["Xóa trắng", "Đi Biển", "CA", "WS", "NP", "Ốm"])
         f_val = r2_2.selectbox("Giàn:", st.session_state.GIANS) if f_status == "Đi Biển" else f_status
         f_co = r2_3.selectbox("Công ty:", ["Không đổi"] + COMPANIES)
         f_ti = r2_4.selectbox("Chức danh:", ["Không đổi"] + TITLES)
-        
         if st.button("✅ ÁP DỤNG CẬP NHẬT NHANH", use_container_width=True):
             if f_staff and isinstance(f_date, tuple) and len(f_date) == 2:
                 for person in f_staff:
@@ -188,49 +185,33 @@ with t1:
                         idx = idx_match[0]
                         if f_co != "Không đổi": st.session_state.db.at[idx, 'Công ty'] = f_co
                         if f_ti != "Không đổi": st.session_state.db.at[idx, 'Chức danh'] = f_ti
-                        
                         start_d, end_d = f_date
                         curr_d = start_d
                         while curr_d <= end_d:
                             if curr_d.month == curr_month:
                                 col_target = [c for c in DATE_COLS if c.startswith(f"{curr_d.day:02d}/")]
-                                if col_target:
-                                    st.session_state.db.at[idx, col_target[0]] = "" if f_status == "Xóa trắng" else f_val
+                                if col_target: st.session_state.db.at[idx, col_target[0]] = "" if f_status == "Xóa trắng" else f_val
                             curr_d += timedelta(days=1)
-                
-                # Tính lại CA và lưu luôn
                 df_recalc, _ = auto_engine(st.session_state.db, curr_month, curr_year, DATE_COLS)
                 if save_to_cloud(sheet_name, df_recalc):
                     st.session_state.db = df_recalc
                     st.toast("⚡ Đã cập nhật nhanh thành công!")
-                    time.sleep(0.5)
-                    st.rerun()
+                    time.sleep(0.5); st.rerun()
 
     st.divider()
-
-    # Bảng chỉnh sửa chính
     all_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'CA Tháng Trước', 'Quỹ CA Tổng'] + DATE_COLS
     display_df = st.session_state.db.reindex(columns=all_cols).fillna("")
-
-    ed_df = st.data_editor(
-        display_df, 
-        use_container_width=True, 
-        height=600, 
-        hide_index=True,
+    ed_df = st.data_editor(display_df, use_container_width=True, height=600, hide_index=True,
         column_config={
             "Quỹ CA Tổng": st.column_config.NumberColumn("Số dư Quỹ", format="%.1f", disabled=True),
             "CA Tháng Trước": st.column_config.NumberColumn("Tồn cũ", format="%.1f"),
             "STT": st.column_config.Column(width="small", disabled=True)
-        }
-    )
-    # Cập nhật session_state từ thay đổi trên bảng
-    if not ed_df.equals(display_df):
-        st.session_state.db.update(ed_df)
+        })
+    if not ed_df.equals(display_df): st.session_state.db.update(ed_df)
 
 with t2:
     st.subheader(f"📊 Phân tích hoạt động cá nhân - Năm {curr_year}")
     sel_name = st.selectbox("🔍 Chọn nhân sự để xem báo cáo:", NAMES_66)
-    
     results = []
     for m in range(1, 13):
         m_s = f"{m:02d}_{curr_year}"
@@ -249,27 +230,15 @@ with t2:
                             elif v == "WS": cat = "Làm xưởng (WS)"
                             elif v == "NP": cat = "Nghỉ phép (NP)"
                             elif v == "ỐM": cat = "Nghỉ ốm"
-                            if cat:
-                                results.append({"Tháng": f"Tháng {m}", "Loại": cat, "Ngày": 1})
+                            if cat: results.append({"Tháng": f"Tháng {m}", "Loại": cat, "Ngày": 1})
         except: continue
-    
     if results:
-        pdf = pd.DataFrame(results)
-        summary = pdf.groupby(['Tháng', 'Loại']).size().reset_index(name='Số Ngày')
-        
-        fig = px.bar(summary, x="Tháng", y="Số Ngày", color="Loại", text="Số Ngày",
-                     barmode="stack", category_orders={"Tháng": [f"Tháng {i}" for i in range(1, 13)]},
-                     template="plotly_dark",
-                     color_discrete_map={
-                         "Đi Biển": "#00f2ff", "Nghỉ CA": "#ffaa00", "Làm xưởng (WS)": "#a6a6a6",
-                         "Nghỉ phép (NP)": "#00ff00", "Nghỉ ốm": "#ff4b4b"
-                     })
-        fig.update_traces(textposition='inside')
-        st.plotly_chart(fig, use_container_width=True)
-        
+        pdf = pd.DataFrame(results); summary = pdf.groupby(['Tháng', 'Loại']).size().reset_index(name='Số Ngày')
+        fig = px.bar(summary, x="Tháng", y="Số Ngày", color="Loại", text="Số Ngày", barmode="stack", 
+                     category_orders={"Tháng": [f"Tháng {i}" for i in range(1, 13)]}, template="plotly_dark",
+                     color_discrete_map={"Đi Biển": "#00f2ff", "Nghỉ CA": "#ffaa00", "Làm xưởng (WS)": "#a6a6a6", "Nghỉ phép (NP)": "#00ff00", "Nghỉ ốm": "#ff4b4b"})
+        fig.update_traces(textposition='inside'); st.plotly_chart(fig, use_container_width=True)
         st.markdown("### 📝 Bảng tổng hợp số ngày chi tiết")
         stat_table = summary.pivot(index='Loại', columns='Tháng', values='Số Ngày').fillna(0).astype(int)
-        stat_table['TỔNG CẢ NĂM'] = stat_table.sum(axis=1)
-        st.table(stat_table)
-    else:
-        st.info(f"Chưa có dữ liệu cho nhân sự {sel_name}")
+        stat_table['TỔNG CẢ NĂM'] = stat_table.sum(axis=1); st.table(stat_table)
+    else: st.info(f"Chưa có dữ liệu cho nhân sự {sel_name}")

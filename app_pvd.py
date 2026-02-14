@@ -137,7 +137,6 @@ if 'db' not in st.session_state:
 t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ"])
 
 with t1:
-    # --- ĐIỀU KHIỂN (Đã bỏ nút Làm mới) ---
     bc1, bc2 = st.columns([1, 1])
     with bc1:
         if st.button("📤 LƯU TẤT CẢ LÊN CLOUD", type="primary", use_container_width=True):
@@ -152,7 +151,6 @@ with t1:
         st.session_state.db.to_excel(buf, index=False)
         st.download_button("📥 XUẤT EXCEL", buf.getvalue(), f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
-    # --- CÔNG CỤ CẬP NHẬT NHANH ---
     with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH"):
         c1, c2 = st.columns([2, 1])
         f_staff = c1.multiselect("Chọn nhân sự:", NAMES_66)
@@ -187,7 +185,6 @@ with t1:
 
     st.divider()
 
-    # --- BẢNG CHỈNH SỬA CHÍNH ---
     all_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'CA Tháng Trước', 'Quỹ CA Tổng'] + DATE_COLS
     display_df = st.session_state.db.reindex(columns=all_cols).fillna("")
 
@@ -202,40 +199,66 @@ with t1:
             "STT": st.column_config.Column(width="small", disabled=True)
         }
     )
-    
-    # Cập nhật session state khi người dùng gõ vào bảng
     st.session_state.db.update(ed_df)
 
 with t2:
     st.subheader(f"📊 Phân tích hoạt động cá nhân - Năm {curr_year}")
-    sel_name = st.selectbox("🔍 Chọn nhân sự:", NAMES_66)
+    sel_name = st.selectbox("🔍 Chọn nhân sự để xem báo cáo:", NAMES_66)
     
     results = []
+    # Quét dữ liệu từ tháng 1 đến tháng 12
     for m in range(1, 13):
         m_s = f"{m:02d}_{curr_year}"
         try:
-            df_m = conn.read(worksheet=m_s, ttl="5m").fillna("")
+            df_m = conn.read(worksheet=m_s, ttl="1m").fillna("")
             df_p = df_m[df_m['Họ và Tên'] == sel_name]
             if not df_p.empty:
                 row_p = df_p.iloc[0]
                 for col in df_m.columns:
                     if "/" in col:
                         v = str(row_p[col]).strip().upper()
-                        if v and v not in ["", "NAN"]:
+                        if v and v not in ["", "NAN", "NONE"]:
                             cat = None
                             if any(g.upper() in v for g in st.session_state.GIANS): cat = "Đi Biển"
-                            elif v == "CA": cat = "CA"
-                            elif v == "WS": cat = "WS"
-                            elif v == "NP": cat = "NP"
-                            if cat: results.append({"Tháng": f"T{m}", "Loại": cat, "Ngày": 1})
-        except: continue
+                            elif v == "CA": cat = "Nghỉ CA"
+                            elif v == "WS": cat = "Chờ việc (WS)"
+                            elif v == "NP": cat = "Nghỉ phép (NP)"
+                            elif v == "ỐM": cat = "Nghỉ ốm"
+                            
+                            if cat:
+                                results.append({"Tháng": f"Tháng {m}", "Loại": cat, "Ngày": 1})
+        except:
+            continue
     
     if results:
         pdf = pd.DataFrame(results)
-        summary = pdf.groupby(['Tháng', 'Loại']).size().reset_index(name='Ngày')
-        fig = px.bar(summary, x="Tháng", y="Ngày", color="Loại", barmode="stack",
-                     category_orders={"Tháng": [f"T{i}" for i in range(1, 13)]},
-                     template="plotly_dark")
+        # Nhóm dữ liệu để vẽ biểu đồ
+        summary = pdf.groupby(['Tháng', 'Loại']).size().reset_index(name='Số Ngày')
+        
+        # Biểu đồ cột có hiện số liệu trên đầu
+        fig = px.bar(summary, x="Tháng", y="Số Ngày", color="Loại", 
+                     text="Số Ngày", # Hiển thị con số trực tiếp trên biểu đồ
+                     barmode="stack",
+                     category_orders={"Tháng": [f"Tháng {i}" for i in range(1, 13)]},
+                     template="plotly_dark",
+                     color_discrete_map={
+                         "Đi Biển": "#00f2ff",
+                         "Nghỉ CA": "#ffaa00",
+                         "Chờ việc (WS)": "#a6a6a6",
+                         "Nghỉ phép (NP)": "#00ff00",
+                         "Nghỉ ốm": "#ff4b4b"
+                     })
+        
+        fig.update_traces(textposition='inside') # Đưa số vào trong cột cho gọn
         st.plotly_chart(fig, use_container_width=True)
+        
+        # Bảng thống kê chi tiết phía dưới
+        st.markdown("### 📝 Bảng tổng hợp số ngày chi tiết")
+        stat_table = summary.pivot(index='Loại', columns='Tháng', values='Số Ngày').fillna(0).astype(int)
+        
+        # Thêm cột tổng cộng cả năm
+        stat_table['TỔNG CẢ NĂM'] = stat_table.sum(axis=1)
+        
+        st.table(stat_table)
     else:
-        st.info("Chưa có dữ liệu cho nhân sự này.")
+        st.info(f"Chưa có dữ liệu hoạt động của **{sel_name}** trong năm {curr_year}.")

@@ -137,8 +137,8 @@ if 'db' not in st.session_state:
 t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ"])
 
 with t1:
-    # --- ĐƯA ĐIỀU KHIỂN LÊN ĐẦU ---
-    bc1, bc2, bc3 = st.columns([1, 1, 1])
+    # --- ĐIỀU KHIỂN (Đã bỏ nút Làm mới) ---
+    bc1, bc2 = st.columns([1, 1])
     with bc1:
         if st.button("📤 LƯU TẤT CẢ LÊN CLOUD", type="primary", use_container_width=True):
             with st.spinner("Đang đồng bộ..."):
@@ -148,16 +148,11 @@ with t1:
                     st.toast("✅ Đã lưu thành công!", icon="🚀")
                     time.sleep(0.5); st.rerun()
     with bc2:
-        if st.button("🔄 LÀM MỚI DỮ LIỆU", use_container_width=True):
-            st.cache_data.clear()
-            if 'db' in st.session_state: del st.session_state.db
-            st.rerun()
-    with bc3:
         buf = io.BytesIO()
         st.session_state.db.to_excel(buf, index=False)
         st.download_button("📥 XUẤT EXCEL", buf.getvalue(), f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
-    # --- CÔNG CỤ CẬP NHẬT NHANH (QUAY TRỞ LẠI) ---
+    # --- CÔNG CỤ CẬP NHẬT NHANH ---
     with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH"):
         c1, c2 = st.columns([2, 1])
         f_staff = c1.multiselect("Chọn nhân sự:", NAMES_66)
@@ -210,20 +205,6 @@ with t1:
     
     # Cập nhật session state khi người dùng gõ vào bảng
     st.session_state.db.update(ed_df)
-
-    # Phần xác nhận ký tên
-    st.markdown("""
-        <div style="margin-top: 30px; text-align: center; font-weight: bold;">
-            <table style="width:100%; border:none; color: white;">
-                <tr>
-                    <td style="width:33%;">NGƯỜI LẬP BIỂU</td>
-                    <td style="width:33%;">QUẢN LÝ TRỰC TIẾP</td>
-                    <td style="width:33%;">BAN GIÁM ĐỐC</td>
-                </tr>
-                <tr style="height:80px;"><td></td><td></td><td></td></tr>
-            </table>
-        </div>
-    """, unsafe_allow_html=True)
 
 with t2:
     st.subheader(f"📊 Phân tích hoạt động cá nhân - Năm {curr_year}")

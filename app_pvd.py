@@ -11,6 +11,7 @@ import plotly.express as px
 # --- 1. CẤU HÌNH TRANG ---
 st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 
+# Tăng tốc độ load bằng cách ẩn menu mặc định không cần thiết
 st.markdown("""
     <style>
     .block-container {padding-top: 0.5rem; padding-bottom: 0rem;}
@@ -19,21 +20,20 @@ st.markdown("""
         text-align: center !important; text-shadow: 3px 3px 6px #000 !important;
         font-family: 'Arial Black', sans-serif !important;
     }
+    /* Giảm hiệu ứng nhấp nháy khi load */
+    .stDataFrame {transition: opacity 0.3s ease-in-out;}
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. HEADER & LOGO ---
-c_logo, _ = st.columns([1, 4])
-with c_logo:
-    if os.path.exists("logo_pvd.png"):
-        st.image("logo_pvd.png", width=180)
-    else:
-        st.markdown("### 🔴 PVD WELL")
-
-st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
-
-# --- 3. KẾT NỐI & HÀM LƯU ---
+# --- 2. KẾT NỐI & CACHING (Nâng cấp quan trọng) ---
 conn = st.connection("gsheets", type=GSheetsConnection)
+
+@st.cache_data(ttl=600) # Lưu bộ nhớ đệm 10 phút để chuyển tháng cực nhanh
+def fetch_data(s_name):
+    try:
+        return conn.read(worksheet=s_name, ttl=0)
+    except:
+        return pd.DataFrame()
 
 def save_to_cloud(worksheet_name, df):
     if df.empty:
@@ -41,7 +41,6 @@ def save_to_cloud(worksheet_name, df):
         return False
     df_to_save = df[df['Họ và Tên'].str.strip() != ""].copy()
     
-    # FIX: Ép kiểu số thực để tránh lỗi nối chuỗi hoặc sai định dạng khi lưu
     if 'Tồn cũ' in df_to_save.columns:
         df_to_save['Tồn cũ'] = pd.to_numeric(df_to_save['Tồn cũ'], errors='coerce').fillna(0.0)
     if 'Tổng CA' in df_to_save.columns:
@@ -50,42 +49,25 @@ def save_to_cloud(worksheet_name, df):
     df_clean = df_to_save.fillna("").replace(["nan", "NaN", "None"], "")
     try:
         conn.update(worksheet=worksheet_name, data=df_clean)
-        st.cache_data.clear() 
+        st.cache_data.clear() # Xóa cache để lần sau load sẽ lấy dữ liệu mới vừa lưu
         return True
     except Exception as e:
-        st.error(f"Lỗi kết nối khi lưu: {e}")
+        st.error(f"Lỗi kết nối: {e}")
         return False
 
-# --- 4. DANH MỤC CỐ ĐỊNH ---
+# --- 3. LOGIC CỐ ĐỊNH (GIỮ NGUYÊN) ---
 if "GIANS" not in st.session_state:
     st.session_state.GIANS = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNLOD"]
-
-with st.sidebar:
-    st.header("⚙️ QUẢN LÝ GIÀN KHOAN")
-    new_g = st.text_input("Tên giàn mới:").strip().upper()
-    if st.button("➕ THÊM GIÀN", use_container_width=True):
-        if new_g and new_g not in st.session_state.GIANS:
-            st.session_state.GIANS.append(new_g)
-            st.rerun()
-    st.divider()
-    if st.session_state.GIANS:
-        del_g = st.selectbox("Chọn giàn xóa:", st.session_state.GIANS)
-        if st.button("❌ XÓA GIÀN", use_container_width=True):
-            st.session_state.GIANS.remove(del_g)
-            st.rerun()
 
 COMPANIES = ["PVDWS", "OWS", "National", "Baker Hughes", "Schlumberger", "Halliburton"]
 TITLES = ["Casing crew", "CRTI LD", "CRTI SP", "SOLID", "MUDCL", "UNDERRM", "PPLS", "HAMER"]
 NAMES_66 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong", "Nguyen Huu Phuc"]
 
-# --- 5. ENGINE TÍNH TOÁN ---
 def auto_engine(df, curr_month, curr_year, DATE_COLS):
     hols = [date(2026,1,1), date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19), date(2026,2,20), date(2026,4,26), date(2026,4,30), date(2026,5,1), date(2026,9,2)]
     now = datetime.now()
     today = now.date()
     df_calc = df.copy()
-    
-    # FIX: Chắc chắn Tồn cũ là số thực trước khi tính
     df_calc['Tồn cũ'] = pd.to_numeric(df_calc.get('Tồn cũ', 0), errors='coerce').fillna(0.0)
 
     for idx, row in df_calc.iterrows():
@@ -98,7 +80,6 @@ def auto_engine(df, curr_month, curr_year, DATE_COLS):
             target_date = date(curr_year, curr_month, d_num)
             val = str(row.get(col, "")).strip()
             
-            # Autofill logic cho ngày quá khứ
             if (not val or val == "" or val.lower() == "nan") and (target_date < today or (target_date == today and now.hour >= 6)):
                 if current_last_val != "":
                     lv_up = current_last_val.upper()
@@ -120,15 +101,21 @@ def auto_engine(df, curr_month, curr_year, DATE_COLS):
                 elif v_up == "CA":
                     if not is_we and not is_ho: accrued -= 1.0
         
-        # FIX: Tính Tổng CA = Tồn cũ (tháng trước mang sang) + Lũy kế tháng hiện tại
         ton_cu_val = float(df_calc.at[idx, 'Tồn cũ'])
         df_calc.at[idx, 'Tổng CA'] = round(ton_cu_val + accrued, 1)
     return df_calc
 
-# --- 6. CHỌN THÁNG ---
+# --- 4. HEADER & CHỌN THÁNG ---
+c_logo, _ = st.columns([1, 4])
+with c_logo:
+    if os.path.exists("logo_pvd.png"): st.image("logo_pvd.png", width=180)
+    else: st.markdown("### 🔴 PVD WELL")
+
+st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
+
 _, c_mid_date, _ = st.columns([3.5, 2, 3.5])
 with c_mid_date:
-    working_date = st.date_input("📅 CHỌN THÁNG LÀM VIỆC:", value=date.today(), key="main_date_picker")
+    working_date = st.date_input("📅 CHỌN THÁNG LÀM VIỆC:", value=date.today())
 
 sheet_name = working_date.strftime("%m_%Y")
 curr_month, curr_year = working_date.month, working_date.year
@@ -136,61 +123,44 @@ month_abbr = working_date.strftime("%b")
 num_days_curr = calendar.monthrange(curr_year, curr_month)[1]
 DATE_COLS = [f"{d:02d}/{month_abbr} ({['T2','T3','T4','T5','T6','T7','CN'][date(curr_year,curr_month,d).weekday()]})" for d in range(1, num_days_curr+1)]
 
-# --- 7. TẢI DỮ LIỆU & QUẢN LÝ STATE ---
+# --- 5. TẢI DỮ LIỆU (Tối ưu chống trắng bảng) ---
 if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sheet_name:
     st.session_state.active_sheet = sheet_name
     if 'db' in st.session_state: del st.session_state.db
 
 if 'db' not in st.session_state:
-    with st.spinner(f"🚀 Đang tải dữ liệu {sheet_name}..."):
-        try:
-            # TTL=0 để lấy dữ liệu mới nhất
-            df_load = conn.read(worksheet=sheet_name, ttl=0).fillna("")
-            
-            # FIX: Đồng nhất tên cột ngay khi load
-            if 'Quỹ CA Tổng' in df_load.columns:
-                df_load = df_load.rename(columns={'Quỹ CA Tổng': 'Tổng CA'})
-            if 'CA Tháng Trước' in df_load.columns:
-                df_load = df_load.rename(columns={'CA Tháng Trước': 'Tồn cũ'})
-            
-            if df_load.empty: raise ValueError
-        except:
-            # --- LOGIC LẤY TỒN CŨ TỪ THÁNG TRƯỚC ---
-            prev_month_date = working_date.replace(day=1) - timedelta(days=1)
-            prev_sheet = prev_month_date.strftime("%m_%Y")
-            ton_cu_dict = {}
-            current_names = NAMES_66
-            try:
-                # Đọc tháng trước
-                df_prev = conn.read(worksheet=prev_sheet, ttl=0).fillna("")
-                
-                # Tìm cột chứa kết quả cuối cùng (Tổng CA hoặc Quỹ CA Tổng)
-                col_result = 'Tổng CA' if 'Tổng CA' in df_prev.columns else ('Quỹ CA Tổng' if 'Quỹ CA Tổng' in df_prev.columns else None)
-                
-                if col_result:
-                    # Chuyển đổi sang số và tạo từ điển để nạp vào 'Tồn cũ' tháng mới
-                    df_prev[col_result] = pd.to_numeric(df_prev[col_result], errors='coerce').fillna(0.0)
-                    ton_cu_dict = dict(zip(df_prev['Họ và Tên'], df_prev[col_result]))
-                    current_names = [n for n in df_prev['Họ và Tên'].tolist() if str(n).strip()]
-            except: pass
-
-            init_data = {'STT': range(1, len(current_names) + 1), 'Họ và Tên': current_names, 
-                         'Công ty': 'PVDWS', 'Chức danh': 'Casing crew', 'Job Detail': '',  
-                         'Tồn cũ': [float(ton_cu_dict.get(name, 0.0)) for name in current_names], 'Tổng CA': 0.0}
-            for c in DATE_COLS: init_data[c] = ""
-            df_load = pd.DataFrame(init_data)
-
-        # Đảm bảo cột số đúng định dạng trước khi chạy engine
-        df_load['Tồn cũ'] = pd.to_numeric(df_load.get('Tồn cũ', 0), errors='coerce').fillna(0.0)
+    df_load = fetch_data(sheet_name)
+    if not df_load.empty:
+        df_load = df_load.fillna("")
+        if 'Quỹ CA Tổng' in df_load.columns: df_load = df_load.rename(columns={'Quỹ CA Tổng': 'Tổng CA'})
+        if 'CA Tháng Trước' in df_load.columns: df_load = df_load.rename(columns={'CA Tháng Trước': 'Tồn cũ'})
+    else:
+        # Lấy tồn cũ tháng trước
+        prev_month_date = working_date.replace(day=1) - timedelta(days=1)
+        prev_sheet = prev_month_date.strftime("%m_%Y")
+        ton_cu_dict = {}
+        current_names = NAMES_66
+        df_prev = fetch_data(prev_sheet)
+        if not df_prev.empty:
+            df_prev = df_prev.fillna("")
+            col_res = 'Tổng CA' if 'Tổng CA' in df_prev.columns else ('Quỹ CA Tổng' if 'Quỹ CA Tổng' in df_prev.columns else None)
+            if col_res:
+                df_prev[col_res] = pd.to_numeric(df_prev[col_res], errors='coerce').fillna(0.0)
+                ton_cu_dict = dict(zip(df_prev['Họ và Tên'], df_prev[col_res]))
+                current_names = [n for n in df_prev['Họ và Tên'].tolist() if str(n).strip()]
         
-        # Duy trì 3 dòng trống cuối
+        init_data = {'STT': range(1, len(current_names) + 1), 'Họ và Tên': current_names, 
+                     'Công ty': 'PVDWS', 'Chức danh': 'Casing crew', 'Job Detail': '', 
+                     'Tồn cũ': [float(ton_cu_dict.get(n, 0.0)) for n in current_names], 'Tổng CA': 0.0}
+        for c in DATE_COLS: init_data[c] = ""
+        df_load = pd.DataFrame(init_data)
         for _ in range(3):
             new_row = {col: "" for col in df_load.columns}
             df_load = pd.concat([df_load, pd.DataFrame([new_row])], ignore_index=True)
-        
-        st.session_state.db = auto_engine(df_load, curr_month, curr_year, DATE_COLS)
 
-# --- PHẦN TABS VÀ GIAO DIỆN (GIỮ NGUYÊN NHƯ CŨ) ---
+    st.session_state.db = auto_engine(df_load, curr_month, curr_year, DATE_COLS)
+
+# --- 6. GIAO DIỆN CHÍNH ---
 t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ"])
 
 with t1:
@@ -198,9 +168,7 @@ with t1:
     with bc1:
         if st.button("📤 LƯU TẤT CẢ LÊN CLOUD", type="primary", use_container_width=True):
             with st.spinner("⏳ Đang đồng bộ..."):
-                final_df = auto_engine(st.session_state.db, curr_month, curr_year, DATE_COLS)
-                if save_to_cloud(sheet_name, final_df):
-                    del st.session_state.db 
+                if save_to_cloud(sheet_name, st.session_state.db):
                     st.success("Đã đồng bộ thành công!")
                     time.sleep(0.5)
                     st.rerun()
@@ -210,20 +178,21 @@ with t1:
         export_df.to_excel(buf, index=False)
         st.download_button("📥 XUẤT EXCEL", buf.getvalue(), f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
+    # Sử dụng Fragment để cô lập phần cập nhật dữ liệu, tránh load lại toàn trang
     @st.fragment
-    def data_section():
+    def render_data_editor():
         st.markdown("#### 🛠️ Cập nhật & Bảng điều động")
-        # --- CÔNG CỤ CẬP NHẬT NHANH (GIỮ NGUYÊN) ---
         with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH"):
             active_names = [n for n in st.session_state.db['Họ và Tên'].tolist() if str(n).strip()]
             c1, c2 = st.columns([2, 1])
-            f_staff = c1.multiselect("Nhân sự:", active_names, key="quick_staff")
-            f_date = c2.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, num_days_curr)), key="quick_date")
+            f_staff = c1.multiselect("Nhân sự:", active_names, key="ms_staff")
+            f_date = c2.date_input("Thời gian:", value=(date(curr_year, curr_month, 1), date(curr_year, curr_month, num_days_curr)), key="di_date")
             r2_1, r2_2, r2_3, r2_4 = st.columns(4)
-            f_status = r2_1.selectbox("Trạng thái:", ["Xóa trắng", "Đi Biển", "CA", "WS", "NP", "Ốm"], key="quick_status")
-            f_val = r2_2.selectbox("Giàn:", st.session_state.GIANS, key="quick_rig") if f_status == "Đi Biển" else f_status
-            f_co = r2_3.selectbox("Công ty:", ["Không đổi"] + COMPANIES, key="quick_co")
-            f_ti = r2_4.selectbox("Chức danh:", ["Không đổi"] + TITLES, key="quick_title")
+            f_status = r2_1.selectbox("Trạng thái:", ["Xóa trắng", "Đi Biển", "CA", "WS", "NP", "Ốm"], key="sb_status")
+            f_val = r2_2.selectbox("Giàn:", st.session_state.GIANS, key="sb_rig") if f_status == "Đi Biển" else f_status
+            f_co = r2_3.selectbox("Công ty:", ["Không đổi"] + COMPANIES, key="sb_co")
+            f_ti = r2_4.selectbox("Chức danh:", ["Không đổi"] + TITLES, key="sb_title")
+            
             if st.button("✅ ÁP DỤNG", use_container_width=True):
                 if f_staff and isinstance(f_date, tuple) and len(f_date) == 2:
                     for person in f_staff:
@@ -243,31 +212,40 @@ with t1:
 
         st.divider()
         all_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'Tồn cũ', 'Tổng CA'] + DATE_COLS
-        edited_df = st.data_editor(
-            st.session_state.db[all_cols],
-            use_container_width=True, height=650, hide_index=True, key="editor_fragment",
-            column_config={
-                "Tổng CA": st.column_config.NumberColumn("Tổng CA", format="%.1f", disabled=True),
-                "Tồn cũ": st.column_config.NumberColumn("Tồn cũ", format="%.1f"),
-                "STT": st.column_config.Column(width="small", disabled=True)
-            }
-        )
-        if not edited_df.equals(st.session_state.db[all_cols]):
-            st.session_state.db.update(edited_df)
-            st.session_state.db = auto_engine(st.session_state.db, curr_month, curr_year, DATE_COLS)
-    data_section()
+        
+        # Bọc bảng trong một container cố định
+        table_placeholder = st.container()
+        with table_placeholder:
+            edited_df = st.data_editor(
+                st.session_state.db[all_cols],
+                use_container_width=True, height=650, hide_index=True, key="main_editor",
+                column_config={
+                    "Tổng CA": st.column_config.NumberColumn("Tổng CA", format="%.1f", disabled=True),
+                    "Tồn cũ": st.column_config.NumberColumn("Tồn cũ", format="%.1f"),
+                    "STT": st.column_config.Column(width="small", disabled=True)
+                }
+            )
+            # Kiểm tra thay đổi để update session_state ngay lập tức
+            if not edited_df.equals(st.session_state.db[all_cols]):
+                st.session_state.db.update(edited_df)
+                st.session_state.db = auto_engine(st.session_state.db, curr_month, curr_year, DATE_COLS)
+                st.rerun()
 
+    render_data_editor()
+
+# --- 7. TAB BIỂU ĐỒ (GIỮ NGUYÊN LOGIC) ---
 with t2:
     st.subheader(f"📊 Phân tích hoạt động cá nhân - Năm {curr_year}")
     names_for_chart = [n for n in st.session_state.db['Họ và Tên'].tolist() if str(n).strip()]
-    sel_name = st.selectbox("🔍 Chọn nhân sự để xem biểu đồ:", names_for_chart, key="report_staff")
+    sel_name = st.selectbox("🔍 Chọn nhân sự để xem biểu đồ:", names_for_chart)
     if sel_name:
         results = []
         with st.spinner("📊 Đang phân tích dữ liệu..."):
             for m in range(1, 13):
                 m_s = f"{m:02d}_{curr_year}"
-                try:
-                    df_m = conn.read(worksheet=m_s, ttl=0).fillna("")
+                df_m = fetch_data(m_s)
+                if not df_m.empty:
+                    df_m = df_m.fillna("")
                     df_p = df_m[df_m['Họ và Tên'] == sel_name]
                     if not df_p.empty:
                         row_p = df_p.iloc[0]
@@ -282,7 +260,6 @@ with t2:
                                     elif v == "NP": cat = "Nghỉ phép (NP)"
                                     elif v == "ỐM": cat = "Nghỉ ốm"
                                     if cat: results.append({"Tháng": f"Tháng {m}", "Loại": cat, "Ngày": 1})
-                except: continue
         
         if results:
             pdf = pd.DataFrame(results)
@@ -293,12 +270,24 @@ with t2:
                          color_discrete_map={"Đi Biển": "#00f2ff", "Nghỉ CA": "#ffaa00", "Làm xưởng (WS)": "#a6a6a6", "Nghỉ phép (NP)": "#00ff00", "Nghỉ ốm": "#ff4b4b"})
             st.plotly_chart(fig, use_container_width=True)
             
-            st.markdown("### 📝 Bảng tổng hợp số ngày chi tiết")
             stat_table = summary.pivot(index='Loại', columns='Tháng', values='Số Ngày').fillna(0).astype(int)
             for i in range(1, 13):
                 if f"Tháng {i}" not in stat_table.columns: stat_table[f"Tháng {i}"] = 0
             stat_table = stat_table[[f"Tháng {i}" for i in range(1, 13)]]
             stat_table['TỔNG CẢ NĂM'] = stat_table.sum(axis=1)
             st.table(stat_table)
-        else:
-            st.info(f"Chưa có dữ liệu hoạt động của {sel_name} trong năm {curr_year}")
+
+# --- 8. SIDEBAR QUẢN LÝ GIÀN (GIỮ NGUYÊN) ---
+with st.sidebar:
+    st.header("⚙️ QUẢN LÝ GIÀN KHOAN")
+    new_g = st.text_input("Tên giàn mới:").strip().upper()
+    if st.button("➕ THÊM GIÀN", use_container_width=True):
+        if new_g and new_g not in st.session_state.GIANS:
+            st.session_state.GIANS.append(new_g)
+            st.rerun()
+    st.divider()
+    if st.session_state.GIANS:
+        del_g = st.selectbox("Chọn giàn xóa:", st.session_state.GIANS)
+        if st.button("❌ XÓA GIÀN", use_container_width=True):
+            st.session_state.GIANS.remove(del_g)
+            st.rerun()

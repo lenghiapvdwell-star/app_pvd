@@ -40,7 +40,8 @@ def save_to_cloud(worksheet_name, df):
         st.error("Lỗi: Dữ liệu trống!")
         return False
     df_to_save = df[df['Họ và Tên'].str.strip() != ""].copy()
-    # Ép kiểu dữ liệu số trước khi lưu để tránh lỗi định dạng chuỗi
+    
+    # FIX: Ép kiểu số thực để tránh lỗi nối chuỗi hoặc sai định dạng khi lưu
     if 'Tồn cũ' in df_to_save.columns:
         df_to_save['Tồn cũ'] = pd.to_numeric(df_to_save['Tồn cũ'], errors='coerce').fillna(0.0)
     if 'Tổng CA' in df_to_save.columns:
@@ -49,7 +50,7 @@ def save_to_cloud(worksheet_name, df):
     df_clean = df_to_save.fillna("").replace(["nan", "NaN", "None"], "")
     try:
         conn.update(worksheet=worksheet_name, data=df_clean)
-        st.cache_data.clear() # Xóa cache sau khi lưu thành công
+        st.cache_data.clear() 
         return True
     except Exception as e:
         st.error(f"Lỗi kết nối khi lưu: {e}")
@@ -84,11 +85,8 @@ def auto_engine(df, curr_month, curr_year, DATE_COLS):
     today = now.date()
     df_calc = df.copy()
     
-    # Đảm bảo Tồn cũ luôn là kiểu float
-    if 'Tồn cũ' not in df_calc.columns: 
-        df_calc['Tồn cũ'] = 0.0
-    else:
-        df_calc['Tồn cũ'] = pd.to_numeric(df_calc['Tồn cũ'], errors='coerce').fillna(0.0)
+    # FIX: Chắc chắn Tồn cũ là số thực trước khi tính
+    df_calc['Tồn cũ'] = pd.to_numeric(df_calc.get('Tồn cũ', 0), errors='coerce').fillna(0.0)
 
     for idx, row in df_calc.iterrows():
         if not str(row.get('Họ và Tên', '')).strip(): continue
@@ -100,6 +98,7 @@ def auto_engine(df, curr_month, curr_year, DATE_COLS):
             target_date = date(curr_year, curr_month, d_num)
             val = str(row.get(col, "")).strip()
             
+            # Autofill logic cho ngày quá khứ
             if (not val or val == "" or val.lower() == "nan") and (target_date < today or (target_date == today and now.hour >= 6)):
                 if current_last_val != "":
                     lv_up = current_last_val.upper()
@@ -121,8 +120,9 @@ def auto_engine(df, curr_month, curr_year, DATE_COLS):
                 elif v_up == "CA":
                     if not is_we and not is_ho: accrued -= 1.0
         
-        ton_cu = float(row.get('Tồn cũ', 0.0))
-        df_calc.at[idx, 'Tổng CA'] = round(ton_cu + accrued, 1)
+        # FIX: Tính Tổng CA = Tồn cũ (tháng trước mang sang) + Lũy kế tháng hiện tại
+        ton_cu_val = float(df_calc.at[idx, 'Tồn cũ'])
+        df_calc.at[idx, 'Tổng CA'] = round(ton_cu_val + accrued, 1)
     return df_calc
 
 # --- 6. CHỌN THÁNG ---
@@ -144,9 +144,10 @@ if 'active_sheet' not in st.session_state or st.session_state.active_sheet != sh
 if 'db' not in st.session_state:
     with st.spinner(f"🚀 Đang tải dữ liệu {sheet_name}..."):
         try:
-            # TTL=0 để luôn lấy dữ liệu mới nhất từ Cloud
+            # TTL=0 để lấy dữ liệu mới nhất
             df_load = conn.read(worksheet=sheet_name, ttl=0).fillna("")
-            # Chuẩn hóa tên cột
+            
+            # FIX: Đồng nhất tên cột ngay khi load
             if 'Quỹ CA Tổng' in df_load.columns:
                 df_load = df_load.rename(columns={'Quỹ CA Tổng': 'Tổng CA'})
             if 'CA Tháng Trước' in df_load.columns:
@@ -154,19 +155,22 @@ if 'db' not in st.session_state:
             
             if df_load.empty: raise ValueError
         except:
-            # Nếu tháng hiện tại chưa có, lấy 'Tổng CA' tháng trước làm 'Tồn cũ' tháng này
+            # --- LOGIC LẤY TỒN CŨ TỪ THÁNG TRƯỚC ---
             prev_month_date = working_date.replace(day=1) - timedelta(days=1)
             prev_sheet = prev_month_date.strftime("%m_%Y")
             ton_cu_dict = {}
             current_names = NAMES_66
             try:
+                # Đọc tháng trước
                 df_prev = conn.read(worksheet=prev_sheet, ttl=0).fillna("")
-                # Tìm cột chứa kết quả cuối cùng của tháng trước
-                col_prev = 'Tổng CA' if 'Tổng CA' in df_prev.columns else ('Quỹ CA Tổng' if 'Quỹ CA Tổng' in df_prev.columns else None)
-                if col_prev:
-                    # Chuyển đổi sang số để đảm bảo tính toán đúng
-                    df_prev[col_prev] = pd.to_numeric(df_prev[col_prev], errors='coerce').fillna(0.0)
-                    ton_cu_dict = dict(zip(df_prev['Họ và Tên'], df_prev[col_prev]))
+                
+                # Tìm cột chứa kết quả cuối cùng (Tổng CA hoặc Quỹ CA Tổng)
+                col_result = 'Tổng CA' if 'Tổng CA' in df_prev.columns else ('Quỹ CA Tổng' if 'Quỹ CA Tổng' in df_prev.columns else None)
+                
+                if col_result:
+                    # Chuyển đổi sang số và tạo từ điển để nạp vào 'Tồn cũ' tháng mới
+                    df_prev[col_result] = pd.to_numeric(df_prev[col_result], errors='coerce').fillna(0.0)
+                    ton_cu_dict = dict(zip(df_prev['Họ và Tên'], df_prev[col_result]))
                     current_names = [n for n in df_prev['Họ và Tên'].tolist() if str(n).strip()]
             except: pass
 
@@ -176,17 +180,17 @@ if 'db' not in st.session_state:
             for c in DATE_COLS: init_data[c] = ""
             df_load = pd.DataFrame(init_data)
 
-        # Đảm bảo cột số luôn đúng định dạng
-        df_load['Tồn cũ'] = pd.to_numeric(df_load['Tồn cũ'], errors='coerce').fillna(0.0)
+        # Đảm bảo cột số đúng định dạng trước khi chạy engine
+        df_load['Tồn cũ'] = pd.to_numeric(df_load.get('Tồn cũ', 0), errors='coerce').fillna(0.0)
         
-        # Thêm dòng trống
+        # Duy trì 3 dòng trống cuối
         for _ in range(3):
             new_row = {col: "" for col in df_load.columns}
             df_load = pd.concat([df_load, pd.DataFrame([new_row])], ignore_index=True)
         
         st.session_state.db = auto_engine(df_load, curr_month, curr_year, DATE_COLS)
 
-# --- 8. TABS ---
+# --- PHẦN TABS VÀ GIAO DIỆN (GIỮ NGUYÊN NHƯ CŨ) ---
 t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ"])
 
 with t1:
@@ -209,6 +213,7 @@ with t1:
     @st.fragment
     def data_section():
         st.markdown("#### 🛠️ Cập nhật & Bảng điều động")
+        # --- CÔNG CỤ CẬP NHẬT NHANH (GIỮ NGUYÊN) ---
         with st.expander("🛠️ CÔNG CỤ CẬP NHẬT NHANH"):
             active_names = [n for n in st.session_state.db['Họ và Tên'].tolist() if str(n).strip()]
             c1, c2 = st.columns([2, 1])
@@ -235,6 +240,7 @@ with t1:
                                 curr_d += timedelta(days=1)
                     st.session_state.db = auto_engine(st.session_state.db, curr_month, curr_year, DATE_COLS)
                     st.rerun()
+
         st.divider()
         all_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Job Detail', 'Tồn cũ', 'Tổng CA'] + DATE_COLS
         edited_df = st.data_editor(
@@ -255,14 +261,13 @@ with t2:
     st.subheader(f"📊 Phân tích hoạt động cá nhân - Năm {curr_year}")
     names_for_chart = [n for n in st.session_state.db['Họ và Tên'].tolist() if str(n).strip()]
     sel_name = st.selectbox("🔍 Chọn nhân sự để xem biểu đồ:", names_for_chart, key="report_staff")
-    
     if sel_name:
         results = []
         with st.spinner("📊 Đang phân tích dữ liệu..."):
             for m in range(1, 13):
                 m_s = f"{m:02d}_{curr_year}"
                 try:
-                    df_m = conn.read(worksheet=m_s, ttl=0).fillna("") # Đọc ttl=0 để biểu đồ cập nhật ngay
+                    df_m = conn.read(worksheet=m_s, ttl=0).fillna("")
                     df_p = df_m[df_m['Họ và Tên'] == sel_name]
                     if not df_p.empty:
                         row_p = df_p.iloc[0]

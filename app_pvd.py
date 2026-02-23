@@ -11,27 +11,6 @@ import os
 # --- 1. CẤU HÌNH & STYLE ---
 st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 
-# Hàm hiển thị Logo chuyên nghiệp ở Sidebar
-def display_sidebar_logo():
-    # Lấy thư mục gốc của file app_pvd.py
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    logo_found = False
-    
-    # Tìm file logo với các định dạng phổ biến
-    for ext in [".png", ".jpg", ".jpeg", ".webp"]:
-        logo_path = os.path.join(current_dir, f"logo_pvd{ext}")
-        if os.path.exists(logo_path):
-            st.sidebar.image(logo_path, use_container_width=True)
-            st.sidebar.markdown("---") # Đường kẻ ngăn cách logo với menu
-            logo_found = True
-            break
-    
-    if not logo_found:
-        st.sidebar.warning("⚠️ Không tìm thấy file logo_pvd.png")
-
-# Gọi hàm hiển thị logo ngay đầu Sidebar
-display_sidebar_logo()
-
 st.markdown("""
     <style>
     .block-container {padding-top: 1rem;}
@@ -43,18 +22,40 @@ st.markdown("""
         margin-bottom: 20px !important;
         text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
     }
-    /* Tăng kích thước font cho Sidebar để dễ nhìn */
-    .css-1d391kg { font-size: 18px; }
+    /* Căn giữa ảnh logo */
+    .logo-container {
+        display: flex;
+        justify-content: center;
+        margin-bottom: 10px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. DANH MỤC CỐ ĐỊNH ---
+# --- 2. HIỂN THỊ LOGO RA NGOÀI TRANG CHÍNH ---
+def display_main_logo():
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    for ext in [".png", ".jpg", ".jpeg", ".webp"]:
+        logo_path = os.path.join(current_dir, f"logo_pvd{ext}")
+        if os.path.exists(logo_path):
+            # Tạo 3 cột để đưa logo vào giữa
+            col1, col2, col3 = st.columns([4, 2, 4])
+            with col2:
+                st.image(logo_path, use_container_width=True)
+            return True
+    return False
+
+# Gọi Logo hiển thị ở trang chính
+display_main_logo()
+
+st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
+
+# --- 3. DANH MỤC CỐ ĐỊNH ---
 COMPANIES = ["PVDWS", "OWS", "National", "Baker Hughes", "Schlumberger", "Halliburton"]
 TITLES = ["Casing crew", "CRTI LD", "CRTI SP", "SOLID", "MUDCL", "UNDERRM", "PPLS", "HAMER"]
 NAMES_66 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong", "Nguyen Huu Phuc"]
 DEFAULT_RIGS = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNLOD"]
 
-# --- 3. KẾT NỐI & HÀM HỖ TRỢ ---
+# --- 4. KẾT NỐI & HÀM HỖ TRỢ ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def get_data_safe(wks_name, ttl=0):
@@ -77,7 +78,7 @@ def save_config_rigs(rig_list):
         return True
     except: return False
 
-# --- 4. ENGINE TÍNH TOÁN ---
+# --- 5. ENGINE TÍNH TOÁN ---
 def apply_logic(df, curr_m, curr_y, rigs):
     hols = [date(2026,1,1), date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19), date(2026,2,20), date(2026,4,26), date(2026,4,30), date(2026,5,1), date(2026,9,2)]
     df_calc = df.copy()
@@ -106,7 +107,7 @@ def apply_logic(df, curr_m, curr_y, rigs):
         df_calc.at[idx, 'Tổng CA'] = round(float(ton_cu if not pd.isna(ton_cu) else 0.0) + accrued, 1)
     return df_calc
 
-# --- 5. HÀM CẬP NHẬT DÂY CHUYỀN ---
+# --- 6. HÀM CẬP NHẬT DÂY CHUYỀN ---
 def push_balances_to_future(start_date, start_df, rigs):
     current_df = start_df.copy()
     current_date = start_date
@@ -131,13 +132,11 @@ def push_balances_to_future(start_date, start_df, rigs):
             st.warning(f"Dừng cập nhật tại {next_sheet} do giới hạn Google.")
             break
 
-# --- 6. KHỞI TẠO ---
+# --- 7. KHỞI TẠO ---
 if "GIANS" not in st.session_state:
     st.session_state.GIANS = load_config_rigs()
 if "store" not in st.session_state:
     st.session_state.store = {}
-
-st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
 
 _, mc, _ = st.columns([3, 2, 3])
 with mc:
@@ -161,7 +160,7 @@ if sheet_name not in st.session_state.store:
                 if row['Họ và Tên'] in balances: df_raw.at[idx, 'Tồn cũ'] = balances[row['Họ và Tên']]
     st.session_state.store[sheet_name] = apply_logic(df_raw, curr_m, curr_y, st.session_state.GIANS)
 
-# --- 7. GIAO DIỆN ---
+# --- 8. GIAO DIỆN CHÍNH ---
 t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ TỔNG HỢP"])
 
 with t1:
@@ -254,7 +253,7 @@ with t2:
             pv['TỔNG NĂM'] = pv.sum(axis=1)
             st.table(pv)
 
-# --- 8. SIDEBAR QUẢN LÝ ---
+# --- 9. SIDEBAR QUẢN LÝ ---
 with st.sidebar:
     st.header("⚙️ QUẢN LÝ GIÀN")
     st.info("Danh sách giàn khoan hiện có để tính CA.")

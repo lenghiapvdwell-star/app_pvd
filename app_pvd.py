@@ -15,12 +15,12 @@ st.markdown("""
     <style>
     .block-container {padding-top: 1rem;}
     .main-title {
-        color: #007BFF !important; /* Đổi sang màu Xanh Blue */
+        color: #007BFF !important; /* Xanh Blue */
         font-size: 39px !important; 
         font-weight: bold !important;
         text-align: center !important; 
         margin-bottom: 20px !important;
-        text-shadow: 1px 1px 2px rgba(0,0,0,0.5); /* Thêm bóng cho chữ nét hơn */
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
     }
     </style>
     """, unsafe_allow_html=True)
@@ -35,7 +35,6 @@ DEFAULT_RIGS = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNL
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def get_data_safe(wks_name, ttl=60):
-    """Đọc dữ liệu an toàn, nếu lỗi Quota thì báo nhẹ không sập app"""
     try:
         return conn.read(worksheet=wks_name, ttl=ttl)
     except Exception as e:
@@ -44,7 +43,7 @@ def get_data_safe(wks_name, ttl=60):
         return pd.DataFrame()
 
 def load_config_rigs():
-    df = get_data_safe("config", ttl=300) # Giàn khoan ít đổi, giữ cache 5 phút
+    df = get_data_safe("config", ttl=300)
     if not df.empty and "GIANS" in df.columns:
         return [str(g).strip().upper() for g in df["GIANS"].dropna().tolist() if str(g).strip()]
     return DEFAULT_RIGS
@@ -77,7 +76,6 @@ def apply_logic(df, curr_m, curr_y, DATE_COLS, rigs):
             target_date = date(curr_y, curr_m, d_num)
             val = str(row.get(col, "")).strip()
             
-            # Autofill 6h sáng
             if (not val or val == "" or val.lower() == "nan"):
                 if target_date < today or (target_date == today and now.hour >= 6):
                     if last_val != "":
@@ -106,7 +104,6 @@ def apply_logic(df, curr_m, curr_y, DATE_COLS, rigs):
 if "GIANS" not in st.session_state:
     st.session_state.GIANS = load_config_rigs()
 
-# Logo
 if os.path.exists("logo_pvd.png"):
     st.image("logo_pvd.png", width=150)
 else:
@@ -114,7 +111,6 @@ else:
 
 st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
 
-# Chọn tháng
 _, mc, _ = st.columns([3, 2, 3])
 with mc:
     wd = st.date_input("📅 CHỌN THÁNG:", value=date.today())
@@ -124,7 +120,6 @@ curr_m, curr_y = wd.month, wd.year
 days_in_m = calendar.monthrange(curr_y, curr_m)[1]
 DATE_COLS = [f"{d:02d}/{wd.strftime('%b')} ({['T2','T3','T4','T5','T6','T7','CN'][date(curr_y,curr_m,d).weekday()]})" for d in range(1, days_in_m+1)]
 
-# Load dữ liệu chính
 if 'db' not in st.session_state or st.session_state.get('active_sheet') != sheet_name:
     df_raw = get_data_safe(sheet_name, ttl=0)
     if df_raw.empty:
@@ -134,10 +129,9 @@ if 'db' not in st.session_state or st.session_state.get('active_sheet') != sheet
     st.session_state.active_sheet = sheet_name
 
 # --- 6. GIAO DIỆN TABS ---
-t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BÁO CÁO"])
+t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ TỔNG HỢP"])
 
 with t1:
-    # Nút chức năng
     c1, c2, c3 = st.columns([2, 2, 4])
     if c1.button("📤 LƯU CLOUD", type="primary", use_container_width=True):
         st.session_state.db = apply_logic(st.session_state.db, curr_m, curr_y, DATE_COLS, st.session_state.GIANS)
@@ -155,7 +149,6 @@ with t1:
         st.session_state.db.to_excel(buf, index=False)
         st.download_button("📥 XUẤT EXCEL", buf.getvalue(), f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
-    # NHẬP NHANH
     with st.expander("🛠️ CÔNG CỤ NHẬP NHANH"):
         names = st.multiselect("Chọn nhân sự:", NAMES_66)
         dr = st.date_input("Khoảng ngày:", value=(date(curr_y, curr_m, 1), date(curr_y, curr_m, 5)))
@@ -180,34 +173,54 @@ with t1:
                 st.session_state.db = apply_logic(st.session_state.db, curr_m, curr_y, DATE_COLS, st.session_state.GIANS)
                 st.rerun()
 
-    # Bảng Editor
     all_col = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Tồn cũ', 'Tổng CA'] + DATE_COLS
     ed_db = st.data_editor(st.session_state.db[all_col], use_container_width=True, height=500, hide_index=True)
     st.session_state.db.update(ed_db)
 
 with t2:
-    st.subheader(f"📊 Phân tích công {curr_y}")
-    sel_u = st.selectbox("Chọn người xem biểu đồ:", NAMES_66)
-    if sel_u:
-        hist = []
-        # Giới hạn quét để tránh lỗi 429: Chỉ quét 3 tháng gần nhất hoặc tháng hiện tại
-        for m in range(max(1, curr_m-2), curr_m + 1):
-            try:
-                m_df = get_data_safe(f"{m:02d}_{curr_y}", ttl=600)
-                if not m_df.empty:
-                    p_row = m_df[m_df['Họ và Tên'] == sel_u].iloc[0]
-                    for c in m_df.columns:
-                        if "/" in c:
-                            v = str(p_row[c]).strip().upper()
-                            if any(g in v for g in st.session_state.GIANS): hist.append({"Tháng": f"T{m}", "Loại": "Biển"})
-                            elif v == "CA": hist.append({"Tháng": f"T{m}", "Loại": "Nghỉ CA"})
-            except: continue
+    st.subheader(f"📊 Thống kê nhân sự năm {curr_y}")
+    sel_name = st.selectbox("🔍 Chọn nhân sự để xem báo cáo:", NAMES_66)
+    
+    if sel_name:
+        yearly_data = []
+        rigs_up = [r.upper() for r in st.session_state.GIANS]
         
-        if hist:
-            df_h = pd.DataFrame(hist)
-            st.plotly_chart(px.bar(df_h.groupby(['Tháng', 'Loại']).size().reset_index(name='Ngày'), x="Tháng", y="Ngày", color="Loại", barmode="group", template="plotly_dark"), use_container_width=True)
+        with st.spinner(f"Đang tổng hợp dữ liệu 12 tháng cho {sel_name}..."):
+            for m in range(1, 13):
+                try:
+                    m_sheet = f"{m:02d}_{curr_y}"
+                    m_df = get_data_safe(m_sheet, ttl=600) 
+                    
+                    if not m_df.empty and sel_name in m_df['Họ và Tên'].values:
+                        p_row = m_df[m_df['Họ và Tên'] == sel_name].iloc[0]
+                        counts = {"Đi Biển": 0, "Nghỉ CA": 0, "Làm xưởng": 0, "Nghỉ/Ốm": 0}
+                        for c in m_df.columns:
+                            if "/" in c:
+                                val = str(p_row[c]).strip().upper()
+                                if any(g in val for g in rigs_up) and val != "": 
+                                    counts["Đi Biển"] += 1
+                                elif val == "CA": counts["Nghỉ CA"] += 1
+                                elif val == "WS": counts["Làm xưởng"] += 1
+                                elif val in ["NP", "ỐM"]: counts["Nghỉ/Ốm"] += 1
+                        
+                        for k, v in counts.items():
+                            if v > 0: 
+                                yearly_data.append({"Tháng": f"Tháng {m}", "Loại": k, "Số ngày": v})
+                except: continue
+
+        if yearly_data:
+            df_chart = pd.DataFrame(yearly_data)
+            fig = px.bar(df_chart, x="Tháng", y="Số ngày", color="Loại", barmode="stack", text="Số ngày",
+                        template="plotly_dark",
+                        color_discrete_map={"Đi Biển": "#00CC96", "Nghỉ CA": "#EF553B", "Làm xưởng": "#636EFA", "Nghỉ/Ốm": "#AB63FA"})
+            st.plotly_chart(fig, use_container_width=True)
+            
+            st.markdown("### 📋 Bảng tổng kết số ngày công")
+            pv = df_chart.pivot_table(index='Loại', columns='Tháng', values='Số ngày', aggfunc='sum').fillna(0).astype(int)
+            pv['TỔNG NĂM'] = pv.sum(axis=1)
+            st.table(pv)
         else:
-            st.info("Chưa có dữ liệu lịch sử hoặc Google đang bận.")
+            st.info(f"Không có dữ liệu cho {sel_name} trong năm {curr_y}.")
 
 # Sidebar
 with st.sidebar:

@@ -220,9 +220,9 @@ with t2:
             pv = df_chart.pivot_table(index='Loại', columns='Tháng', values='Số ngày', aggfunc='sum').fillna(0).astype(int)
             pv['TỔNG NĂM'] = pv.sum(axis=1)
             
-            # XỬ LÝ BỎ CHỮ NONE/TÊN TRỤC
-            pv.index.name = None
-            pv.columns.name = None
+            # --- XÓA CHỮ NONE Ở ĐÂY ---
+            pv.index.name = ""      # Xóa chữ "Loại" (hoặc None) ở trục dọc
+            pv.columns.name = ""    # Xóa chữ "Tháng" (hoặc None) ở trục ngang
             
             st.table(pv)
         else:

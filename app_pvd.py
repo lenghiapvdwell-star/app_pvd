@@ -40,11 +40,15 @@ def load_config_rigs():
 
 def save_config_rigs(rig_list):
     try:
+        # Xóa cache trước khi lưu để đảm bảo không bị xung đột dữ liệu cũ
+        st.cache_data.clear() 
         df_save = pd.DataFrame({"GIANS": rig_list})
         conn.update(worksheet="config", data=df_save)
-        st.cache_data.clear()
+        # Thông báo cho người dùng biết hệ thống đang xử lý
         return True
-    except: return False
+    except Exception as e:
+        st.error(f"Lỗi lưu giàn: {e}")
+        return False
 
 # --- 4. ENGINE TÍNH TOÁN (QUY TẮC CŨ) ---
 def apply_logic(df, curr_m, curr_y, DATE_COLS, rigs):
@@ -206,10 +210,40 @@ with t2:
 
 with st.sidebar:
     st.header("⚙️ QUẢN LÝ GIÀN")
-    new_g = st.text_input("Thêm giàn:").upper().strip()
-    if st.button("➕ Thêm"):
-        if new_g and new_g not in st.session_state.GIANS:
-            st.session_state.GIANS.append(new_g); save_config_rigs(st.session_state.GIANS); st.rerun()
-    del_g = st.selectbox("Xóa giàn:", st.session_state.GIANS)
-    if st.button("❌ Xóa"):
-        st.session_state.GIANS.remove(del_g); save_config_rigs(st.session_state.GIANS); st.rerun()
+    st.info("Dữ liệu sẽ được đồng bộ trực tiếp lên tab 'config'")
+    
+    # Khu vực thêm giàn
+    new_g = st.text_input("Nhập tên giàn mới:", key="input_new_rig").upper().strip()
+    if st.button("➕ XÁC NHẬN THÊM", use_container_width=True, type="primary"):
+        if new_g:
+            if new_g not in st.session_state.GIANS:
+                # Tạo danh sách mới và lưu ngay
+                updated_rigs = st.session_state.GIANS + [new_g]
+                if save_config_rigs(updated_rigs):
+                    st.session_state.GIANS = updated_rigs
+                    st.success(f"✅ Đã thêm giàn {new_g}")
+                    time.sleep(0.5) # Chờ một chút để Google Sheet kịp nhận lệnh
+                    st.rerun()
+            else:
+                st.warning("Giàn này đã tồn tại!")
+        else:
+            st.error("Vui lòng nhập tên giàn")
+
+    st.markdown("---")
+    
+    # Khu vực xóa giàn
+    if st.session_state.GIANS:
+        del_g = st.selectbox("Chọn giàn cần xóa:", st.session_state.GIANS)
+        if st.button("❌ XÁC NHẬN XÓA", use_container_width=True):
+            updated_rigs = [r for r in st.session_state.GIANS if r != del_g]
+            if save_config_rigs(updated_rigs):
+                st.session_state.GIANS = updated_rigs
+                st.warning(f"🗑️ Đã xóa giàn {del_g}")
+                time.sleep(0.5)
+                st.rerun()
+    
+    st.markdown("---")
+    if st.button("🔄 LÀM MỚI DANH SÁCH", use_container_width=True):
+        st.cache_data.clear()
+        st.session_state.GIANS = load_config_rigs()
+        st.rerun()

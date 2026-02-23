@@ -7,31 +7,30 @@ import io
 import time
 import plotly.express as px
 import os
-from PIL import Image
 
 # --- 1. CẤU HÌNH & STYLE ---
 st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 
-# Hiển thị Logo PVD (Cập nhật đường dẫn tuyệt đối)
-def show_logo():
+# Hàm hiển thị Logo chuyên nghiệp ở Sidebar
+def display_sidebar_logo():
     # Lấy thư mục gốc của file app_pvd.py
     current_dir = os.path.dirname(os.path.abspath(__file__))
+    logo_found = False
     
-    # Danh sách các định dạng ảnh có thể có
+    # Tìm file logo với các định dạng phổ biến
     for ext in [".png", ".jpg", ".jpeg", ".webp"]:
         logo_path = os.path.join(current_dir, f"logo_pvd{ext}")
-        
         if os.path.exists(logo_path):
-            # Thêm cột đệm để logo nhỏ lại và cân đối hơn ở Sidebar
             st.sidebar.image(logo_path, use_container_width=True)
-            st.sidebar.markdown("---") # Đường kẻ ngang phân cách
-            return True
-    return False
+            st.sidebar.markdown("---") # Đường kẻ ngăn cách logo với menu
+            logo_found = True
+            break
+    
+    if not logo_found:
+        st.sidebar.warning("⚠️ Không tìm thấy file logo_pvd.png")
 
-if not show_logo():
-    st.sidebar.warning("⚠️ Không tìm thấy file logo_pvd.png")
-
-show_logo()
+# Gọi hàm hiển thị logo ngay đầu Sidebar
+display_sidebar_logo()
 
 st.markdown("""
     <style>
@@ -44,6 +43,8 @@ st.markdown("""
         margin-bottom: 20px !important;
         text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
     }
+    /* Tăng kích thước font cho Sidebar để dễ nhìn */
+    .css-1d391kg { font-size: 18px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -253,14 +254,27 @@ with t2:
             pv['TỔNG NĂM'] = pv.sum(axis=1)
             st.table(pv)
 
+# --- 8. SIDEBAR QUẢN LÝ ---
 with st.sidebar:
     st.header("⚙️ QUẢN LÝ GIÀN")
-    ng = st.text_input("Thêm giàn:").upper().strip()
-    if st.button("➕ Thêm"):
+    st.info("Danh sách giàn khoan hiện có để tính CA.")
+    
+    ng = st.text_input("➕ Thêm giàn mới:").upper().strip()
+    if st.button("Thêm ngay"):
         if ng and ng not in st.session_state.GIANS:
             st.session_state.GIANS.append(ng)
-            if save_config_rigs(st.session_state.GIANS): st.rerun()
-    dg = st.selectbox("Xóa giàn:", st.session_state.GIANS)
-    if st.button("❌ Xóa"):
-        st.session_state.GIANS.remove(dg) 
-        if save_config_rigs(st.session_state.GIANS): st.rerun()
+            if save_config_rigs(st.session_state.GIANS):
+                st.success(f"Đã thêm {ng}")
+                st.rerun()
+    
+    st.markdown("---")
+    
+    dg = st.selectbox("❌ Xóa giàn:", st.session_state.GIANS)
+    if st.button("Xóa ngay"):
+        if len(st.session_state.GIANS) > 1:
+            st.session_state.GIANS.remove(dg) 
+            if save_config_rigs(st.session_state.GIANS):
+                st.warning(f"Đã xóa {dg}")
+                st.rerun()
+        else:
+            st.error("Phải có ít nhất 1 giàn trong danh sách!")

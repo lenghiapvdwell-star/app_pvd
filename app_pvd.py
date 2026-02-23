@@ -15,8 +15,12 @@ st.markdown("""
     <style>
     .block-container {padding-top: 1rem;}
     .main-title {
-        color: #007BFF; font-size: 39px; font-weight: bold;
-        text-align: center; margin-bottom: 20px;
+        color: #007BFF !important; /* Đổi sang màu Xanh Blue */
+        font-size: 35px !important; 
+        font-weight: bold !important;
+        text-align: center !important; 
+        margin-bottom: 20px !important;
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.5); /* Thêm bóng cho chữ nét hơn */
     }
     </style>
     """, unsafe_allow_html=True)

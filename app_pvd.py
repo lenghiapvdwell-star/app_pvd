@@ -146,11 +146,13 @@ def run_auto_6am_sync(df, s_name, rigs, date_cols):
         today_num = now.day
         if today_num > 1:
             p_prefix, c_prefix = f"{(today_num-1):02d}/", f"{today_num:02d}/"
+            # --- Tìm đoạn này và thay thế (Khoảng dòng 152) ---
             col_p = [c for c in date_cols if c.startswith(p_prefix)]
             col_c = [c for c in date_cols if c.startswith(c_prefix)]
             
-            if col_p and col_curr := col_c:
-                c_prev, c_today = col_p[0], col_curr[0]
+            # Sửa dòng lỗi: Kiểm tra xem cả 2 danh sách cột có tồn tại không
+            if col_p and col_c:
+                c_prev, c_today = col_p[0], col_c[0]
                 # Chỉ fill nếu hôm nay trống và hôm qua có dữ liệu
                 mask = (df[c_today].isna() | (df[c_today] == "")) & (df[c_prev].notna() & (df[c_prev] != ""))
                 if mask.any():

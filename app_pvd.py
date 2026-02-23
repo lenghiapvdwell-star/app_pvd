@@ -16,7 +16,7 @@ st.markdown("""
     .block-container {padding-top: 1rem;}
     .main-title {
         color: #007BFF !important; 
-        font-size: 48px !important; 
+        font-size: 39px !important; 
         font-weight: bold !important;
         text-align: center !important; 
         margin-bottom: 20px !important;
@@ -31,15 +31,13 @@ TITLES = ["Casing crew", "CRTI LD", "CRTI SP", "SOLID", "MUDCL", "UNDERRM", "PPL
 NAMES_66 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong", "Nguyen Huu Phuc"]
 DEFAULT_RIGS = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNLOD"]
 
-# --- 3. KẾT NỐI & CACHE TỐI ƯU ---
+# --- 3. KẾT NỐI & HÀM HỖ TRỢ ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def get_data_safe(wks_name, ttl=60):
     try:
         return conn.read(worksheet=wks_name, ttl=ttl)
     except Exception as e:
-        if "429" in str(e):
-            st.warning(f"⚠️ Google đang nghẽn lệnh (quá 60 lần/phút). Đang dùng dữ liệu tạm thời.")
         return pd.DataFrame()
 
 def load_config_rigs():
@@ -54,9 +52,20 @@ def save_config_rigs(rig_list):
         conn.update(worksheet="config", data=df_save)
         st.cache_data.clear()
         return True
-    except Exception as e:
-        st.error(f"Lỗi lưu giàn: {e}")
-        return False
+    except: return False
+
+def get_prev_month_balances(curr_date):
+    """Lấy cột 'Tổng CA' từ sheet tháng trước"""
+    first_day = curr_date.replace(day=1)
+    prev_month = first_day - timedelta(days=1)
+    prev_sheet = prev_month.strftime("%m_%Y")
+    try:
+        df_prev = conn.read(worksheet=prev_sheet, ttl=0)
+        if not df_prev.empty and 'Họ và Tên' in df_prev.columns and 'Tổng CA' in df_prev.columns:
+            return df_prev.set_index('Họ và Tên')['Tổng CA'].to_dict()
+    except:
+        pass
+    return {}
 
 # --- 4. ENGINE TÍNH TOÁN ---
 def apply_logic(df, curr_m, curr_y, DATE_COLS, rigs):
@@ -76,6 +85,7 @@ def apply_logic(df, curr_m, curr_y, DATE_COLS, rigs):
             target_date = date(curr_y, curr_m, d_num)
             val = str(row.get(col, "")).strip()
             
+            # Logic tự động điền trạng thái dựa trên ngày cuối cùng nhập
             if (not val or val == "" or val.lower() == "nan"):
                 if target_date < today or (target_date == today and now.hour >= 6):
                     if last_val != "":
@@ -104,11 +114,6 @@ def apply_logic(df, curr_m, curr_y, DATE_COLS, rigs):
 if "GIANS" not in st.session_state:
     st.session_state.GIANS = load_config_rigs()
 
-if os.path.exists("logo_pvd.png"):
-    st.image("logo_pvd.png", width=150)
-else:
-    st.markdown("### 🔵 PVD WELL")
-
 st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
 
 _, mc, _ = st.columns([3, 2, 3])
@@ -120,11 +125,23 @@ curr_m, curr_y = wd.month, wd.year
 days_in_m = calendar.monthrange(curr_y, curr_m)[1]
 DATE_COLS = [f"{d:02d}/{wd.strftime('%b')} ({['T2','T3','T4','T5','T6','T7','CN'][date(curr_y,curr_m,d).weekday()]})" for d in range(1, days_in_m+1)]
 
+# LOAD DỮ LIỆU & XỬ LÝ KẾ THỪA
 if 'db' not in st.session_state or st.session_state.get('active_sheet') != sheet_name:
     df_raw = get_data_safe(sheet_name, ttl=0)
+    
+    # Lấy số dư từ tháng trước trên Cloud
+    prev_balances = get_prev_month_balances(wd)
+    
     if df_raw.empty:
         df_raw = pd.DataFrame({'STT': range(1, len(NAMES_66)+1), 'Họ và Tên': NAMES_66, 'Công ty': 'PVDWS', 'Chức danh': 'Casing crew', 'Tồn cũ': 0.0, 'Tổng CA': 0.0})
         for c in DATE_COLS: df_raw[c] = ""
+    
+    # Cập nhật Tồn cũ từ dữ liệu tháng trước (nếu tìm thấy người đó)
+    for idx, row in df_raw.iterrows():
+        name = row['Họ và Tên']
+        if name in prev_balances:
+            df_raw.at[idx, 'Tồn cũ'] = prev_balances[name]
+
     st.session_state.db = apply_logic(df_raw, curr_m, curr_y, DATE_COLS, st.session_state.GIANS)
     st.session_state.active_sheet = sheet_name
 
@@ -134,11 +151,12 @@ t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ TỔNG HỢP"])
 with t1:
     c1, c2, c3 = st.columns([2, 2, 4])
     if c1.button("📤 LƯU CLOUD", type="primary", use_container_width=True):
+        # Tính toán lại trước khi lưu để đảm bảo số liệu mới nhất
         st.session_state.db = apply_logic(st.session_state.db, curr_m, curr_y, DATE_COLS, st.session_state.GIANS)
         try:
             conn.update(worksheet=sheet_name, data=st.session_state.db)
             st.cache_data.clear()
-            st.success("Đã lưu thành công!")
+            st.success("Đã cập nhật dữ liệu lên Google Sheets!")
             time.sleep(1)
             st.rerun()
         except Exception as e:
@@ -184,49 +202,33 @@ with t2:
     if sel_name:
         yearly_data = []
         rigs_up = [r.upper() for r in st.session_state.GIANS]
-        
-        with st.spinner(f"Đang tổng hợp dữ liệu 12 tháng cho {sel_name}..."):
+        with st.spinner("Đang truy xuất dữ liệu..."):
             for m in range(1, 13):
                 try:
-                    m_sheet = f"{m:02d}_{curr_y}"
-                    m_df = get_data_safe(m_sheet, ttl=600) 
-                    
+                    m_df = get_data_safe(f"{m:02d}_{curr_y}", ttl=600) 
                     if not m_df.empty and sel_name in m_df['Họ và Tên'].values:
                         p_row = m_df[m_df['Họ và Tên'] == sel_name].iloc[0]
                         counts = {"Đi Biển": 0, "Nghỉ CA": 0, "Làm xưởng": 0, "Nghỉ/Ốm": 0}
                         for c in m_df.columns:
                             if "/" in c:
                                 val = str(p_row[c]).strip().upper()
-                                if any(g in val for g in rigs_up) and val != "": 
-                                    counts["Đi Biển"] += 1
+                                if any(g in val for g in rigs_up) and val != "": counts["Đi Biển"] += 1
                                 elif val == "CA": counts["Nghỉ CA"] += 1
                                 elif val == "WS": counts["Làm xưởng"] += 1
                                 elif val in ["NP", "ỐM"]: counts["Nghỉ/Ốm"] += 1
-                        
                         for k, v in counts.items():
-                            if v > 0: 
-                                yearly_data.append({"Tháng": f"Tháng {m}", "Loại": k, "Số ngày": v})
+                            if v > 0: yearly_data.append({"Tháng": f"Tháng {m}", "Loại": k, "Số ngày": v})
                 except: continue
 
         if yearly_data:
             df_chart = pd.DataFrame(yearly_data)
-            fig = px.bar(df_chart, x="Tháng", y="Số ngày", color="Loại", barmode="stack", text="Số ngày",
-                        template="plotly_dark",
-                        color_discrete_map={"Đi Biển": "#00CC96", "Nghỉ CA": "#EF553B", "Làm xưởng": "#636EFA", "Nghỉ/Ốm": "#AB63FA"})
+            fig = px.bar(df_chart, x="Tháng", y="Số ngày", color="Loại", barmode="stack", text="Số ngày", template="plotly_dark")
             st.plotly_chart(fig, use_container_width=True)
             
-            st.markdown("### 📋 Bảng tổng kết số ngày công")
-            # Tạo bảng Pivot
             pv = df_chart.pivot_table(index='Loại', columns='Tháng', values='Số ngày', aggfunc='sum').fillna(0).astype(int)
             pv['TỔNG NĂM'] = pv.sum(axis=1)
-            
-            # --- XÓA CHỮ NONE Ở ĐÂY ---
-            pv.index.name = ""      # Xóa chữ "Loại" (hoặc None) ở trục dọc
-            pv.columns.name = ""    # Xóa chữ "Tháng" (hoặc None) ở trục ngang
-            
+            pv.index.name = ""; pv.columns.name = ""
             st.table(pv)
-        else:
-            st.info(f"Không có dữ liệu cho {sel_name} trong năm {curr_y}.")
 
 # Sidebar
 with st.sidebar:
@@ -239,5 +241,5 @@ with st.sidebar:
     
     dg = st.selectbox("Xóa giàn:", st.session_state.GIANS)
     if st.button("❌ Xóa"):
-        st.session_state.GIANS.remove(dg)
+        st.session_state.GIANS.remove(dg) 
         if save_config_rigs(st.session_state.GIANS): st.rerun()

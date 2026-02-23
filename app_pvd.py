@@ -39,7 +39,28 @@ def get_data_safe(wks_name, ttl=60):
         return df if not df.empty else pd.DataFrame()
     except:
         return pd.DataFrame()
+# --- BỔ SUNG CÁC HÀM CÒN THIẾU ---
 
+def load_config_rigs():
+    """Lấy danh sách giàn từ sheet 'config'"""
+    try:
+        df = get_data_safe("config", ttl=300)
+        if not df.empty and "GIANS" in df.columns:
+            return [str(g).strip().upper() for g in df["GIANS"].dropna().tolist() if str(g).strip()]
+    except:
+        pass
+    return DEFAULT_RIGS # Trả về danh sách mặc định nếu lỗi
+
+def save_config_rigs(rig_list):
+    """Lưu danh sách giàn vào sheet 'config'"""
+    try:
+        df_save = pd.DataFrame({"GIANS": rig_list})
+        conn.update(worksheet="config", data=df_save)
+        st.cache_data.clear()
+        return True
+    except:
+        return False
+        
 def apply_logic_core(df, m, y, rigs):
     """Hàm lõi tính toán logic công, dùng chung cho cả app và chain reaction"""
     hols = [date(2026,1,1), date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19), date(2026,2,20), date(2026,4,26), date(2026,4,30), date(2026,5,1), date(2026,9,2)]

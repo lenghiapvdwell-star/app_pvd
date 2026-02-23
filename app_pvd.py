@@ -7,9 +7,15 @@ import io
 import time
 import plotly.express as px
 import os
+from PIL import Image
 
 # --- 1. CẤU HÌNH & STYLE ---
 st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
+
+# Hiển thị Logo nếu file tồn tại
+logo_path = "logo.png" # Bạn hãy đảm bảo file này nằm cùng thư mục với app.py
+if os.path.exists(logo_path):
+    st.sidebar.image(logo_path, use_container_width=True)
 
 st.markdown("""
     <style>
@@ -145,7 +151,6 @@ with t1:
     db = st.session_state.store[sheet_name]
     c1, c2, c3 = st.columns([2, 2, 4])
     
-    # SỬA LỖI INDENTATION TẠI ĐÂY
     if c1.button("📤 LƯU & CẬP NHẬT CẢ NĂM", type="primary", use_container_width=True):
         try:
             with st.spinner("Đang lưu tháng hiện tại..."):
@@ -155,7 +160,7 @@ with t1:
             with st.spinner("Đang đẩy số dư sang các tháng sau..."):
                 push_balances_to_future(wd, db, st.session_state.GIANS)
             st.cache_data.clear()
-            st.success("Hoàn tất!")
+            st.success("Hoàn tất quy trình cập nhật!")
             time.sleep(1)
             st.rerun()
         except Exception as e:

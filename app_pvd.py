@@ -32,11 +32,28 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 
 def load_config_rigs():
     try:
-        df_config = conn.read(worksheet="config", ttl=0)
+        # Thêm ttl=20 để giảm số lần gọi API. Sau 20 giây nó mới đọc lại từ Cloud.
+        df_config = conn.read(worksheet="config", ttl=20) 
         if not df_config.empty and "GIANS" in df_config.columns:
             return [str(g).strip().upper() for g in df_config["GIANS"].dropna().tolist() if str(g).strip()]
-    except: return DEFAULT_RIGS
+    except Exception as e:
+        # Nếu bị lỗi Quota, dùng tạm dữ liệu cũ trong Session State nếu có
+        if "GIANS" in st.session_state: return st.session_state.GIANS
+        return DEFAULT_RIGS
     return DEFAULT_RIGS
+
+def save_config_rigs(rig_list):
+    try:
+        df_save = pd.DataFrame({"GIANS": rig_list})
+        conn.update(worksheet="config", data=df_save)
+        # Không dùng st.cache_data.clear() ở đây để tránh App load lại toàn bộ các tab khác
+        return True
+    except Exception as e:
+        if "Quota exceeded" in str(e):
+            st.error("⚠️ Thao tác quá nhanh! Vui lòng đợi 1 phút để Google reset hạn mức.")
+        else:
+            st.error(f"Lỗi: {e}")
+        return False
 
 def save_config_rigs(rig_list):
     try:
@@ -210,40 +227,35 @@ with t2:
 
 with st.sidebar:
     st.header("⚙️ QUẢN LÝ GIÀN")
-    st.info("Dữ liệu sẽ được đồng bộ trực tiếp lên tab 'config'")
     
-    # Khu vực thêm giàn
-    new_g = st.text_input("Nhập tên giàn mới:", key="input_new_rig").upper().strip()
-    if st.button("➕ XÁC NHẬN THÊM", use_container_width=True, type="primary"):
-        if new_g:
-            if new_g not in st.session_state.GIANS:
-                # Tạo danh sách mới và lưu ngay
-                updated_rigs = st.session_state.GIANS + [new_g]
-                if save_config_rigs(updated_rigs):
-                    st.session_state.GIANS = updated_rigs
-                    st.success(f"✅ Đã thêm giàn {new_g}")
-                    time.sleep(0.5) # Chờ một chút để Google Sheet kịp nhận lệnh
-                    st.rerun()
-            else:
-                st.warning("Giàn này đã tồn tại!")
-        else:
-            st.error("Vui lòng nhập tên giàn")
-
-    st.markdown("---")
+    new_g = st.text_input("Nhập giàn mới:", key="input_new_rig").upper().strip()
     
-    # Khu vực xóa giàn
-    if st.session_state.GIANS:
-        del_g = st.selectbox("Chọn giàn cần xóa:", st.session_state.GIANS)
-        if st.button("❌ XÁC NHẬN XÓA", use_container_width=True):
-            updated_rigs = [r for r in st.session_state.GIANS if r != del_g]
-            if save_config_rigs(updated_rigs):
-                st.session_state.GIANS = updated_rigs
-                st.warning(f"🗑️ Đã xóa giàn {del_g}")
-                time.sleep(0.5)
+    # Tạo 2 cột cho nút bấm
+    col_add, col_ref = st.columns(2)
+    
+    if col_add.button("➕ THÊM", use_container_width=True, type="primary"):
+        if new_g and new_g not in st.session_state.GIANS:
+            # Bước 1: Cập nhật giao diện trước cho nhanh
+            st.session_state.GIANS.append(new_g)
+            # Bước 2: Lưu ngầm lên Cloud
+            if save_config_rigs(st.session_state.GIANS):
+                st.success(f"Đã lưu {new_g}")
+                time.sleep(1)
                 st.rerun()
-    
-    st.markdown("---")
-    if st.button("🔄 LÀM MỚI DANH SÁCH", use_container_width=True):
-        st.cache_data.clear()
+        elif not new_g:
+            st.warning("Nhập tên giàn!")
+
+    if col_ref.button("🔄 REFRESH", use_container_width=True):
+        st.cache_data.clear() # Chỉ khi bấm nút này mới xóa cache để tải mới hoàn toàn
         st.session_state.GIANS = load_config_rigs()
         st.rerun()
+
+    st.markdown("---")
+    if st.session_state.GIANS:
+        del_g = st.selectbox("Chọn giàn xóa:", st.session_state.GIANS)
+        if st.button("❌ XÁC NHẬN XÓA", use_container_width=True):
+            st.session_state.GIANS.remove(del_g)
+            if save_config_rigs(st.session_state.GIANS):
+                st.warning(f"Đã xóa {del_g}")
+                time.sleep(1)
+                st.rerun()

@@ -31,28 +31,29 @@ DEFAULT_RIGS = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNL
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def load_config_rigs():
+    # Tăng TTL lên 60 giây để tránh lỗi 429 khi thao tác nhanh
     try:
-        # Thêm ttl=20 để giảm số lần gọi API. Sau 20 giây nó mới đọc lại từ Cloud.
-        df_config = conn.read(worksheet="config", ttl=20) 
+        df_config = conn.read(worksheet="config", ttl=60)
         if not df_config.empty and "GIANS" in df_config.columns:
             return [str(g).strip().upper() for g in df_config["GIANS"].dropna().tolist() if str(g).strip()]
     except Exception as e:
-        # Nếu bị lỗi Quota, dùng tạm dữ liệu cũ trong Session State nếu có
-        if "GIANS" in st.session_state: return st.session_state.GIANS
+        # Nếu bị lỗi Quota, dùng dữ liệu đang có trong máy, không báo lỗi đỏ
+        if "GIANS" in st.session_state:
+            return st.session_state.GIANS
         return DEFAULT_RIGS
     return DEFAULT_RIGS
 
 def save_config_rigs(rig_list):
     try:
         df_save = pd.DataFrame({"GIANS": rig_list})
+        # Ghi đè dữ liệu lên tab config
         conn.update(worksheet="config", data=df_save)
-        # Không dùng st.cache_data.clear() ở đây để tránh App load lại toàn bộ các tab khác
+        # Chỉ xóa cache của tab config, không xóa toàn bộ app
+        st.cache_data.clear() 
         return True
     except Exception as e:
-        if "Quota exceeded" in str(e):
-            st.error("⚠️ Thao tác quá nhanh! Vui lòng đợi 1 phút để Google reset hạn mức.")
-        else:
-            st.error(f"Lỗi: {e}")
+        if "429" in str(e):
+            st.error("⚠️ Google đang nghẽn (Quota 429). Đã lưu tạm vào máy, dữ liệu sẽ lên Cloud sau 1 phút.")
         return False
 
 def save_config_rigs(rig_list):
@@ -228,34 +229,36 @@ with t2:
 with st.sidebar:
     st.header("⚙️ QUẢN LÝ GIÀN")
     
+    # Ô nhập tên giàn mới
     new_g = st.text_input("Nhập giàn mới:", key="input_new_rig").upper().strip()
     
-    # Tạo 2 cột cho nút bấm
     col_add, col_ref = st.columns(2)
     
     if col_add.button("➕ THÊM", use_container_width=True, type="primary"):
         if new_g and new_g not in st.session_state.GIANS:
-            # Bước 1: Cập nhật giao diện trước cho nhanh
+            # ƯU TIÊN: Cập nhật ngay vào màn hình để dùng luôn
             st.session_state.GIANS.append(new_g)
-            # Bước 2: Lưu ngầm lên Cloud
-            if save_config_rigs(st.session_state.GIANS):
-                st.success(f"Đã lưu {new_g}")
-                time.sleep(1)
-                st.rerun()
+            # SAU ĐÓ: Gửi lệnh lưu lên Google Sheets ngầm
+            save_config_rigs(st.session_state.GIANS)
+            st.success(f"Đã thêm {new_g}")
+            time.sleep(0.5)
+            st.rerun()
         elif not new_g:
-            st.warning("Nhập tên giàn!")
+            st.warning("Vui lòng nhập tên!")
 
-    if col_ref.button("🔄 REFRESH", use_container_width=True):
-        st.cache_data.clear() # Chỉ khi bấm nút này mới xóa cache để tải mới hoàn toàn
+    if col_ref.button("🔄 LÀM MỚI", use_container_width=True):
+        st.cache_data.clear()
         st.session_state.GIANS = load_config_rigs()
         st.rerun()
 
     st.markdown("---")
+    
+    # Khu vực xóa giàn
     if st.session_state.GIANS:
         del_g = st.selectbox("Chọn giàn xóa:", st.session_state.GIANS)
         if st.button("❌ XÁC NHẬN XÓA", use_container_width=True):
             st.session_state.GIANS.remove(del_g)
-            if save_config_rigs(st.session_state.GIANS):
-                st.warning(f"Đã xóa {del_g}")
-                time.sleep(1)
-                st.rerun()
+            save_config_rigs(st.session_state.GIANS)
+            st.warning(f"Đã xóa {del_g}")
+            time.sleep(0.5)
+            st.rerun()

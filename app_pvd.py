@@ -16,7 +16,7 @@ st.markdown("""
     .block-container {padding-top: 1rem;}
     .main-title {
         color: #007BFF !important; 
-        font-size: 39px !important; 
+        font-size: 48px !important; 
         font-weight: bold !important;
         text-align: center !important; 
         margin-bottom: 20px !important;

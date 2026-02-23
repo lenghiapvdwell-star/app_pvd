@@ -13,9 +13,14 @@ from PIL import Image
 st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 
 # Hiển thị Logo nếu file tồn tại
-logo_path = "logo.png" # Bạn hãy đảm bảo file này nằm cùng thư mục với app.py
-if os.path.exists(logo_path):
-    st.sidebar.image(logo_path, use_container_width=True)
+def show_logo():
+    for ext in [".png", ".jpg", ".jpeg", ".webp"]:
+        logo_path = f"logo_pvd{ext}"
+        if os.path.exists(logo_path):
+            st.sidebar.image(logo_path, use_container_width=True)
+            break
+
+show_logo()
 
 st.markdown("""
     <style>

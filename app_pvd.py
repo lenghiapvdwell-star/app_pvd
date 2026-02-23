@@ -25,15 +25,14 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. HIỂN THỊ LOGO TRUNG TÂM (RA NGOÀI SIDEBAR) ---
+# --- 2. LOGO ---
 def display_main_logo():
     current_dir = os.path.dirname(os.path.abspath(__file__))
     for ext in [".png", ".jpg", ".jpeg", ".webp"]:
         logo_path = os.path.join(current_dir, f"logo_pvd{ext}")
         if os.path.exists(logo_path):
             col1, col2, col3 = st.columns([4, 2, 4])
-            with col2:
-                st.image(logo_path, use_container_width=True)
+            with col2: st.image(logo_path, use_container_width=True)
             return True
     return False
 
@@ -46,7 +45,7 @@ TITLES = ["Casing crew", "CRTI LD", "CRTI SP", "SOLID", "MUDCL", "UNDERRM", "PPL
 NAMES_66 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong", "Nguyen Huu Phuc"]
 DEFAULT_RIGS = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNLOD"]
 
-# --- 4. KẾT NỐI & HÀM HỖ TRỢ ---
+# --- 4. KẾT NỐI ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def get_data_safe(wks_name, ttl=0):
@@ -98,7 +97,7 @@ def apply_logic(df, curr_m, curr_y, rigs):
         df_calc.at[idx, 'Tổng CA'] = round(float(ton_cu if not pd.isna(ton_cu) else 0.0) + accrued, 1)
     return df_calc
 
-# --- 6. HÀM CẬP NHẬT DÂY CHUYỀN ---
+# --- 6. HÀM CẬP NHẬT DÂY CHUYỀN (CHUYỂN TỒN CŨ QUA CÁC THÁNG) ---
 def push_balances_to_future(start_date, start_df, rigs):
     current_df = start_df.copy()
     current_date = start_date
@@ -113,58 +112,28 @@ def push_balances_to_future(start_date, start_df, rigs):
             balances = current_df.set_index('Họ và Tên')['Tổng CA'].to_dict()
             for idx, row in next_df.iterrows():
                 name = row['Họ và Tên']
-                if name in balances:
-                    next_df.at[idx, 'Tồn cũ'] = balances[name]
+                if name in balances: next_df.at[idx, 'Tồn cũ'] = balances[name]
             next_df = apply_logic(next_df, next_date.month, next_date.year, rigs)
             conn.update(worksheet=next_sheet, data=next_df)
             current_df = next_df
             current_date = next_date
-        except:
-            st.warning(f"Dừng cập nhật tại {next_sheet} do giới hạn Google.")
-            break
+        except: break
 
-# --- 7. KHỞI TẠO ---
+# --- 7. KHỞI TẠO DỮ LIỆU ---
 if "GIANS" not in st.session_state:
     st.session_state.GIANS = load_config_rigs()
 if "store" not in st.session_state:
     st.session_state.store = {}
 
 _, mc, _ = st.columns([3, 2, 3])
-with mc:
-    wd = st.date_input("📅 CHỌN THÁNG:", value=date.today())
+with mc: wd = st.date_input("📅 CHỌN THÁNG:", value=date.today())
 
 sheet_name = wd.strftime("%m_%Y")
 curr_m, curr_y = wd.month, wd.year
 days_in_m = calendar.monthrange(curr_y, curr_m)[1]
 DATE_COLS = [f"{d:02d}/{wd.strftime('%b')} ({['T2','T3','T4','T5','T6','T7','CN'][date(curr_y,curr_m,d).weekday()]})" for d in range(1, days_in_m+1)]
 
-# --- NÂNG CẤP: LOGIC AUTO-FILL 6H SÁNG & AUTO-SAVE ---
-def run_auto_6am_sync(df, s_name, rigs, date_cols):
-    now = datetime.now()
-    # Kiểm tra nếu đang ở đúng tháng hiện tại và sau 6h sáng
-    if s_name == now.strftime("%m_%Y") and now.hour >= 6:
-        today_num = now.day
-        if today_num > 1:
-            p_prefix, c_prefix = f"{(today_num-1):02d}/", f"{today_num:02d}/"
-            # --- Tìm đoạn này và thay thế (Khoảng dòng 152) ---
-            col_p = [c for c in date_cols if c.startswith(p_prefix)]
-            col_c = [c for c in date_cols if c.startswith(c_prefix)]
-            
-            # Sửa dòng lỗi: Kiểm tra xem cả 2 danh sách cột có tồn tại không
-            if col_p and col_c:
-                c_prev, c_today = col_p[0], col_c[0]
-                # Chỉ fill nếu hôm nay trống và hôm qua có dữ liệu
-                mask = (df[c_today].isna() | (df[c_today] == "")) & (df[c_prev].notna() & (df[c_prev] != ""))
-                if mask.any():
-                    df.loc[mask, c_today] = df.loc[mask, c_prev]
-                    # Tự động tính toán lại
-                    df = apply_logic(df, now.month, now.year, rigs)
-                    # TỰ ĐỘNG ĐẨY LÊN GOOGLE SHEETS (AUTO-SAVE)
-                    conn.update(worksheet=s_name, data=df)
-                    st.toast(f"⚡ Đã tự động cập nhật ngày {today_num} và lưu Cloud!", icon="✅")
-                    return df
-    return df
-
+# Tải dữ liệu từ Google Sheets
 if sheet_name not in st.session_state.store:
     df_raw = get_data_safe(sheet_name, ttl=0)
     if df_raw.empty:
@@ -177,11 +146,24 @@ if sheet_name not in st.session_state.store:
             for idx, row in df_raw.iterrows():
                 if row['Họ và Tên'] in balances: df_raw.at[idx, 'Tồn cũ'] = balances[row['Họ và Tên']]
     
-    # Kích hoạt Auto-fill & Auto-save khi tải dữ liệu
-    df_raw = run_auto_6am_sync(df_raw, sheet_name, st.session_state.GIANS, DATE_COLS)
+    # --- AUTO-FILL SAU 6H SÁNG ---
+    now = datetime.now()
+    if sheet_name == now.strftime("%m_%Y") and now.hour >= 6 and now.day > 1:
+        p_day, c_day = f"{(now.day-1):02d}/", f"{now.day:02d}/"
+        col_p = [c for c in DATE_COLS if c.startswith(p_day)]
+        col_c = [c for c in DATE_COLS if c.startswith(c_day)]
+        if col_p and col_c:
+            cp, cc = col_p[0], col_c[0]
+            mask = (df_raw[cc].isna() | (df_raw[cc] == "")) & (df_raw[cp].notna() & (df_raw[cp] != ""))
+            if mask.any():
+                df_raw.loc[mask, cc] = df_raw.loc[mask, cp]
+                df_raw = apply_logic(df_raw, curr_m, curr_y, st.session_state.GIANS)
+                conn.update(worksheet=sheet_name, data=df_raw) # Tự động lưu Cloud
+                st.toast(f"⚡ Tự động nối dữ liệu từ ngày {now.day-1}!", icon="✅")
+    
     st.session_state.store[sheet_name] = apply_logic(df_raw, curr_m, curr_y, st.session_state.GIANS)
 
-# --- 8. GIAO DIỆN ---
+# --- 8. GIAO DIỆN CHÍNH ---
 t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ TỔNG HỢP"])
 
 with t1:
@@ -189,26 +171,20 @@ with t1:
     c1, c2, c3 = st.columns([2, 2, 4])
     
     if c1.button("📤 LƯU & CẬP NHẬT CẢ NĂM", type="primary", use_container_width=True):
-        try:
-            with st.spinner("Đang lưu tháng hiện tại..."):
-                db = apply_logic(db, curr_m, curr_y, st.session_state.GIANS)
-                conn.update(worksheet=sheet_name, data=db)
-                st.success(f"Đã lưu xong {sheet_name}")
-            with st.spinner("Đang đẩy số dư sang các tháng sau..."):
-                push_balances_to_future(wd, db, st.session_state.GIANS)
+        with st.spinner("Đang lưu và đẩy dữ liệu sang các tháng kế tiếp..."):
+            db = apply_logic(db, curr_m, curr_y, st.session_state.GIANS)
+            conn.update(worksheet=sheet_name, data=db)
+            push_balances_to_future(wd, db, st.session_state.GIANS)
             st.cache_data.clear()
-            st.success("Hoàn tất quy trình cập nhật!")
+            st.success("Hoàn tất quy trình cập nhật xuyên suốt năm!")
             time.sleep(1)
             st.rerun()
-        except Exception as e:
-            st.error(f"Lỗi kết nối Google Sheets: {e}")
 
     with c3:
         buf = io.BytesIO()
         db.to_excel(buf, index=False)
         st.download_button("📥 XUẤT EXCEL", buf.getvalue(), f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
-    # GIỮ NGUYÊN PHẦN CÔNG CỤ NHẬP NHANH CỦA BẠN
     with st.expander("🛠️ CÔNG CỤ NHẬP NHANH"):
         names = st.multiselect("Chọn nhân sự:", NAMES_66)
         dr = st.date_input("Khoảng ngày:", value=(date(curr_y, curr_m, 1), date(curr_y, curr_m, 5)))
@@ -217,7 +193,6 @@ with t1:
         rig = r2.selectbox("Tên Giàn:", st.session_state.GIANS) if stt == "Đi Biển" else stt
         co = r3.selectbox("Công ty:", ["Giữ nguyên"] + COMPANIES)
         ti = r4.selectbox("Chức danh:", ["Giữ nguyên"] + TITLES)
-        
         if st.button("✅ ÁP DỤNG", use_container_width=True):
             if names and len(dr) == 2:
                 for n in names:
@@ -230,17 +205,13 @@ with t1:
                         while sd <= ed:
                             if sd.month == curr_m:
                                 match_cols = [c for c in DATE_COLS if c.startswith(f"{sd.day:02d}/")]
-                                if match_cols:
-                                    db.at[idx, match_cols[0]] = "" if stt == "Xóa" else rig
+                                if match_cols: db.at[idx, match_cols[0]] = "" if stt == "Xóa" else rig
                             sd += timedelta(days=1)
                 st.session_state.store[sheet_name] = apply_logic(db, curr_m, curr_y, st.session_state.GIANS)
-                # Tự động lưu sau khi dùng công cụ nhập nhanh
-                conn.update(worksheet=sheet_name, data=st.session_state.store[sheet_name])
                 st.rerun()
 
     all_col = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Tồn cũ', 'Tổng CA'] + DATE_COLS
     ed_db = st.data_editor(db[all_col], use_container_width=True, height=500, hide_index=True)
-    
     if not ed_db.equals(db[all_col]):
         st.session_state.store[sheet_name].update(ed_db)
         st.session_state.store[sheet_name] = apply_logic(st.session_state.store[sheet_name], curr_m, curr_y, st.session_state.GIANS)
@@ -254,50 +225,37 @@ with t2:
         rigs_up = [r.upper() for r in st.session_state.GIANS]
         with st.spinner("Đang truy xuất dữ liệu..."):
             for m in range(1, 13):
-                try:
-                    m_df = get_data_safe(f"{m:02d}_{curr_y}", ttl=600) 
-                    if not m_df.empty and sel_name in m_df['Họ và Tên'].values:
-                        p_row = m_df[m_df['Hên'] == sel_name].iloc[0]
-                        counts = {"Đi Biển": 0, "Nghỉ CA": 0, "Làm xưởng": 0, "Nghỉ/Ốm": 0}
-                        for c in m_df.columns:
-                            if "/" in c and "(" in c:
-                                val = str(p_row[c]).strip().upper()
-                                if any(g in val for g in rigs_up) and val != "": counts["Đi Biển"] += 1
-                                elif val == "CA": counts["Nghỉ CA"] += 1
-                                elif val == "WS": counts["Làm xưởng"] += 1
-                                elif val in ["NP", "ỐM"]: counts["Nghỉ/Ốm"] += 1
-                        for k, v in counts.items():
-                            if v > 0: yearly_data.append({"Tháng": f"Tháng {m}", "Loại": k, "Số ngày": v})
-                except: continue
+                m_df = get_data_safe(f"{m:02d}_{curr_y}", ttl=600)
+                if not m_df.empty and sel_name in m_df['Họ và Tên'].values:
+                    p_row = m_df[m_df['Họ và Tên'] == sel_name].iloc[0]
+                    counts = {"Đi Biển": 0, "Nghỉ CA": 0, "Làm xưởng": 0, "Nghỉ/Ốm": 0}
+                    for c in m_df.columns:
+                        if "/" in c and "(" in c:
+                            val = str(p_row[c]).strip().upper()
+                            if any(g in val for g in rigs_up) and val != "": counts["Đi Biển"] += 1
+                            elif val == "CA": counts["Nghỉ CA"] += 1
+                            elif val == "WS": counts["Làm xưởng"] += 1
+                            elif val in ["NP", "ỐM"]: counts["Nghỉ/Ốm"] += 1
+                    for k, v in counts.items():
+                        if v > 0: yearly_data.append({"Tháng": f"Tháng {m}", "Loại": k, "Số ngày": v})
         if yearly_data:
             df_chart = pd.DataFrame(yearly_data)
             fig = px.bar(df_chart, x="Tháng", y="Số ngày", color="Loại", barmode="stack", text="Số ngày", template="plotly_dark")
             st.plotly_chart(fig, use_container_width=True)
-            pv = df_chart.pivot_table(index='Loại', columns='Tháng', values='Số ngày', aggfunc='sum').fillna(0).astype(int)
+            pv = df_chart.pivot_table(index='Loại', columns='Tháng', values='Số ngày', aggfunc='sum', fill_value=0).astype(int)
             pv['TỔNG NĂM'] = pv.sum(axis=1)
             st.table(pv)
 
-# --- 9. SIDEBAR QUẢN LÝ ---
 with st.sidebar:
     st.header("⚙️ QUẢN LÝ GIÀN")
-    st.info("Danh sách giàn khoan hiện có để tính CA.")
-    
     ng = st.text_input("➕ Thêm giàn mới:").upper().strip()
     if st.button("Thêm ngay"):
         if ng and ng not in st.session_state.GIANS:
             st.session_state.GIANS.append(ng)
-            if save_config_rigs(st.session_state.GIANS):
-                st.success(f"Đã thêm {ng}")
-                st.rerun()
-    
+            if save_config_rigs(st.session_state.GIANS): st.rerun()
     st.markdown("---")
-    
     dg = st.selectbox("❌ Xóa giàn:", st.session_state.GIANS)
     if st.button("Xóa ngay"):
         if len(st.session_state.GIANS) > 1:
             st.session_state.GIANS.remove(dg) 
-            if save_config_rigs(st.session_state.GIANS):
-                st.warning(f"Đã xóa {dg}")
-                st.rerun()
-        else:
-            st.error("Phải có ít nhất 1 giàn trong danh sách!")
+            if save_config_rigs(st.session_state.GIANS): st.rerun()

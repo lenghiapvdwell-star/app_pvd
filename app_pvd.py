@@ -85,32 +85,44 @@ def apply_logic(df, curr_m, curr_y, rigs):
 
 # --- 5. HÀM CẬP NHẬT DÂY CHUYỀN (CHAIN REACTION) ---
 def push_balances_to_future(start_date, start_df, rigs):
-    """Khi lưu tháng này, tự động cập nhật số dư cho các tháng tiếp theo"""
+    """Cập nhật số dư an toàn với tính năng tránh lỗi API Quota"""
     current_df = start_df.copy()
     current_date = start_date
     
     # Lan tỏa tối đa 12 tháng tiếp theo
-    for _ in range(1, 12):
+    for i in range(1, 12):
         days_in_m = calendar.monthrange(current_date.year, current_date.month)[1]
         next_date = current_date.replace(day=1) + timedelta(days=days_in_m)
         next_sheet = next_date.strftime("%m_%Y")
         
-        next_df = get_data_safe(next_sheet, ttl=0)
-        if next_df.empty: break # Dừng nếu tháng sau chưa được tạo trên Cloud
-        
-        # Cập nhật Tồn cũ tháng sau = Tổng CA tháng trước
-        balances = current_df.set_index('Họ và Tên')['Tổng CA'].to_dict()
-        for idx, row in next_df.iterrows():
-            name = row['Họ và Tên']
-            if name in balances:
-                next_df.at[idx, 'Tồn cũ'] = balances[name]
-        
-        # Tính lại Tổng CA cho tháng sau và lưu
-        next_df = apply_logic(next_df, next_date.month, next_date.year, rigs)
-        conn.update(worksheet=next_sheet, data=next_df)
-        
-        current_df = next_df
-        current_date = next_date
+        try:
+            # Nghỉ một chút để tránh lỗi Quota Limit (Quan trọng)
+            time.sleep(2) 
+            
+            # Kiểm tra sheet tháng sau có tồn tại không
+            next_df = get_data_safe(next_sheet, ttl=0)
+            if next_df.empty:
+                # Nếu không tìm thấy sheet, dừng lại tại đây (không báo lỗi app)
+                break 
+            
+            # Cập nhật Tồn cũ tháng sau = Tổng CA tháng trước
+            balances = current_df.set_index('Họ và Tên')['Tổng CA'].to_dict()
+            for idx, row in next_df.iterrows():
+                name = row['Họ và Tên']
+                if name in balances:
+                    next_df.at[idx, 'Tồn cũ'] = balances[name]
+            
+            # Tính lại và Lưu
+            next_df = apply_logic(next_df, next_date.month, next_date.year, rigs)
+            conn.update(worksheet=next_sheet, data=next_df)
+            
+            current_df = next_df
+            current_date = next_date
+            
+        except Exception as e:
+            # Nếu gặp lỗi API (hết lượt ghi), dừng lại và thông báo nhẹ
+            st.warning(f"Đã dừng cập nhật tại {next_sheet} do giới hạn API Google.")
+            break
 
 # --- 6. KHỞI TẠO BIẾN ---
 if "GIANS" not in st.session_state:
@@ -155,14 +167,22 @@ with t1:
     
     c1, c2, c3 = st.columns([2, 2, 4])
     if c1.button("📤 LƯU & CẬP NHẬT CẢ NĂM", type="primary", use_container_width=True):
-        with st.spinner("Đang lưu và đẩy số dư cho các tháng tiếp theo..."):
+    try:
+        with st.spinner("Đang lưu tháng hiện tại..."):
             db = apply_logic(db, curr_m, curr_y, st.session_state.GIANS)
+            # Lưu tháng hiện tại trước
             conn.update(worksheet=sheet_name, data=db)
+            st.success(f"Đã lưu xong {sheet_name}")
+            
+        with st.spinner("Đang đẩy số dư sang các tháng sau (Vui lòng đợi)..."):
             push_balances_to_future(wd, db, st.session_state.GIANS)
-            st.cache_data.clear()
-            st.success("Đã cập nhật dữ liệu thành công!")
-            time.sleep(1)
-            st.rerun()
+            
+        st.cache_data.clear()
+        st.success("Hoàn tất quy trình cập nhật!")
+        time.sleep(1)
+        st.rerun()
+    except Exception as e:
+        st.error(f"Lỗi kết nối Google Sheets: {e}. Vui lòng thử lại sau 1 phút.")
 
     with c3:
         buf = io.BytesIO()

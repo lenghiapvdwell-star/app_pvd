@@ -166,8 +166,8 @@ with t1:
     db = st.session_state.store[sheet_name]
     
     c1, c2, c3 = st.columns([2, 2, 4])
-    if c1.button("📤 LƯU & CẬP NHẬT CẢ NĂM", type="primary", use_container_width=True):
-    try:
+if c1.button("📤 LƯU & CẬP NHẬT CẢ NĂM", type="primary", use_container_width=True):
+try:
         with st.spinner("Đang lưu tháng hiện tại..."):
             db = apply_logic(db, curr_m, curr_y, st.session_state.GIANS)
             # Lưu tháng hiện tại trước

@@ -12,13 +12,24 @@ from PIL import Image
 # --- 1. CẤU HÌNH & STYLE ---
 st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 
-# Hiển thị Logo nếu file tồn tại
+# Hiển thị Logo PVD (Cập nhật đường dẫn tuyệt đối)
 def show_logo():
+    # Lấy thư mục gốc của file app_pvd.py
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # Danh sách các định dạng ảnh có thể có
     for ext in [".png", ".jpg", ".jpeg", ".webp"]:
-        logo_path = f"logo_pvd{ext}"
+        logo_path = os.path.join(current_dir, f"logo_pvd{ext}")
+        
         if os.path.exists(logo_path):
+            # Thêm cột đệm để logo nhỏ lại và cân đối hơn ở Sidebar
             st.sidebar.image(logo_path, use_container_width=True)
-            break
+            st.sidebar.markdown("---") # Đường kẻ ngang phân cách
+            return True
+    return False
+
+if not show_logo():
+    st.sidebar.warning("⚠️ Không tìm thấy file logo_pvd.png")
 
 show_logo()
 

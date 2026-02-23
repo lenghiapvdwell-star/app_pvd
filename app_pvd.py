@@ -15,7 +15,7 @@ st.markdown("""
     <style>
     .block-container {padding-top: 1rem;}
     .main-title {
-        color: #007BFF !important; /* Xanh Blue */
+        color: #007BFF !important; 
         font-size: 39px !important; 
         font-weight: bold !important;
         text-align: center !important; 
@@ -216,8 +216,14 @@ with t2:
             st.plotly_chart(fig, use_container_width=True)
             
             st.markdown("### 📋 Bảng tổng kết số ngày công")
+            # Tạo bảng Pivot
             pv = df_chart.pivot_table(index='Loại', columns='Tháng', values='Số ngày', aggfunc='sum').fillna(0).astype(int)
             pv['TỔNG NĂM'] = pv.sum(axis=1)
+            
+            # XỬ LÝ BỎ CHỮ NONE/TÊN TRỤC
+            pv.index.name = None
+            pv.columns.name = None
+            
             st.table(pv)
         else:
             st.info(f"Không có dữ liệu cho {sel_name} trong năm {curr_y}.")

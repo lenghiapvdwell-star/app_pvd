@@ -44,13 +44,12 @@ COMPANIES = ["PVDWS", "OWS", "National", "Baker Hughes", "Schlumberger", "Hallib
 TITLES = ["Casing crew", "CRTI LD", "CRTI SP", "SOLID", "MUDCL", "UNDERRM", "PPLS", "HAMER"]
 DEFAULT_RIGS = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNLOD"]
 
-# --- 4. KẾT NỐI & QUẢN LÝ DỮ LIỆU (NÂNG CẤP ĐỂ ĐỌC CHÍNH XÁC DANH SÁCH) ---
+# --- 4. KẾT NỐI & QUẢN LÝ DỮ LIỆU ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 @st.cache_data(ttl=300, show_spinner=False)
 def get_data_cached(wks_name):
     try:
-        # ttl=0 để đảm bảo luôn fetch mới từ Google khi hàm này được gọi
         df = conn.read(worksheet=wks_name, ttl=0)
         return df if not df.empty else pd.DataFrame()
     except: return pd.DataFrame()
@@ -58,12 +57,10 @@ def get_data_cached(wks_name):
 def load_config_names():
     df = get_data_cached("nhansu")
     if not df.empty:
-        # Chuẩn hóa tên cột để tránh lỗi khoảng trắng
         df.columns = [str(c).strip() for c in df.columns]
         if "999s" in df.columns:
             return [str(n).strip() for n in df["999s"].dropna().tolist() if str(n).strip()]
         else:
-            # Nếu không tìm thấy cột '999s', lấy cột đầu tiên bất kỳ
             return [str(n).strip() for n in df.iloc[:, 0].dropna().tolist() if str(n).strip()]
     return [] 
 
@@ -91,7 +88,7 @@ def save_config_rigs(rig_list):
         return True
     except: return False
 
-# --- 5. ENGINE TÍNH TOÁN (GIỮ NGUYÊN 100%) ---
+# --- 5. ENGINE TÍNH TOÁN (GIỮ NGUYÊN) ---
 def apply_logic(df, curr_m, curr_y, rigs):
     hols = [date(2026,1,1), date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19), date(2026,2,20), date(2026,4,26), date(2026,4,30), date(2026,5,1), date(2026,9,2)]
     df_calc = df.copy()
@@ -120,7 +117,7 @@ def apply_logic(df, curr_m, curr_y, rigs):
         df_calc.at[idx, 'Tổng CA'] = round(float(ton_cu if not pd.isna(ton_cu) else 0.0) + accrued, 1)
     return df_calc
 
-# --- 6. HÀM CẬP NHẬT DÂY CHUYỀN (GIỮ NGUYÊN) ---
+# --- 6. HÀM CẬP NHẬT DÂY CHUYỀN ---
 def push_balances_to_future(start_date, start_df, rigs):
     current_df = start_df.copy()
     current_date = start_date
@@ -141,7 +138,7 @@ def push_balances_to_future(start_date, start_df, rigs):
             current_date = next_date
         except: break
 
-# --- 7. KHỞI TẠO DỮ LIỆU (NÂNG CẤP ĐỂ LOAD TÊN TỪ TAB NHANSU) ---
+# --- 7. KHỞI TẠO DỮ LIỆU ---
 if "GIANS" not in st.session_state:
     st.session_state.GIANS = load_config_rigs()
 if "NAMES" not in st.session_state:
@@ -160,7 +157,7 @@ DATE_COLS = [f"{d:02d}/{wd.strftime('%b')} ({['T2','T3','T4','T5','T6','T7','CN'
 if sheet_name not in st.session_state.store:
     with st.spinner(f"Đang đồng bộ danh sách nhân sự từ Google Sheets..."):
         df_raw = get_data_cached(sheet_name)
-        current_config_names = load_config_names() # Luôn load mới nhất
+        current_config_names = load_config_names()
         st.session_state.NAMES = current_config_names
         
         if df_raw.empty:
@@ -183,7 +180,6 @@ if sheet_name not in st.session_state.store:
                 df_raw = pd.concat([df_raw, new_df], ignore_index=True)
             df_raw['STT'] = range(1, len(df_raw)+1)
 
-        # AUTO-FILL 6H SÁNG (GIỮ NGUYÊN)
         now = datetime.now()
         if sheet_name == now.strftime("%m_%Y") and now.hour >= 6 and now.day > 1:
             p_day, c_day = f"{(now.day-1):02d}/", f"{now.day:02d}/"
@@ -246,51 +242,30 @@ with t1:
                 st.session_state.store[sheet_name] = apply_logic(db, curr_m, curr_y, st.session_state.GIANS)
                 st.rerun()
 
-    # --- 8. HIỂN THỊ BẢNG VÀ XỬ LÝ DỮ LIỆU (NÂNG CẤP PIN CỘT) ---
-    
-    # 1. Cấu hình các cột đặc biệt
-    # pinned=True sẽ giúp cột đứng yên khi kéo thanh cuộn ngang
-    column_configuration = {
-        "Họ và Tên": st.column_config.TextColumn(
-            "Họ và Tên",
-            width="medium",
-            pinned=True,  # Cố định cột này
-        ),
+    # --- ĐOẠN ĐÃ CẬP NHẬT CỐ ĐỊNH CỘT ---
+    col_config = {
+        "Họ và Tên": st.column_config.TextColumn("Họ và Tên", width="medium", pinned=True),
         "Công ty": st.column_config.SelectboxColumn("Công ty", options=COMPANIES, width="small"),
         "Chức danh": st.column_config.SelectboxColumn("Chức danh", options=TITLES, width="small"),
         "Tồn cũ": st.column_config.NumberColumn("Tồn cũ", format="%.1f", width="small"),
         "Tổng CA": st.column_config.NumberColumn("Tổng CA", format="%.1f", width="small"),
-        "STT": st.column_config.TextColumn("STT", width="min"),
     }
-
-    # 2. Danh sách cột mong muốn
-    all_col = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Tồn cũ', 'Tổng CA'] + DATE_COLS
     
-    # Lọc lại để chỉ lấy các cột thực sự tồn tại trong db (tránh lỗi Redacted)
+    all_col = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Tồn cũ', 'Tổng CA'] + DATE_COLS
     available_cols = [c for c in all_col if c in db.columns]
 
-    # 3. Hiển thị bảng Editor
     ed_db = st.data_editor(
         db[available_cols], 
         use_container_width=True, 
         height=550, 
         hide_index=True,
-        column_config=column_configuration,
-        key=f"editor_{sheet_name}" # Key động để không bị lỗi cache khi đổi tháng
+        column_config=col_config,
+        key=f"editor_{sheet_name}"
     )
-
-    # 4. Kiểm tra và cập nhật dữ liệu khi có thay đổi
+    
     if not ed_db.equals(db[available_cols]):
-        # Update dữ liệu mới vào session_state
         st.session_state.store[sheet_name].update(ed_db)
-        
-        # Chạy lại engine tính toán để cập nhật cột Tổng CA ngay lập tức
-        st.session_state.store[sheet_name] = apply_logic(
-            st.session_state.store[sheet_name], 
-            curr_m, 
-            curr_y, 
-            st.session_state.GIANS
-        )
+        st.session_state.store[sheet_name] = apply_logic(st.session_state.store[sheet_name], curr_m, curr_y, st.session_state.GIANS)
         st.rerun()
 
 with t2:

@@ -242,9 +242,10 @@ with t1:
                 st.session_state.store[sheet_name] = apply_logic(db, curr_m, curr_y, st.session_state.GIANS)
                 st.rerun()
 
-    # --- ĐOẠN CẬP NHẬT THỨ TỰ CỘT VÀ PIN ---
+    # --- 10. ĐỊNH NGHĨA MÀU SẮC & CẤU HÌNH CỘT ---
+    # Sửa lỗi STT và thêm màu sắc trực quan
     col_config = {
-        "STT": st.column_config.TextColumn("STT", width="min", pinned=True),
+        "STT": st.column_config.NumberColumn("STT", width="min", pinned=True, disabled=True),
         "Họ và Tên": st.column_config.TextColumn("Họ và Tên", width="medium", pinned=True),
         "Công ty": st.column_config.SelectboxColumn("Công ty", options=COMPANIES, width="small"),
         "Chức danh": st.column_config.SelectboxColumn("Chức danh", options=TITLES, width="small"),
@@ -252,10 +253,18 @@ with t1:
         "Tổng CA": st.column_config.NumberColumn("Tổng CA", format="%.1f", width="small"),
     }
     
-    # Sắp xếp danh sách cột: STT lên đầu tiên
+    # Tạo màu cho các cột ngày tháng
+    for c in DATE_COLS:
+        col_config[c] = st.column_config.TextColumn(
+            c, 
+            width="small",
+            help="Nhập tên giàn hoặc CA/WS/NP/ỐM"
+        )
+
     all_col = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Tồn cũ', 'Tổng CA'] + DATE_COLS
     available_cols = [c for c in all_col if c in db.columns]
 
+    # Hiển thị trình chỉnh sửa dữ liệu
     ed_db = st.data_editor(
         db[available_cols], 
         use_container_width=True, 
@@ -299,7 +308,7 @@ with t2:
             pv['TỔNG NĂM'] = pv.sum(axis=1)
             st.table(pv)
 
-# --- 9. SIDEBAR: QUẢN LÝ TỔNG HỢP ---
+# --- 9. SIDEBAR: QUẢN LÝ TỔNG HỢP (GIỮ NGUYÊN) ---
 with st.sidebar:
     st.header("⚙️ QUẢN LÝ HỆ THỐNG")
     

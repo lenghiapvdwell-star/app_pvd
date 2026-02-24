@@ -180,34 +180,67 @@ with t1:
         db.to_excel(buf, index=False)
         st.download_button("📥 XUẤT EXCEL", buf.getvalue(), f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
-    with st.expander("🛠️ CÔNG CỤ NHẬP NHANH"):
-        # Hàng 1: Chọn nhân sự
-        names = st.multiselect("Chọn nhân sự thao tác:", st.session_state.NAMES)
-        
-        # Hàng 2: Các nút chức năng thêm/xóa dòng trong bảng (Dành cho việc quản lý danh sách tháng hiện tại)
-        cx1, cx2, _ = st.columns([2, 2, 4])
-        if cx1.button("➕ THÊM VÀO BẢNG", use_container_width=True, help="Thêm những người đã chọn vào bảng điều động tháng này"):
-            if names:
-                for n in names:
-                    if n not in db['Họ và Tên'].values:
-                        new_row = pd.DataFrame([{
-                            'STT': len(db) + 1, 
-                            'Họ và Tên': n, 
-                            'Công ty': 'PVDWS', 
-                            'Chức danh': 'Casing crew', 
-                            'Tồn cũ': 0.0, 
-                            'Tổng CA': 0.0
-                        }])
-                        for c in DATE_COLS: new_row[c] = ""
-                        db = pd.concat([db, new_row], ignore_index=True)
+    with st.expander("🛠️ CÔNG CỤ NHẬP NHANH & QUẢN LÝ NHÂN SỰ"):
+        # --- PHẦN 1: THÊM NHÂN VIÊN MỚI (GIỐNG THÊM GIÀN) ---
+        c_add1, c_add2 = st.columns([6, 2])
+        new_worker = c_add1.text_input("👤 Nhập tên nhân viên mới (Thêm vào hệ thống):", key="txt_new_worker")
+        if c_add2.button("➕ THÊM NGAY", use_container_width=True):
+            if new_worker and new_worker not in st.session_state.NAMES:
+                # 1. Thêm vào danh sách tổng trong Session
+                st.session_state.NAMES.append(new_worker)
+                # 2. Lưu vào tab 'nhansu' trên Google Sheet
+                save_names_to_sheet(st.session_state.NAMES)
+                # 3. Tự động thêm luôn vào bảng điều động tháng hiện tại để chấm công
+                new_row = pd.DataFrame([{
+                    'STT': len(db) + 1, 
+                    'Họ và Tên': new_worker, 
+                    'Công ty': 'PVDWS', 
+                    'Chức danh': 'Casing crew', 
+                    'Tồn cũ': 0.0, 
+                    'Tổng CA': 0.0
+                }])
+                for c in DATE_COLS: new_row[c] = ""
+                db = pd.concat([db, new_row], ignore_index=True)
                 st.session_state.store[sheet_name] = db
+                st.success(f"Đã thêm {new_worker} vào hệ thống và bảng tháng {sheet_name}")
+                time.sleep(1)
                 st.rerun()
 
-        if cx2.button("❌ XÓA KHỎI BẢNG", use_container_width=True, help="Xóa những người đã chọn ra khỏi bảng điều động tháng này"):
+        st.markdown("---")
+
+        # --- PHẦN 2: ĐIỀU ĐỘNG NHANH & XÓA ---
+        names = st.multiselect("Chọn nhân sự để thao tác:", db['Họ và Tên'].tolist())
+        
+        # Nút xóa nhân sự khỏi bảng tháng này
+        if st.button("❌ XÓA NHÂN SỰ KHỎI BẢNG THÁNG NÀY", use_container_width=True):
             if names:
                 db = db[~db['Họ và Tên'].isin(names)].reset_index(drop=True)
                 db['STT'] = range(1, len(db) + 1)
                 st.session_state.store[sheet_name] = db
+                st.rerun()
+
+        dr = st.date_input("Khoảng ngày áp dụng:", value=(date(curr_y, curr_m, 1), date(curr_y, curr_m, 5)))
+        r1, r2, r3, r4 = st.columns(4)
+        stt = r1.selectbox("Trạng thái:", ["Đi Biển", "CA", "WS", "NP", "Ốm", "Xóa Trắng"])
+        rig = r2.selectbox("Tên Giàn:", st.session_state.GIANS) if stt == "Đi Biển" else stt
+        co = r3.selectbox("Công ty:", ["Giữ nguyên"] + COMPANIES)
+        ti = r4.selectbox("Chức danh:", ["Giữ nguyên"] + TITLES)
+        
+        if st.button("✅ ÁP DỤNG ĐIỀU ĐỘNG", type="primary", use_container_width=True):
+            if names and len(dr) == 2:
+                for n in names:
+                    idx_list = db.index[db['Họ và Tên'] == n].tolist()
+                    if idx_list:
+                        idx = idx_list[0]
+                        if co != "Giữ nguyên": db.at[idx, 'Công ty'] = co
+                        if ti != "Giữ nguyên": db.at[idx, 'Chức danh'] = ti
+                        sd, ed = dr
+                        while sd <= ed:
+                            if sd.month == curr_m:
+                                m_cols = [c for c in DATE_COLS if c.startswith(f"{sd.day:02d}/")]
+                                if m_cols: db.at[idx, m_cols[0]] = "" if stt == "Xóa Trắng" else rig
+                            sd += timedelta(days=1)
+                st.session_state.store[sheet_name] = apply_logic(db, curr_m, curr_y, st.session_state.GIANS)
                 st.rerun()
         
         st.markdown("---") # Đường kẻ phân cách phần quản lý dòng và phần nhập dữ liệu

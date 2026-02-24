@@ -242,8 +242,9 @@ with t1:
                 st.session_state.store[sheet_name] = apply_logic(db, curr_m, curr_y, st.session_state.GIANS)
                 st.rerun()
 
-    # --- ĐOẠN ĐÃ CẬP NHẬT CỐ ĐỊNH CỘT ---
+    # --- ĐOẠN CẬP NHẬT THỨ TỰ CỘT VÀ PIN ---
     col_config = {
+        "STT": st.column_config.TextColumn("STT", width="min", pinned=True),
         "Họ và Tên": st.column_config.TextColumn("Họ và Tên", width="medium", pinned=True),
         "Công ty": st.column_config.SelectboxColumn("Công ty", options=COMPANIES, width="small"),
         "Chức danh": st.column_config.SelectboxColumn("Chức danh", options=TITLES, width="small"),
@@ -251,6 +252,7 @@ with t1:
         "Tổng CA": st.column_config.NumberColumn("Tổng CA", format="%.1f", width="small"),
     }
     
+    # Sắp xếp danh sách cột: STT lên đầu tiên
     all_col = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Tồn cũ', 'Tổng CA'] + DATE_COLS
     available_cols = [c for c in all_col if c in db.columns]
 

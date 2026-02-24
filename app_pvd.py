@@ -39,7 +39,7 @@ def display_main_logo():
 display_main_logo()
 st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
 
-# --- 3. DANH MỤC CỐ ĐỊNH (GIỮ NGUYÊN) ---
+# --- 3. DANH MỤC CỐ ĐỊNH ---
 COMPANIES = ["PVDWS", "OWS", "National", "Baker Hughes", "Schlumberger", "Halliburton"]
 TITLES = ["Casing crew", "CRTI LD", "CRTI SP", "SOLID", "MUDCL", "UNDERRM", "PPLS", "HAMER"]
 DEFAULT_RIGS = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNLOD"]
@@ -88,7 +88,7 @@ def save_config_rigs(rig_list):
         return True
     except: return False
 
-# --- 5. ENGINE TÍNH TOÁN (GIỮ NGUYÊN) ---
+# --- 5. ENGINE TÍNH TOÁN ---
 def apply_logic(df, curr_m, curr_y, rigs):
     hols = [date(2026,1,1), date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19), date(2026,2,20), date(2026,4,26), date(2026,4,30), date(2026,5,1), date(2026,9,2)]
     df_calc = df.copy()
@@ -180,6 +180,9 @@ if sheet_name not in st.session_state.store:
                 df_raw = pd.concat([df_raw, new_df], ignore_index=True)
             df_raw['STT'] = range(1, len(df_raw)+1)
 
+        # Chống lỗi kiểu dữ liệu cho STT
+        df_raw['STT'] = pd.to_numeric(df_raw['STT'], errors='coerce').fillna(0).astype(int)
+
         now = datetime.now()
         if sheet_name == now.strftime("%m_%Y") and now.hour >= 6 and now.day > 1:
             p_day, c_day = f"{(now.day-1):02d}/", f"{now.day:02d}/"
@@ -221,7 +224,8 @@ with t1:
         names_sel = st.multiselect("Nhân sự:", st.session_state.NAMES)
         dr = st.date_input("Khoảng ngày:", value=(date(curr_y, curr_m, 1), date(curr_y, curr_m, 5)))
         r1, r2, r3, r4 = st.columns(4)
-        stt = r1.selectbox("Trạng thái:", ["Đi Biển", "CA", "WS", "NP", "Ốm", "Xóa"])
+        stt_list = ["Đi Biển", "CA", "WS", "NP", "Ốm", "Xóa"]
+        stt = r1.selectbox("Trạng thái:", stt_list)
         rig = r2.selectbox("Tên Giàn:", st.session_state.GIANS) if stt == "Đi Biển" else stt
         co = r3.selectbox("Công ty:", ["Giữ nguyên"] + COMPANIES)
         ti = r4.selectbox("Chức danh:", ["Giữ nguyên"] + TITLES)
@@ -242,10 +246,9 @@ with t1:
                 st.session_state.store[sheet_name] = apply_logic(db, curr_m, curr_y, st.session_state.GIANS)
                 st.rerun()
 
-    # --- 10. ĐỊNH NGHĨA MÀU SẮC & CẤU HÌNH CỘT ---
-    # Sửa lỗi STT và thêm màu sắc trực quan
+    # --- 10. CẤU HÌNH CỘT VÀ MÀU SẮC (SỬA LỖI TẠI ĐÂY) ---
     col_config = {
-        "STT": st.column_config.NumberColumn("STT", width="min", pinned=True, disabled=True),
+        "STT": st.column_config.NumberColumn("STT", width="min", pinned=True, format="%d"),
         "Họ và Tên": st.column_config.TextColumn("Họ và Tên", width="medium", pinned=True),
         "Công ty": st.column_config.SelectboxColumn("Công ty", options=COMPANIES, width="small"),
         "Chức danh": st.column_config.SelectboxColumn("Chức danh", options=TITLES, width="small"),
@@ -253,22 +256,19 @@ with t1:
         "Tổng CA": st.column_config.NumberColumn("Tổng CA", format="%.1f", width="small"),
     }
     
-    # Tạo màu cho các cột ngày tháng
+    # Tạo danh sách trạng thái để gán màu trong Selectbox
+    status_options = st.session_state.GIANS + ["CA", "WS", "NP", "ỐM", ""]
+    
     for c in DATE_COLS:
-        col_config[c] = st.column_config.TextColumn(
-            c, 
-            width="small",
-            help="Nhập tên giàn hoặc CA/WS/NP/ỐM"
-        )
+        col_config[c] = st.column_config.SelectboxColumn(c, options=status_options, width="small")
 
     all_col = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Tồn cũ', 'Tổng CA'] + DATE_COLS
     available_cols = [c for c in all_col if c in db.columns]
 
-    # Hiển thị trình chỉnh sửa dữ liệu
     ed_db = st.data_editor(
         db[available_cols], 
         use_container_width=True, 
-        height=550, 
+        height=600, 
         hide_index=True,
         column_config=col_config,
         key=f"editor_{sheet_name}"
@@ -308,10 +308,9 @@ with t2:
             pv['TỔNG NĂM'] = pv.sum(axis=1)
             st.table(pv)
 
-# --- 9. SIDEBAR: QUẢN LÝ TỔNG HỢP (GIỮ NGUYÊN) ---
+# --- 9. SIDEBAR: QUẢN LÝ TỔNG HỢP ---
 with st.sidebar:
     st.header("⚙️ QUẢN LÝ HỆ THỐNG")
-    
     with st.expander("🏗️ Quản lý Giàn Khoan"):
         ng = st.text_input("➕ Thêm giàn mới:").upper().strip()
         if st.button("Thêm Giàn"):
@@ -326,7 +325,6 @@ with st.sidebar:
                 if save_config_rigs(st.session_state.GIANS): st.rerun()
 
     st.markdown("---")
-
     with st.expander("👤 Quản lý Nhân Sự"):
         new_per = st.text_input("➕ Thêm nhân viên mới:").strip()
         if st.button("Thêm Nhân Viên"):

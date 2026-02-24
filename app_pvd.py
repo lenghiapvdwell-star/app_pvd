@@ -251,7 +251,7 @@ if sheet_name not in st.session_state.store:
 
         st.session_state.store[sheet_name] = apply_logic(df_raw, curr_m, curr_y, st.session_state.GIANS)
 
-# --- 8. GIAO DIỆN CHÍNH (GIỮ NGUYÊN) ---
+# --- 8. GIAO DIỆN CHÍNH ---
 t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ TỔNG HỢP"])
 
 with t1:
@@ -275,7 +275,6 @@ with t1:
         st.download_button("📥 XUẤT EXCEL", buf.getvalue(), f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
     with st.expander("🛠️ CÔNG CỤ NHẬP NHANH"):
-        # Nâng cấp: Lấy tên từ session_state thay vì biến cứng
         names_sel = st.multiselect("Nhân sự:", st.session_state.NAMES)
         dr = st.date_input("Khoảng ngày:", value=(date(curr_y, curr_m, 1), date(curr_y, curr_m, 5)))
         r1, r2, r3, r4 = st.columns(4)
@@ -283,6 +282,7 @@ with t1:
         rig = r2.selectbox("Tên Giàn:", st.session_state.GIANS) if stt == "Đi Biển" else stt
         co = r3.selectbox("Công ty:", ["Giữ nguyên"] + COMPANIES)
         ti = r4.selectbox("Chức danh:", ["Giữ nguyên"] + TITLES)
+        
         if st.button("✅ ÁP DỤNG", use_container_width=True):
             if names_sel and len(dr) == 2:
                 for n in names_sel:
@@ -299,6 +299,41 @@ with t1:
                             sd += timedelta(days=1)
                 st.session_state.store[sheet_name] = apply_logic(db, curr_m, curr_y, st.session_state.GIANS)
                 st.rerun()
+
+    # --- ĐOẠN NÂNG CẤP GIAO DIỆN BẢNG (FIX LỖI TẠI ĐÂY) ---
+    column_configuration = {
+        "Họ và Tên": st.column_config.TextColumn(
+            "Họ và Tên",
+            help="Tên nhân sự (Cột này đã được cố định)",
+            width="medium",
+            pinned=True,
+        ),
+        "Tồn cũ": st.column_config.NumberColumn("Tồn cũ", format="%.1f", width="small"),
+        "Tổng CA": st.column_config.NumberColumn("Tổng CA", format="%.1f", width="small"),
+        "STT": st.column_config.TextColumn("STT", width="min"),
+    }
+
+    all_col = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Tồn cũ', 'Tổng CA'] + DATE_COLS
+    
+    # Render bảng editor
+    ed_db = st.data_editor(
+        db[all_col], 
+        use_container_width=True, 
+        height=550, 
+        hide_index=True,
+        column_config=column_configuration
+    )
+
+    # Kiểm tra thay đổi để update
+    if not ed_db.equals(db[all_col]):
+        st.session_state.store[sheet_name].update(ed_db)
+        st.session_state.store[sheet_name] = apply_logic(
+            st.session_state.store[sheet_name], 
+            curr_m, 
+            curr_y, 
+            st.session_state.GIANS
+        )
+        st.rerun()
 
     # Cấu hình các cột để hiển thị chuyên nghiệp hơn
     column_configuration = {

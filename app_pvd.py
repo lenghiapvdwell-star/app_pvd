@@ -8,19 +8,78 @@ import time
 import plotly.express as px
 import os
 
-# --- 1. CẤU HÌNH & STYLE (GIỮ NGUYÊN) ---
+# --- 1. CẤU HÌNH & STYLE (GIAO DIỆN NÂNG CẤP PRO) ---
 st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 
 st.markdown("""
     <style>
-    .block-container {padding-top: 1rem;}
+    /* 1. Tổng thể và Khoảng cách */
+    .block-container {
+        padding: 1.5rem 3rem;
+        background-color: #0e1117;
+    }
+    
+    /* 2. Tiêu đề chính Gradient chuyên nghiệp */
     .main-title {
-        color: #007BFF !important; 
-        font-size: 39px !important; 
-        font-weight: bold !important;
+        background: linear-gradient(90deg, #007BFF, #00d4ff);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-size: 45px !important; 
+        font-weight: 800 !important;
         text-align: center !important; 
-        margin-bottom: 20px !important;
-        text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+        margin-bottom: 5px !important;
+        filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.3));
+    }
+
+    /* 3. Nâng cấp các nút bấm (Buttons) */
+    div.stButton > button {
+        border-radius: 10px !important;
+        font-weight: 600 !important;
+        transition: all 0.3s ease !important;
+        border: 1px solid rgba(255,255,255,0.1) !important;
+    }
+    
+    /* Hiệu ứng cho nút Primary (Lưu & Cập nhật) */
+    div.stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, #007BFF 0%, #0056b3 100%) !important;
+        box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3) !important;
+    }
+    
+    div.stButton > button:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 6px 20px rgba(0, 123, 255, 0.4) !important;
+    }
+
+    /* 4. Tùy chỉnh các Tab (🚀 ĐIỀU ĐỘNG...) */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 20px;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        background-color: #1e2128;
+        border-radius: 10px 10px 0 0;
+        padding: 0 25px;
+        color: #888;
+    }
+
+    .stTabs [aria-selected="true"] {
+        background-color: #007BFF !important;
+        color: white !important;
+    }
+
+    /* 5. Làm bảng Data Editor đẹp hơn */
+    [data-testid="stDataEditor"] {
+        border: 1px solid #333;
+        border-radius: 15px;
+        overflow: hidden;
+    }
+
+    /* 6. Header của Expander (Công cụ nhập nhanh) */
+    .stExpander {
+        border-radius: 15px !important;
+        border: 1px solid #333 !important;
+        background-color: #1e2128 !important;
     }
     </style>
     """, unsafe_allow_html=True)

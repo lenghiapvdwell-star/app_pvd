@@ -300,7 +300,9 @@ with t1:
                 st.session_state.store[sheet_name] = apply_logic(db, curr_m, curr_y, st.session_state.GIANS)
                 st.rerun()
 
-    # --- ĐOẠN NÂNG CẤP GIAO DIỆN BẢNG (FIX LỖI TẠI ĐÂY) ---
+    # --- ĐOẠN NÂNG CẤP GIAO DIỆN BẢNG (FIX LỖI TRIỆT ĐỂ) ---
+    
+    # 1. Định nghĩa cấu hình cột
     column_configuration = {
         "Họ và Tên": st.column_config.TextColumn(
             "Họ và Tên",
@@ -313,27 +315,39 @@ with t1:
         "STT": st.column_config.TextColumn("STT", width="min"),
     }
 
-    all_col = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Tồn cũ', 'Tổng CA'] + DATE_COLS
+    # 2. Tạo danh sách cột hiển thị (Chỉ lấy những cột thực sự có trong dữ liệu)
+    # Điều này ngăn lỗi khi db thiếu cột STT hoặc sai lệch DATE_COLS
+    desired_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Tồn cũ', 'Tổng CA'] + DATE_COLS
+    available_cols = [c for c in desired_cols if c in db.columns]
     
-    # Render bảng editor
-    ed_db = st.data_editor(
-        db[all_col], 
-        use_container_width=True, 
-        height=550, 
-        hide_index=True,
-        column_config=column_configuration
-    )
-
-    # Kiểm tra thay đổi để update
-    if not ed_db.equals(db[all_col]):
-        st.session_state.store[sheet_name].update(ed_db)
-        st.session_state.store[sheet_name] = apply_logic(
-            st.session_state.store[sheet_name], 
-            curr_m, 
-            curr_y, 
-            st.session_state.GIANS
+    # 3. Render bảng editor với dữ liệu đã lọc cột
+    try:
+        ed_db = st.data_editor(
+            db[available_cols], 
+            use_container_width=True, 
+            height=550, 
+            hide_index=True,
+            column_config=column_configuration,
+            key=f"editor_{sheet_name}" # Thêm key để tránh lỗi lặp widget
         )
-        st.rerun()
+
+        # 4. Kiểm tra thay đổi để update
+        if not ed_db.equals(db[available_cols]):
+            # Cập nhật lại vào store chính
+            st.session_state.store[sheet_name].update(ed_db)
+            # Tính toán lại logic
+            st.session_state.store[sheet_name] = apply_logic(
+                st.session_state.store[sheet_name], 
+                curr_m, 
+                curr_y, 
+                st.session_state.GIANS
+            )
+            st.rerun()
+            
+    except Exception as e:
+        st.error(f"Lỗi hiển thị bảng: {e}")
+        st.info("Đang thử hiển thị bảng ở chế độ đơn giản...")
+        st.dataframe(db) # Phương án dự phòng nếu data_editor vẫn lỗi
 
     # Cấu hình các cột để hiển thị chuyên nghiệp hơn
     column_configuration = {

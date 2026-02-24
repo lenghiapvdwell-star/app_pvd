@@ -300,11 +300,48 @@ with t1:
                 st.session_state.store[sheet_name] = apply_logic(db, curr_m, curr_y, st.session_state.GIANS)
                 st.rerun()
 
+    # Cấu hình các cột để hiển thị chuyên nghiệp hơn
+    column_configuration = {
+        "Họ và Tên": st.column_config.TextColumn(
+            "Họ và Tên",
+            help="Tên nhân sự (Cột này đã được cố định)",
+            width="medium",
+            pinned=True,  # Cố định cột này khi kéo ngang
+        ),
+        "Tồn cũ": st.column_config.NumberColumn(
+            "Tồn cũ",
+            format="%.1f",
+            width="small",
+        ),
+        "Tổng CA": st.column_config.NumberColumn(
+            "Tổng CA",
+            help="Tổng cộng sau khi tính toán",
+            format="%.1f",
+            width="small",
+        ),
+        "STT": st.column_config.TextColumn("STT", width="min"),
+    }
+
+    # Hiển thị bảng Editor với cấu hình Pro
     all_col = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Tồn cũ', 'Tổng CA'] + DATE_COLS
-    ed_db = st.data_editor(db[all_col], use_container_width=True, height=550, hide_index=True)
+    
+    ed_db = st.data_editor(
+        db[all_col], 
+        use_container_width=True, 
+        height=550, 
+        hide_index=True,
+        column_config=column_configuration, # Áp dụng cấu hình trên
+    )
+
+    # Xử lý cập nhật dữ liệu khi có thay đổi
     if not ed_db.equals(db[all_col]):
         st.session_state.store[sheet_name].update(ed_db)
-        st.session_state.store[sheet_name] = apply_logic(st.session_state.store[sheet_name], curr_m, curr_y, st.session_state.GIANS)
+        st.session_state.store[sheet_name] = apply_logic(
+            st.session_state.store[sheet_name], 
+            curr_m, 
+            curr_y, 
+            st.session_state.GIANS
+        )
         st.rerun()
 
 with t2:

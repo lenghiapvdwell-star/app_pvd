@@ -41,7 +41,7 @@ st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_a
 
 # --- 3. DANH MỤC CỐ ĐỊNH & NGÀY LỄ ---
 COMPANIES = ["PVDWS", "OWS", "National", "Baker Hughes", "Schlumberger", "Halliburton"]
-TITLES = ["Casing crew", "CRTI LD", "CRTI SP", "SOLID", "MUDCL", "UNDERRM", "PPLS", "HAMER"]
+TITLES = ["Casing crew", "CRTI LD", "CRTI SP", "SOLID", "MUDCL", "UNDERRM", "PPLS", "HAMMER"]
 DEFAULT_RIGS = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNLOD"]
 HOLIDAYS_2026 = [
     date(2026,1,1), date(2026,2,16), date(2026,2,17), date(2026,2,18), 
@@ -120,7 +120,7 @@ def apply_logic(df, curr_m, curr_y, rigs):
                     if not is_we and not is_ho: accrued -= 1.0
             except: continue
         
-        ton_cu = pd.to_numeric(row.get('Tồn cũ', 0), errors='coerce')
+        ton_cu = pd.to_numeric(row.get('Tồn Cũ', 0), errors='coerce')
         df_calc.at[idx, 'Tổng CA'] = round(float(ton_cu if not pd.isna(ton_cu) else 0.0) + accrued, 1)
     return df_calc
 
@@ -137,7 +137,7 @@ def push_balances_to_future(start_date, start_df, rigs):
             balances = current_df.set_index('Họ và Tên')['Tổng CA'].to_dict()
             for idx, row in next_df.iterrows():
                 name = row['Họ và Tên']
-                if name in balances: next_df.at[idx, 'Tồn cũ'] = balances[name]
+                if name in balances: next_df.at[idx, 'Tồn Cũ'] = balances[name]
             next_df = apply_logic(next_df, next_date.month, next_date.year, rigs)
             conn.update(worksheet=next_sheet, data=next_df)
             current_df = next_df
@@ -181,7 +181,7 @@ if sheet_name not in st.session_state.store:
             new_names = [n for n in current_config_names if n not in existing_names]
             if new_names:
                 new_df = pd.DataFrame({'Họ và Tên': new_names})
-                new_df['Công ty'] = 'PVDWS'; new_df['Chức danh'] = 'Casing crew'; new_df['Tồn cũ'] = 0.0
+                new_df['Công ty'] = 'PVDWS'; new_df['Chức danh'] = 'Casing crew'; new_df['Tồn Cũ'] = 0.0
                 for c in DATE_COLS: new_df[c] = ""
                 df_raw = pd.concat([df_raw, new_df], ignore_index=True)
             df_raw['STT'] = range(1, len(df_raw)+1)
@@ -272,16 +272,16 @@ with t1:
         "Họ và Tên": st.column_config.TextColumn("Họ và Tên", width="medium", pinned=True),
         "Công ty": st.column_config.SelectboxColumn("Công ty", options=COMPANIES, width="normal"),
         "Chức danh": st.column_config.SelectboxColumn("Chức danh", options=TITLES, width="normal"),
-        "Tồn cũ": st.column_config.NumberColumn("Tồn cũ", format="%.1f", width="normal"),
+        "Tồn Cũ": st.column_config.NumberColumn("Tồn Cũ", format="%.1f", width="normal"),
         "Tổng CA": st.column_config.NumberColumn("Tổng CA", format="%.1f", width="normal"),
     }
     
-    status_options = st.session_state.GIANS + ["CA", "WS", "Lễ", "NP", "Ốm", ""]
+    status_options = st.session_state.GIANS + ["CA", "WS", "Nghỉ Lễ", "NP", "Ốm", ""]
     for c in DATE_COLS:
         col_config[c] = st.column_config.SelectboxColumn(c, options=status_options, width="normal")
 
     # Kiểm tra những cột nào thực sự có trong dataframe db
-    actual_cols = [c for c in ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Tồn cũ', 'Tổng CA'] + DATE_COLS if c in db.columns]
+    actual_cols = [c for c in ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Tồn Cũ', 'Tổng CA'] + DATE_COLS if c in db.columns]
     
     # Lọc data theo các cột thực tế đang có
     display_df = db[actual_cols]
@@ -316,14 +316,14 @@ with t2:
                 m_df = get_data_cached(f"{m:02d}_{curr_y}")
                 if not m_df.empty and sel_name in m_df['Họ và Tên'].values:
                     p_row = m_df[m_df['Họ và Tên'] == sel_name].iloc[0]
-                    counts = {"Đi Biển": 0, "Nghỉ CA": 0, "Làm xưởng": 0, "Nghỉ/Lễ": 0}
+                    counts = {"Đi Biển": 0, "Nghỉ CA": 0, "Làm xưởng": 0, "Nghỉ/Nghỉ Lễ": 0}
                     for c in m_df.columns:
                         if "/" in c and "(" in c:
                             val = str(p_row[c]).strip().upper()
                             if any(g in val for g in rigs_up) and val != "": counts["Đi Biển"] += 1
                             elif val == "CA": counts["Nghỉ CA"] += 1
                             elif val == "WS": counts["Làm xưởng"] += 1
-                            elif val in ["LỄ", "NP", "ỐM"]: counts["Nghỉ/Lễ"] += 1
+                            elif val in ["Nghỉ Lễ", "NP", "ỐM"]: counts["Nghỉ/Nghỉ Lễ"] += 1
                     for k, v in counts.items():
                         if v > 0: yearly_data.append({"Tháng": f"Tháng {m}", "Loại": k, "Số ngày": v})
         

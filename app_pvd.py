@@ -250,17 +250,17 @@ with t1:
     col_config = {
         "STT": st.column_config.NumberColumn("STT", width="min", pinned=True, format="%d"),
         "Họ và Tên": st.column_config.TextColumn("Họ và Tên", width="medium", pinned=True),
-        "Công ty": st.column_config.SelectboxColumn("Công ty", options=COMPANIES, width="small"),
-        "Chức danh": st.column_config.SelectboxColumn("Chức danh", options=TITLES, width="small"),
-        "Tồn cũ": st.column_config.NumberColumn("Tồn cũ", format="%.1f", width="small"),
-        "Tổng CA": st.column_config.NumberColumn("Tổng CA", format="%.1f", width="small"),
+        "Công ty": st.column_config.SelectboxColumn("Công ty", options=COMPANIES, width="normal"),
+        "Chức danh": st.column_config.SelectboxColumn("Chức danh", options=TITLES, width="normal"),
+        "Tồn cũ": st.column_config.NumberColumn("Tồn cũ", format="%.1f", width="normal"),
+        "Tổng CA": st.column_config.NumberColumn("Tổng CA", format="%.1f", width="normal"),
     }
     
     # Tạo danh sách trạng thái để gán màu trong Selectbox
     status_options = st.session_state.GIANS + ["CA", "WS", "NP", "Ốm", ""]
     
     for c in DATE_COLS:
-        col_config[c] = st.column_config.SelectboxColumn(c, options=status_options, width="small")
+        col_config[c] = st.column_config.SelectboxColumn(c, options=status_options, width="normal")
 
     all_col = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Tồn cũ', 'Tổng CA'] + DATE_COLS
     available_cols = [c for c in all_col if c in db.columns]
@@ -268,7 +268,7 @@ with t1:
     ed_db = st.data_editor(
         db[available_cols], 
         use_container_width=True, 
-        height=600, 
+        height=650, 
         hide_index=True,
         column_config=col_config,
         key=f"editor_{sheet_name}"

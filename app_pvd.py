@@ -8,7 +8,7 @@ import time
 import plotly.express as px
 import os
 
-# --- 1. CẤU HÌNH & STYLE (GIỮ NGUYÊN) ---
+# --- 1. CẤU HÌNH & STYLE ---
 st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 
 st.markdown("""
@@ -25,7 +25,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. LOGO (GIỮ NGUYÊN) ---
+# --- 2. LOGO ---
 def display_main_logo():
     current_dir = os.path.dirname(os.path.abspath(__file__))
     for ext in [".png", ".jpg", ".jpeg", ".webp"]:
@@ -39,10 +39,16 @@ def display_main_logo():
 display_main_logo()
 st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
 
-# --- 3. DANH MỤC CỐ ĐỊNH ---
+# --- 3. DANH MỤC CỐ ĐỊNH & NGÀY LỄ ---
 COMPANIES = ["PVDWS", "OWS", "National", "Baker Hughes", "Schlumberger", "Halliburton"]
 TITLES = ["Casing crew", "CRTI LD", "CRTI SP", "SOLID", "MUDCL", "UNDERRM", "PPLS", "HAMER"]
 DEFAULT_RIGS = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNLOD"]
+# Danh sách ngày lễ 2026
+HOLIDAYS_2026 = [
+    date(2026,1,1), date(2026,2,16), date(2026,2,17), date(2026,2,18), 
+    date(2026,2,19), date(2026,2,20), date(2026,4,26), date(2026,4,30), 
+    date(2026,5,1), date(2026,9,2)
+]
 
 # --- 4. KẾT NỐI & QUẢN LÝ DỮ LIỆU ---
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -90,7 +96,6 @@ def save_config_rigs(rig_list):
 
 # --- 5. ENGINE TÍNH TOÁN ---
 def apply_logic(df, curr_m, curr_y, rigs):
-    hols = [date(2026,1,1), date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19), date(2026,2,20), date(2026,4,26), date(2026,4,30), date(2026,5,1), date(2026,9,2)]
     df_calc = df.copy()
     rigs_up = [r.upper() for r in rigs]
     date_cols = [c for c in df_calc.columns if "/" in c and "(" in c]
@@ -102,17 +107,23 @@ def apply_logic(df, curr_m, curr_y, rigs):
             try:
                 val = str(row.get(col, "")).strip().upper()
                 if not val or val == "NAN": continue
+                
                 d_num = int(col[:2])
                 target_date = date(curr_y, curr_m, d_num)
                 is_we = target_date.weekday() >= 5
-                is_ho = target_date in hols
+                is_ho = target_date in HOLIDAYS_2026
+                
+                # Đi biển: Tính theo logic giàn khoan
                 if any(g in val for g in rigs_up):
                     if is_ho: accrued += 2.0
                     elif is_we: accrued += 1.0
                     else: accrued += 0.5
+                # Nghỉ CA: Chỉ trừ nếu KHÔNG PHẢI cuối tuần và KHÔNG PHẢI lễ
                 elif val == "CA":
                     if not is_we and not is_ho: accrued -= 1.0
+                # Các trạng thái khác (LỄ, NP, ỐM, WS) không làm thay đổi quỹ CA (accrued += 0)
             except: continue
+        
         ton_cu = pd.to_numeric(row.get('Tồn cũ', 0), errors='coerce')
         df_calc.at[idx, 'Tổng CA'] = round(float(ton_cu if not pd.isna(ton_cu) else 0.0) + accrued, 1)
     return df_calc
@@ -155,15 +166,17 @@ days_in_m = calendar.monthrange(curr_y, curr_m)[1]
 DATE_COLS = [f"{d:02d}/{wd.strftime('%b')} ({['T2','T3','T4','T5','T6','T7','CN'][date(curr_y,curr_m,d).weekday()]})" for d in range(1, days_in_m+1)]
 
 if sheet_name not in st.session_state.store:
-    with st.spinner(f"Đang đồng bộ danh sách nhân sự từ Google Sheets..."):
+    with st.spinner(f"Đang đồng bộ dữ liệu..."):
         df_raw = get_data_cached(sheet_name)
         current_config_names = load_config_names()
         st.session_state.NAMES = current_config_names
         
+        # Nếu chưa có Sheet cho tháng này -> Tạo mới từ danh sách nhân sự
         if df_raw.empty:
             df_raw = pd.DataFrame({'STT': range(1, len(current_config_names)+1), 'Họ và Tên': current_config_names})
             df_raw['Công ty'] = 'PVDWS'; df_raw['Chức danh'] = 'Casing crew'; df_raw['Tồn cũ'] = 0.0
             for c in DATE_COLS: df_raw[c] = ""
+            # Lấy tồn cũ từ tháng trước
             prev_date = wd.replace(day=1) - timedelta(days=1)
             prev_df = get_data_cached(prev_date.strftime("%m_%Y"))
             if not prev_df.empty:
@@ -171,6 +184,7 @@ if sheet_name not in st.session_state.store:
                 for idx, row in df_raw.iterrows():
                     if row['Họ và Tên'] in balances: df_raw.at[idx, 'Tồn cũ'] = balances[row['Họ và Tên']]
         else:
+            # Nếu đã có dữ liệu, cập nhật thêm nhân viên mới nếu có
             existing_names = df_raw['Họ và Tên'].dropna().tolist()
             new_names = [n for n in current_config_names if n not in existing_names]
             if new_names:
@@ -180,9 +194,7 @@ if sheet_name not in st.session_state.store:
                 df_raw = pd.concat([df_raw, new_df], ignore_index=True)
             df_raw['STT'] = range(1, len(df_raw)+1)
 
-        # Chống lỗi kiểu dữ liệu cho STT
-        df_raw['STT'] = pd.to_numeric(df_raw['STT'], errors='coerce').fillna(0).astype(int)
-
+        # Logic Tự Động: Nếu là tháng hiện tại, copy trạng thái ngày hôm qua sang hôm nay (nếu chưa nhập)
         now = datetime.now()
         if sheet_name == now.strftime("%m_%Y") and now.hour >= 6 and now.day > 1:
             p_day, c_day = f"{(now.day-1):02d}/", f"{now.day:02d}/"
@@ -192,9 +204,7 @@ if sheet_name not in st.session_state.store:
                 mask = (df_raw[col_c[0]].isna() | (df_raw[col_c[0]] == "")) & (df_raw[col_p[0]].notna() & (df_raw[col_p[0]] != ""))
                 if mask.any():
                     df_raw.loc[mask, col_c[0]] = df_raw.loc[mask, col_p[0]]
-                    df_raw = apply_logic(df_raw, curr_m, curr_y, st.session_state.GIANS)
-                    conn.update(worksheet=sheet_name, data=df_raw)
-
+        
         st.session_state.store[sheet_name] = apply_logic(df_raw, curr_m, curr_y, st.session_state.GIANS)
 
 # --- 8. GIAO DIỆN CHÍNH ---
@@ -202,17 +212,35 @@ t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ TỔNG HỢP"])
 
 with t1:
     db = st.session_state.store[sheet_name]
-    c1, c2, c3 = st.columns([2, 2, 4])
     
+    # --- PHÁT HIỆN ĐI LÀM NGÀY LỄ (CẢNH BÁO) ---
+    rigs_up = [r.upper() for r in st.session_state.GIANS]
+    work_on_holiday = []
+    for c in DATE_COLS:
+        d_num = int(c[:2])
+        if date(curr_y, curr_m, d_num) in HOLIDAYS_2026:
+            mask = db[c].str.upper().isin(rigs_up + ["WS"])
+            if mask.any():
+                names = db.loc[mask, 'Họ và Tên'].tolist()
+                for n in names:
+                    work_on_holiday.append(f"🚨 **{n}**: Làm việc ngày Lễ ({c[:5]})")
+
+    if work_on_holiday:
+        with st.container():
+            st.error("⚠️ NHÂN SỰ ĐI LÀM NGÀY LỄ TẾT:")
+            cols = st.columns(3)
+            for i, msg in enumerate(work_on_holiday):
+                cols[i % 3].markdown(msg)
+
+    c1, c2, c3 = st.columns([2, 2, 4])
     if c1.button("📤 LƯU & CẬP NHẬT CẢ NĂM", type="primary", use_container_width=True):
-        with st.spinner("Đang chốt tồn và đẩy sang các tháng kế tiếp..."):
+        with st.spinner("Đang lưu và đẩy tồn sang các tháng kế tiếp..."):
             db = apply_logic(db, curr_m, curr_y, st.session_state.GIANS)
             conn.update(worksheet=sheet_name, data=db)
             push_balances_to_future(wd, db, st.session_state.GIANS)
             st.cache_data.clear()
             st.session_state.store.clear()
-            st.success("Hoàn tất quy trình Pro!")
-            time.sleep(1)
+            st.success("Hoàn tất!")
             st.rerun()
 
     with c3:
@@ -224,7 +252,7 @@ with t1:
         names_sel = st.multiselect("Nhân sự:", st.session_state.NAMES)
         dr = st.date_input("Khoảng ngày:", value=(date(curr_y, curr_m, 1), date(curr_y, curr_m, 5)))
         r1, r2, r3, r4 = st.columns(4)
-        stt_list = ["Đi Biển", "CA", "WS", "NP", "Ốm", "Xóa"]
+        stt_list = ["Đi Biển", "CA", "WS", "Lễ", "NP", "Ốm", "Xóa"]
         stt = r1.selectbox("Trạng thái:", stt_list)
         rig = r2.selectbox("Tên Giàn:", st.session_state.GIANS) if stt == "Đi Biển" else stt
         co = r3.selectbox("Công ty:", ["Giữ nguyên"] + COMPANIES)
@@ -246,7 +274,7 @@ with t1:
                 st.session_state.store[sheet_name] = apply_logic(db, curr_m, curr_y, st.session_state.GIANS)
                 st.rerun()
 
-    # --- 10. CẤU HÌNH CỘT VÀ MÀU SẮC (SỬA LỖI TẠI ĐÂY) ---
+    # --- BẢNG DỮ LIỆU ---
     col_config = {
         "STT": st.column_config.NumberColumn("STT", width="min", pinned=True, format="%d"),
         "Họ và Tên": st.column_config.TextColumn("Họ và Tên", width="medium", pinned=True),
@@ -255,24 +283,12 @@ with t1:
         "Tồn cũ": st.column_config.NumberColumn("Tồn cũ", format="%.1f", width="normal"),
         "Tổng CA": st.column_config.NumberColumn("Tổng CA", format="%.1f", width="normal"),
     }
-    
-    # Tạo danh sách trạng thái để gán màu trong Selectbox
-    status_options = st.session_state.GIANS + ["CA", "WS", "NP", "Ốm", ""]
-    
+    status_options = st.session_state.GIANS + ["CA", "WS", "Lễ", "NP", "Ốm", ""]
     for c in DATE_COLS:
         col_config[c] = st.column_config.SelectboxColumn(c, options=status_options, width="normal")
 
-    all_col = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Tồn cũ', 'Tổng CA'] + DATE_COLS
-    available_cols = [c for c in all_col if c in db.columns]
-
-    ed_db = st.data_editor(
-        db[available_cols], 
-        use_container_width=True, 
-        height=650, 
-        hide_index=True,
-        column_config=col_config,
-        key=f"editor_{sheet_name}"
-    )
+    available_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Tồn cũ', 'Tổng CA'] + DATE_COLS
+    ed_db = st.data_editor(db[available_cols], use_container_width=True, height=600, hide_index=True, column_config=col_config, key=f"editor_{sheet_name}")
     
     if not ed_db.equals(db[available_cols]):
         st.session_state.store[sheet_name].update(ed_db)
@@ -284,67 +300,64 @@ with t2:
     sel_name = st.selectbox("🔍 Chọn nhân sự báo cáo:", st.session_state.NAMES)
     if sel_name:
         yearly_data = []
-        rigs_up = [r.upper() for r in st.session_state.GIANS]
-        with st.spinner("Đang tổng hợp báo cáo..."):
+        with st.spinner("Đang tổng hợp..."):
             for m in range(1, 13):
                 m_df = get_data_cached(f"{m:02d}_{curr_y}")
                 if not m_df.empty and sel_name in m_df['Họ và Tên'].values:
                     p_row = m_df[m_df['Họ và Tên'] == sel_name].iloc[0]
-                    counts = {"Đi Biển": 0, "Nghỉ CA": 0, "Làm xưởng": 0, "Nghỉ/Ốm": 0}
+                    counts = {"Đi Biển": 0, "Nghỉ CA": 0, "Làm xưởng": 0, "Nghỉ/Lễ": 0}
                     for c in m_df.columns:
                         if "/" in c and "(" in c:
                             val = str(p_row[c]).strip().upper()
                             if any(g in val for g in rigs_up) and val != "": counts["Đi Biển"] += 1
                             elif val == "CA": counts["Nghỉ CA"] += 1
                             elif val == "WS": counts["Làm xưởng"] += 1
-                            elif val in ["NP", "Ốm"]: counts["Nghỉ/Ốm"] += 1
+                            elif val in ["LỄ", "NP", "ỐM"]: counts["Nghỉ/Lễ"] += 1
                     for k, v in counts.items():
                         if v > 0: yearly_data.append({"Tháng": f"Tháng {m}", "Loại": k, "Số ngày": v})
+        
         if yearly_data:
             df_chart = pd.DataFrame(yearly_data)
             fig = px.bar(df_chart, x="Tháng", y="Số ngày", color="Loại", barmode="stack", text="Số ngày", template="plotly_dark")
             st.plotly_chart(fig, use_container_width=True)
+            # Hiển thị bảng chi tiết
             pv = df_chart.pivot_table(index='Loại', columns='Tháng', values='Số ngày', aggfunc='sum', fill_value=0).astype(int)
             pv['TỔNG NĂM'] = pv.sum(axis=1)
             st.table(pv)
 
-# --- 9. SIDEBAR: QUẢN LÝ TỔNG HỢP ---
+# --- 9. SIDEBAR ---
 with st.sidebar:
     st.header("⚙️ QUẢN LÝ HỆ THỐNG")
     with st.expander("🏗️ Quản lý Giàn Khoan"):
-        ng = st.text_input("➕ Thêm giàn mới:").upper().strip()
+        ng = st.text_input("➕ Thêm giàn:").upper().strip()
         if st.button("Thêm Giàn"):
             if ng and ng not in st.session_state.GIANS:
                 st.session_state.GIANS.append(ng)
-                if save_config_rigs(st.session_state.GIANS): st.rerun()
-        st.markdown("---")
+                save_config_rigs(st.session_state.GIANS)
+                st.rerun()
         dg = st.selectbox("❌ Xóa giàn:", st.session_state.GIANS)
         if st.button("Xóa Giàn"):
-            if len(st.session_state.GIANS) > 1:
-                st.session_state.GIANS.remove(dg) 
-                if save_config_rigs(st.session_state.GIANS): st.rerun()
+            st.session_state.GIANS.remove(dg)
+            save_config_rigs(st.session_state.GIANS)
+            st.rerun()
 
-    st.markdown("---")
     with st.expander("👤 Quản lý Nhân Sự"):
-        new_per = st.text_input("➕ Thêm nhân viên mới:").strip()
+        new_per = st.text_input("➕ Thêm nhân viên:").strip()
         if st.button("Thêm Nhân Viên"):
             if new_per and new_per not in st.session_state.NAMES:
                 st.session_state.NAMES.append(new_per)
-                if save_config_names(st.session_state.NAMES):
-                    st.success(f"Đã thêm {new_per}")
-                    st.session_state.store.clear()
-                    st.rerun()
-        st.markdown("---")
+                save_config_names(st.session_state.NAMES)
+                st.session_state.store.clear()
+                st.rerun()
+        
         del_per = st.selectbox("❌ Xóa nhân viên:", st.session_state.NAMES)
         if st.button("Xóa Nhân Viên"):
-            if del_per:
-                st.session_state.NAMES.remove(del_per)
-                if save_config_names(st.session_state.NAMES):
-                    st.warning(f"Đã xóa {del_per}")
-                    st.session_state.store.clear()
-                    st.rerun()
-    
-    if st.button("🔄 LÀM MỚI DANH SÁCH"):
+            st.session_state.NAMES.remove(del_per)
+            save_config_names(st.session_state.NAMES)
+            st.session_state.store.clear()
+            st.rerun()
+
+    if st.button("🔄 LÀM MỚI HỆ THỐNG"):
         st.cache_data.clear()
         st.session_state.clear()
         st.rerun()

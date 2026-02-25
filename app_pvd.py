@@ -43,7 +43,6 @@ st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_a
 COMPANIES = ["PVDWS", "OWS", "National", "Baker Hughes", "Schlumberger", "Halliburton"]
 TITLES = ["Casing crew", "CRTI LD", "CRTI SP", "SOLID", "MUDCL", "UNDERRM", "PPLS", "HAMER"]
 DEFAULT_RIGS = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNLOD"]
-# Danh sách ngày lễ 2026
 HOLIDAYS_2026 = [
     date(2026,1,1), date(2026,2,16), date(2026,2,17), date(2026,2,18), 
     date(2026,2,19), date(2026,2,20), date(2026,4,26), date(2026,4,30), 
@@ -113,22 +112,18 @@ def apply_logic(df, curr_m, curr_y, rigs):
                 is_we = target_date.weekday() >= 5
                 is_ho = target_date in HOLIDAYS_2026
                 
-                # Đi biển: Tính theo logic giàn khoan
                 if any(g in val for g in rigs_up):
                     if is_ho: accrued += 2.0
                     elif is_we: accrued += 1.0
                     else: accrued += 0.5
-                # Nghỉ CA: Chỉ trừ nếu KHÔNG PHẢI cuối tuần và KHÔNG PHẢI lễ
                 elif val == "CA":
                     if not is_we and not is_ho: accrued -= 1.0
-                # Các trạng thái khác (LỄ, NP, ỐM, WS) không làm thay đổi quỹ CA (accrued += 0)
             except: continue
         
         ton_cu = pd.to_numeric(row.get('Tồn cũ', 0), errors='coerce')
         df_calc.at[idx, 'Tổng CA'] = round(float(ton_cu if not pd.isna(ton_cu) else 0.0) + accrued, 1)
     return df_calc
 
-# --- 6. HÀM CẬP NHẬT DÂY CHUYỀN ---
 def push_balances_to_future(start_date, start_df, rigs):
     current_df = start_df.copy()
     current_date = start_date
@@ -171,12 +166,10 @@ if sheet_name not in st.session_state.store:
         current_config_names = load_config_names()
         st.session_state.NAMES = current_config_names
         
-        # Nếu chưa có Sheet cho tháng này -> Tạo mới từ danh sách nhân sự
         if df_raw.empty:
             df_raw = pd.DataFrame({'STT': range(1, len(current_config_names)+1), 'Họ và Tên': current_config_names})
             df_raw['Công ty'] = 'PVDWS'; df_raw['Chức danh'] = 'Casing crew'; df_raw['Tồn cũ'] = 0.0
             for c in DATE_COLS: df_raw[c] = ""
-            # Lấy tồn cũ từ tháng trước
             prev_date = wd.replace(day=1) - timedelta(days=1)
             prev_df = get_data_cached(prev_date.strftime("%m_%Y"))
             if not prev_df.empty:
@@ -184,7 +177,6 @@ if sheet_name not in st.session_state.store:
                 for idx, row in df_raw.iterrows():
                     if row['Họ và Tên'] in balances: df_raw.at[idx, 'Tồn cũ'] = balances[row['Họ và Tên']]
         else:
-            # Nếu đã có dữ liệu, cập nhật thêm nhân viên mới nếu có
             existing_names = df_raw['Họ và Tên'].dropna().tolist()
             new_names = [n for n in current_config_names if n not in existing_names]
             if new_names:
@@ -194,7 +186,6 @@ if sheet_name not in st.session_state.store:
                 df_raw = pd.concat([df_raw, new_df], ignore_index=True)
             df_raw['STT'] = range(1, len(df_raw)+1)
 
-        # Logic Tự Động: Nếu là tháng hiện tại, copy trạng thái ngày hôm qua sang hôm nay (nếu chưa nhập)
         now = datetime.now()
         if sheet_name == now.strftime("%m_%Y") and now.hour >= 6 and now.day > 1:
             p_day, c_day = f"{(now.day-1):02d}/", f"{now.day:02d}/"
@@ -212,25 +203,26 @@ t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG", "📊 BIỂU ĐỒ TỔNG HỢP"])
 
 with t1:
     db = st.session_state.store[sheet_name]
-    
-    # --- PHÁT HIỆN ĐI LÀM NGÀY LỄ (CẢNH BÁO) ---
     rigs_up = [r.upper() for r in st.session_state.GIANS]
-    work_on_holiday = []
-    for c in DATE_COLS:
-        d_num = int(c[:2])
-        if date(curr_y, curr_m, d_num) in HOLIDAYS_2026:
-            mask = db[c].str.upper().isin(rigs_up + ["WS"])
-            if mask.any():
-                names = db.loc[mask, 'Họ và Tên'].tolist()
-                for n in names:
-                    work_on_holiday.append(f"🚨 **{n}**: Làm việc ngày Lễ ({c[:5]})")
 
-    if work_on_holiday:
-        with st.container():
-            st.error("⚠️ NHÂN SỰ ĐI LÀM NGÀY LỄ TẾT:")
-            cols = st.columns(3)
-            for i, msg in enumerate(work_on_holiday):
-                cols[i % 3].markdown(msg)
+    # --- HÀM TÔ MÀU ĐỎ CHO NGÀY LỄ ---
+    def highlight_holidays(s):
+        # Tạo một series kết quả mặc định là không màu
+        res = ['' for _ in s]
+        # Lấy tên cột (ngày)
+        col_name = s.name
+        try:
+            d_num = int(col_name[:2])
+            target_date = date(curr_y, curr_m, d_num)
+            # Nếu cột này là ngày lễ
+            if target_date in HOLIDAYS_2026:
+                for i, val in enumerate(s):
+                    v = str(val).upper().strip()
+                    # Nếu có đi làm (Giàn hoặc WS) thì tô đỏ ô đó
+                    if any(g in v for g in rigs_up) or v == "WS":
+                        res[i] = 'background-color: #FF4B4B; color: white; font-weight: bold'
+        except: pass
+        return res
 
     c1, c2, c3 = st.columns([2, 2, 4])
     if c1.button("📤 LƯU & CẬP NHẬT CẢ NĂM", type="primary", use_container_width=True):
@@ -280,15 +272,26 @@ with t1:
         "Họ và Tên": st.column_config.TextColumn("Họ và Tên", width="medium", pinned=True),
         "Công ty": st.column_config.SelectboxColumn("Công ty", options=COMPANIES, width="normal"),
         "Chức danh": st.column_config.SelectboxColumn("Chức danh", options=TITLES, width="normal"),
-        "Tồn cũ": st.column_config.NumberColumn("Tồn cũ", format="%.1f", width="normal"),
+        "Tồn Cũ": st.column_config.NumberColumn("Tồn Cũ", format="%.1f", width="normal"),
         "Tổng CA": st.column_config.NumberColumn("Tổng CA", format="%.1f", width="normal"),
     }
     status_options = st.session_state.GIANS + ["CA", "WS", "Lễ", "NP", "Ốm", ""]
     for c in DATE_COLS:
         col_config[c] = st.column_config.SelectboxColumn(c, options=status_options, width="normal")
 
-    available_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Tồn cũ', 'Tổng CA'] + DATE_COLS
-    ed_db = st.data_editor(db[available_cols], use_container_width=True, height=600, hide_index=True, column_config=col_config, key=f"editor_{sheet_name}")
+    available_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Tồn Cũ', 'Tổng CA'] + DATE_COLS
+    
+    # Áp dụng Style cho DataFrame trước khi đưa vào Editor
+    styled_db = db[available_cols].style.apply(highlight_holidays, axis=0)
+
+    ed_db = st.data_editor(
+        styled_db, 
+        use_container_width=True, 
+        height=600, 
+        hide_index=True, 
+        column_config=col_config, 
+        key=f"editor_{sheet_name}"
+    )
     
     if not ed_db.equals(db[available_cols]):
         st.session_state.store[sheet_name].update(ed_db)
@@ -320,7 +323,6 @@ with t2:
             df_chart = pd.DataFrame(yearly_data)
             fig = px.bar(df_chart, x="Tháng", y="Số ngày", color="Loại", barmode="stack", text="Số ngày", template="plotly_dark")
             st.plotly_chart(fig, use_container_width=True)
-            # Hiển thị bảng chi tiết
             pv = df_chart.pivot_table(index='Loại', columns='Tháng', values='Số ngày', aggfunc='sum', fill_value=0).astype(int)
             pv['TỔNG NĂM'] = pv.sum(axis=1)
             st.table(pv)

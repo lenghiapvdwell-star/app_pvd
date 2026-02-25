@@ -257,7 +257,7 @@ with t1:
     }
     
     # Tạo danh sách trạng thái để gán màu trong Selectbox
-    status_options = st.session_state.GIANS + ["CA", "WS", "NP", "ỐM", ""]
+    status_options = st.session_state.GIANS + ["CA", "WS", "NP", "Ốm", ""]
     
     for c in DATE_COLS:
         col_config[c] = st.column_config.SelectboxColumn(c, options=status_options, width="small")
@@ -297,7 +297,7 @@ with t2:
                             if any(g in val for g in rigs_up) and val != "": counts["Đi Biển"] += 1
                             elif val == "CA": counts["Nghỉ CA"] += 1
                             elif val == "WS": counts["Làm xưởng"] += 1
-                            elif val in ["NP", "ỐM"]: counts["Nghỉ/Ốm"] += 1
+                            elif val in ["NP", "Ốm"]: counts["Nghỉ/Ốm"] += 1
                     for k, v in counts.items():
                         if v > 0: yearly_data.append({"Tháng": f"Tháng {m}", "Loại": k, "Số ngày": v})
         if yearly_data:

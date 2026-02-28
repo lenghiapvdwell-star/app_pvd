@@ -105,7 +105,7 @@ def apply_logic(df, curr_m, curr_y, rigs):
         for col in date_cols:
             try:
                 val = str(row.get(col, "")).strip().upper()
-                if not val or val == "NAN": continue
+                if not val or val == "NAN" or val == "NONE": continue
                 
                 d_num = int(col[:2])
                 target_date = date(curr_y, curr_m, d_num)
@@ -186,15 +186,31 @@ if sheet_name not in st.session_state.store:
                 df_raw = pd.concat([df_raw, new_df], ignore_index=True)
             df_raw['STT'] = range(1, len(df_raw)+1)
 
+        # --- AUTO-FILL CẢI TIẾN: TỰ ĐỘNG ĐIỀN ĐẾN NGÀY HIỆN TẠI ---
         now = datetime.now()
-        if sheet_name == now.strftime("%m_%Y") and now.hour >= 6 and now.day > 1:
-            p_day, c_day = f"{(now.day-1):02d}/", f"{now.day:02d}/"
-            col_p = [c for c in DATE_COLS if c.startswith(p_day)]
-            col_c = [c for c in DATE_COLS if c.startswith(c_day)]
-            if col_p and col_c:
-                mask = (df_raw[col_c[0]].isna() | (df_raw[col_c[0]] == "")) & (df_raw[col_p[0]].notna() & (df_raw[col_p[0]] != ""))
-                if mask.any():
-                    df_raw.loc[mask, col_c[0]] = df_raw.loc[mask, col_p[0]]
+        if sheet_name == now.strftime("%m_%Y"):
+            has_updated = False
+            # Chạy vòng lặp từ ngày 2 đến ngày hiện tại (hoặc ngày cuối tháng nếu qua tháng mới)
+            target_day = min(now.day, days_in_m)
+            for d in range(2, target_day + 1):
+                p_col_name = [c for c in DATE_COLS if c.startswith(f"{(d-1):02d}/")]
+                c_col_name = [c for c in DATE_COLS if c.startswith(f"{d:02d}/")]
+                
+                if p_col_name and c_col_name:
+                    pc, cc = p_col_name[0], c_col_name[0]
+                    
+                    # Điều kiện: Nếu ngày hôm nay (cc) là None/Trống VÀ ngày hôm trước (pc) có dữ liệu
+                    mask = (df_raw[cc].isna() | (df_raw[cc].astype(str).strip() == "None") | (df_raw[cc].astype(str).strip() == "")) & \
+                           (df_raw[pc].notna() & (df_raw[pc].astype(str).strip() != "None") & (df_raw[pc].astype(str).strip() != ""))
+                    
+                    if mask.any():
+                        df_raw.loc[mask, cc] = df_raw.loc[mask, pc]
+                        has_updated = True
+            
+            if has_updated:
+                df_raw = apply_logic(df_raw, curr_m, curr_y, st.session_state.GIANS)
+                conn.update(worksheet=sheet_name, data=df_raw)
+                st.toast(f"⚡ Tự động nối dữ liệu đến ngày {target_day:02d}!", icon="✅")
         
         st.session_state.store[sheet_name] = apply_logic(df_raw, curr_m, curr_y, st.session_state.GIANS)
 
@@ -207,18 +223,14 @@ with t1:
 
     # --- HÀM TÔ MÀU ĐỎ CHO NGÀY LỄ ---
     def highlight_holidays(s):
-        # Tạo một series kết quả mặc định là không màu
         res = ['' for _ in s]
-        # Lấy tên cột (ngày)
         col_name = s.name
         try:
             d_num = int(col_name[:2])
             target_date = date(curr_y, curr_m, d_num)
-            # Nếu cột này là ngày lễ
             if target_date in HOLIDAYS_2026:
                 for i, val in enumerate(s):
                     v = str(val).upper().strip()
-                    # Nếu có đi làm (Giàn hoặc WS) thì tô đỏ ô đó
                     if any(g in v for g in rigs_up) or v == "WS":
                         res[i] = 'background-color: #FF4B4B; color: white; font-weight: bold'
         except: pass
@@ -266,7 +278,6 @@ with t1:
                 st.session_state.store[sheet_name] = apply_logic(db, curr_m, curr_y, st.session_state.GIANS)
                 st.rerun()
 
-    # --- BẢNG DỮ LIỆU (ĐÃ SỬA LỖI KEYERROR) ---
     col_config = {
         "STT": st.column_config.NumberColumn("STT", width="min", pinned=True, format="%d"),
         "Họ và Tên": st.column_config.TextColumn("Họ và Tên", width="medium", pinned=True),
@@ -280,16 +291,10 @@ with t1:
     for c in DATE_COLS:
         col_config[c] = st.column_config.SelectboxColumn(c, options=status_options, width="normal")
 
-    # Kiểm tra những cột nào thực sự có trong dataframe db
     actual_cols = [c for c in ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Tồn cũ', 'Tổng CA'] + DATE_COLS if c in db.columns]
-    
-    # Lọc data theo các cột thực tế đang có
     display_df = db[actual_cols]
-
-    # Áp dụng Style tô màu đỏ cho ngày lễ
     styled_db = display_df.style.apply(highlight_holidays, axis=0)
 
-    # Hiển thị Editor
     ed_db = st.data_editor(
         styled_db, 
         use_container_width=True, 
@@ -299,10 +304,8 @@ with t1:
         key=f"editor_{sheet_name}"
     )
     
-    # So sánh và cập nhật dữ liệu
     if not ed_db.equals(display_df):
         st.session_state.store[sheet_name].update(ed_db)
-        # Tính toán lại logic sau khi sửa đổi
         st.session_state.store[sheet_name] = apply_logic(st.session_state.store[sheet_name], curr_m, curr_y, st.session_state.GIANS)
         st.rerun()
 

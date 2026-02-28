@@ -200,8 +200,8 @@ if sheet_name not in st.session_state.store:
                     pc, cc = p_col_name[0], c_col_name[0]
                     
                     # Điều kiện: Nếu ngày hôm nay (cc) là None/Trống VÀ ngày hôm trước (pc) có dữ liệu
-                    mask = (df_raw[cc].isna() | (df_raw[cc].astype(str).strip() == "None") | (df_raw[cc].astype(str).strip() == "")) & \
-                           (df_raw[pc].notna() & (df_raw[pc].astype(str).strip() != "None") & (df_raw[pc].astype(str).strip() != ""))
+                    mask = (df_raw[cc].isna() | (df_raw[cc].astype(str).str.strip() == "None") | (df_raw[cc].astype(str).str.strip() == "")) & \
+       (df_raw[pc].notna() & (df_raw[pc].astype(str).str.strip() != "None") & (df_raw[pc].astype(str).str.strip() != ""))
                     
                     if mask.any():
                         df_raw.loc[mask, cc] = df_raw.loc[mask, pc]

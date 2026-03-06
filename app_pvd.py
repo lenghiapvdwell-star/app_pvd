@@ -186,11 +186,10 @@ if sheet_name not in st.session_state.store:
                 df_raw = pd.concat([df_raw, new_df], ignore_index=True)
             df_raw['STT'] = range(1, len(df_raw)+1)
 
-        # --- AUTO-FILL CẢI TIẾN: TỰ ĐỘNG ĐIỀN ĐẾN NGÀY HIỆN TẠI ---
+        # --- AUTO-FILL CẢI TIẾN ---
         now = datetime.now()
         if sheet_name == now.strftime("%m_%Y"):
             has_updated = False
-            # Chạy vòng lặp từ ngày 2 đến ngày hiện tại (hoặc ngày cuối tháng nếu qua tháng mới)
             target_day = min(now.day, days_in_m)
             for d in range(2, target_day + 1):
                 p_col_name = [c for c in DATE_COLS if c.startswith(f"{(d-1):02d}/")]
@@ -198,10 +197,8 @@ if sheet_name not in st.session_state.store:
                 
                 if p_col_name and c_col_name:
                     pc, cc = p_col_name[0], c_col_name[0]
-                    
-                    # Điều kiện: Nếu ngày hôm nay (cc) là None/Trống VÀ ngày hôm trước (pc) có dữ liệu
                     mask = (df_raw[cc].isna() | (df_raw[cc].astype(str).str.strip() == "None") | (df_raw[cc].astype(str).str.strip() == "")) & \
-       (df_raw[pc].notna() & (df_raw[pc].astype(str).str.strip() != "None") & (df_raw[pc].astype(str).str.strip() != ""))
+                           (df_raw[pc].notna() & (df_raw[pc].astype(str).str.strip() != "None") & (df_raw[pc].astype(str).str.strip() != ""))
                     
                     if mask.any():
                         df_raw.loc[mask, cc] = df_raw.loc[mask, pc]
@@ -221,7 +218,6 @@ with t1:
     db = st.session_state.store[sheet_name]
     rigs_up = [r.upper() for r in st.session_state.GIANS]
 
-    # --- HÀM TÔ MÀU ĐỎ CHO NGÀY LỄ ---
     def highlight_holidays(s):
         res = ['' for _ in s]
         col_name = s.name
@@ -235,6 +231,15 @@ with t1:
                         res[i] = 'background-color: #FF4B4B; color: white; font-weight: bold'
         except: pass
         return res
+
+    # --- ĐỊNH NGHĨA THỨ TỰ CỘT (SỬA LỖI CÁCH XA NHAU) ---
+    fixed_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh']
+    calc_cols = ['Tồn cũ', 'Tổng CA']
+    actual_cols = [c for c in fixed_cols if c in db.columns] + \
+                  [c for c in calc_cols if c in db.columns] + \
+                  [c for c in DATE_COLS if c in db.columns]
+    
+    db = db[actual_cols] # Áp dụng thứ tự cột cho db
 
     c1, c2, c3 = st.columns([2, 2, 4])
     if c1.button("📤 LƯU & CẬP NHẬT CẢ NĂM", type="primary", use_container_width=True):
@@ -291,9 +296,7 @@ with t1:
     for c in DATE_COLS:
         col_config[c] = st.column_config.SelectboxColumn(c, options=status_options, width="normal")
 
-    actual_cols = [c for c in ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Tồn cũ', 'Tổng CA'] + DATE_COLS if c in db.columns]
-    display_df = db[actual_cols]
-    styled_db = display_df.style.apply(highlight_holidays, axis=0)
+    styled_db = db.style.apply(highlight_holidays, axis=0)
 
     ed_db = st.data_editor(
         styled_db, 
@@ -304,8 +307,10 @@ with t1:
         key=f"editor_{sheet_name}"
     )
     
-    if not ed_db.equals(display_df):
+    if not ed_db.equals(db):
         st.session_state.store[sheet_name].update(ed_db)
+        # Đồng bộ thứ tự cột khi lưu lại
+        st.session_state.store[sheet_name] = st.session_state.store[sheet_name][actual_cols]
         st.session_state.store[sheet_name] = apply_logic(st.session_state.store[sheet_name], curr_m, curr_y, st.session_state.GIANS)
         st.rerun()
 

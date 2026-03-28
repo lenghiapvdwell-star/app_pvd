@@ -163,6 +163,27 @@ DAYS_EN = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 DATE_COLS = [f"{d:02d}/{wd.strftime('%b')} ({DAYS_EN[date(curr_y,curr_m,d).weekday()]})" for d in range(1, days_in_m+1)]
 
 if sheet_name not in st.session_state.store:
-    with st.spinner(f"Synchronizing data..."):
-if st.button("🔄 REFRESH SYSTEM"):
-st.cache_data.clear(); st.session_state.clear(); st.rerun()
+# --- 9. SIDEBAR ---
+with st.sidebar:
+    st.header("⚙️ SYSTEM MANAGEMENT")
+    with st.expander("🏗️ Rig Management"):
+        ng = st.text_input("➕ Add Rig:").upper().strip()
+        if st.button("Add Rig"):
+            if ng and ng not in st.session_state.GIANS:
+                st.session_state.GIANS.append(ng); save_config_rigs(st.session_state.GIANS); st.rerun()
+        dg = st.selectbox("❌ Delete Rig:", st.session_state.GIANS)
+        if st.button("Delete Rig"):
+            st.session_state.GIANS.remove(dg); save_config_rigs(st.session_state.GIANS); st.rerun()
+
+    with st.expander("👤 Personnel Management"):
+        new_per = st.text_input("➕ Add Employee:").strip()
+        if st.button("Add Employee"):
+            if new_per and new_per not in st.session_state.NAMES:
+                st.session_state.NAMES.append(new_per); save_config_names(st.session_state.NAMES); st.session_state.store.clear(); st.rerun()
+        del_per = st.selectbox("❌ Delete Employee:", st.session_state.NAMES)
+        if st.button("Delete Employee"):
+            st.session_state.NAMES.remove(del_per); save_config_names(st.session_state.NAMES); st.session_state.store.clear(); st.rerun()
+
+    # Dòng này cực kỳ quan trọng: Phải thụt lề vào 1 nấc so với 'with st.sidebar'
+    if st.button("🔄 REFRESH SYSTEM"):
+        st.cache_data.clear(); st.session_state.clear(); st.rerun()

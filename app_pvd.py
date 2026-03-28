@@ -164,4 +164,5 @@ DATE_COLS = [f"{d:02d}/{wd.strftime('%b')} ({DAYS_EN[date(curr_y,curr_m,d).weekd
 
 if sheet_name not in st.session_state.store:
     with st.spinner(f"Synchronizing data..."):
-        df
+if st.button("🔄 REFRESH SYSTEM"):
+st.cache_data.clear(); st.session_state.clear(); st.rerun()

@@ -97,7 +97,6 @@ def apply_logic(df, curr_m, curr_y, rigs):
     rigs_up = [r.upper() for r in rigs]
     date_cols = [c for c in df_calc.columns if "/" in c and "(" in c]
     
-    # Tự động nhận diện tên cột Name và Balance
     name_col = next((c for c in ['Full Name', 'Họ và Tên'] if c in df_calc.columns), None)
     prev_col = next((c for c in ['Previous Bal', 'Tồn cũ'] if c in df_calc.columns), 'Previous Bal')
     total_col = next((c for c in ['Total CA', 'Tổng CA'] if c in df_calc.columns), 'Total CA')
@@ -168,7 +167,6 @@ sheet_name = wd.strftime("%m_%Y")
 curr_m, curr_y = wd.month, wd.year
 days_in_m = calendar.monthrange(curr_y, curr_m)[1]
 
-# Cột ngày dạng Tiếng Anh
 DAYS_EN = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 DATE_COLS = [f"{d:02d}/{wd.strftime('%b')} ({DAYS_EN[date(curr_y,curr_m,d).weekday()]})" for d in range(1, days_in_m+1)]
 
@@ -178,22 +176,37 @@ if sheet_name not in st.session_state.store:
         current_config_names = load_config_names()
         st.session_state.NAMES = current_config_names
         
-        # Ánh xạ tên cột VN -> EN để đồng bộ hóa
         mapping = {'STT': 'No.', 'Họ và Tên': 'Full Name', 'Công ty': 'Company', 'Chức danh': 'Title', 'Tồn cũ': 'Previous Bal', 'Tổng CA': 'Total CA'}
         
         if df_raw.empty:
             df_raw = pd.DataFrame({'No.': range(1, len(current_config_names)+1), 'Full Name': current_config_names})
             df_raw['Company'] = 'PVDWS'; df_raw['Title'] = 'Casing crew'; df_raw['Previous Bal'] = 0.0
-            for c in DATE_COLS: df_raw[c] = ""
             
-            prev_date = wd.replace(day=1) - timedelta(days=1)
-            prev_df = get_data_cached(prev_date.strftime("%m_%Y"))
+            # --- PHẦN NÂNG CẤP: TỰ ĐỘNG FILL TRẠNG THÁI TỪ THÁNG TRƯỚC ---
+            prev_month_date = wd.replace(day=1) - timedelta(days=1)
+            prev_df = get_data_cached(prev_month_date.strftime("%m_%Y"))
+            
+            last_status_map = {}
             if not prev_df.empty:
-                p_name = next((c for c in ['Full Name', 'Họ và Tên'] if c in prev_df.columns), 'Full Name')
-                p_total = next((c for c in ['Total CA', 'Tổng CA'] if c in prev_df.columns), 'Total CA')
-                balances = prev_df.set_index(p_name)[p_total].to_dict()
-                for idx, row in df_raw.iterrows():
-                    if row['Full Name'] in balances: df_raw.at[idx, 'Previous Bal'] = balances[row['Full Name']]
+                p_name_col = next((c for c in ['Full Name', 'Họ và Tên'] if c in prev_df.columns), 'Full Name')
+                p_total_col = next((c for c in ['Total CA', 'Tổng CA'] if c in prev_df.columns), 'Total CA')
+                
+                # Tìm cột ngày cuối cùng của tháng trước
+                p_date_cols = [c for c in prev_df.columns if "/" in c and "(" in c]
+                if p_date_cols:
+                    last_day_col = sorted(p_date_cols)[-1]
+                    last_status_map = prev_df.set_index(p_name_col)[last_day_col].to_dict()
+                    
+                    # Cập nhật Tồn cũ (Balance)
+                    balances = prev_df.set_index(p_name_col)[p_total_col].to_dict()
+                    for idx, row in df_raw.iterrows():
+                        name = row['Full Name']
+                        if name in balances: df_raw.at[idx, 'Previous Bal'] = balances[name]
+
+            # Điền trạng thái cũ vào tất cả các ngày của tháng mới
+            for c in DATE_COLS:
+                df_raw[c] = df_raw['Full Name'].map(last_status_map).fillna("")
+            # -----------------------------------------------------------
         else:
             df_raw = df_raw.rename(columns=mapping)
             existing_names = df_raw['Full Name'].dropna().tolist()
@@ -205,7 +218,7 @@ if sheet_name not in st.session_state.store:
                 df_raw = pd.concat([df_raw, new_df], ignore_index=True)
             df_raw['No.'] = range(1, len(df_raw)+1)
 
-        # Logic nối dữ liệu tự động
+        # Logic nối dữ liệu tự động cho ngày hiện tại (giữ nguyên)
         now = datetime.now()
         if sheet_name == now.strftime("%m_%Y"):
             has_updated = False
@@ -215,7 +228,6 @@ if sheet_name not in st.session_state.store:
                 p_prefix, c_prefix = f"{(d-1):02d}/", f"{d:02d}/"
                 pc = next((c for c in actual_cols if c.startswith(p_prefix)), None)
                 cc = next((c for c in actual_cols if c.startswith(c_prefix)), None)
-                
                 if pc and cc:
                     mask = (df_raw[cc].isna() | df_raw[cc].astype(str).str.strip().isin(["", "None", "nan"])) & \
                            (df_raw[pc].notna() & ~df_raw[pc].astype(str).str.strip().isin(["", "None", "nan"]))
@@ -228,7 +240,7 @@ if sheet_name not in st.session_state.store:
         
         st.session_state.store[sheet_name] = apply_logic(df_raw, curr_m, curr_y, st.session_state.GIANS)
 
-# --- 8. UI ---
+# --- 8. UI (GIỮ NGUYÊN HOÀN TOÀN) ---
 t1, t2 = st.tabs(["🚀 OPERATIONS", "📊 SUMMARY CHARTS"])
 
 with t1:
@@ -248,7 +260,6 @@ with t1:
         except: pass
         return res
 
-    # Nút bấm lưu và xuất file
     c1, c2, c3 = st.columns([2, 2, 4])
     if c1.button("📤 SAVE & UPDATE YEARLY", type="primary", use_container_width=True):
         with st.spinner("Saving..."):
@@ -262,7 +273,6 @@ with t1:
         db.to_excel(buf, index=False)
         st.download_button("📥 EXPORT EXCEL", buf.getvalue(), f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
-    # CÔNG CỤ NHẬP NHANH
     with st.expander("🛠️ QUICK INPUT TOOL"):
         names_sel = st.multiselect("Personnel:", st.session_state.NAMES)
         dr = st.date_input("Date range:", value=(date(curr_y, curr_m, 1), date(curr_y, curr_m, 5)))
@@ -290,7 +300,6 @@ with t1:
                 st.session_state.store[sheet_name] = apply_logic(db, curr_m, curr_y, st.session_state.GIANS)
                 st.rerun()
 
-    # Editor table
     col_config = {
         "No.": st.column_config.NumberColumn("No.", width="min", pinned=True),
         "Full Name": st.column_config.TextColumn("Full Name", width="medium", pinned=True),
@@ -310,7 +319,7 @@ with t1:
         st.session_state.store[sheet_name] = apply_logic(ed_db, curr_m, curr_y, st.session_state.GIANS)
         st.rerun()
 
-# --- CHARTS ---
+# --- CHARTS (GIỮ NGUYÊN) ---
 with t2:
     st.subheader(f"📊 Personnel Statistics {curr_y}")
     sel_name = st.selectbox("🔍 Select Personnel:", st.session_state.NAMES)
@@ -342,7 +351,7 @@ with t2:
             pv['Total'] = pv.sum(axis=1)
             st.table(pv)
 
-# --- SIDEBAR ---
+# --- SIDEBAR (GIỮ NGUYÊN) ---
 with st.sidebar:
     st.header("⚙️ SETTINGS")
     with st.expander("🏗️ Rigs"):

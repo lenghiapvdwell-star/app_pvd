@@ -155,7 +155,7 @@ def push_balances_to_future(start_date, start_df, rigs):
             current_date = next_date
         except: break
 
-# --- 7. INITIALIZATION ---
+# --- 7. INITIALIZATION (Nâng cấp Auto-fill & Vị trí cột) ---
 if "GIANS" not in st.session_state: st.session_state.GIANS = load_config_rigs()
 if "NAMES" not in st.session_state: st.session_state.NAMES = load_config_names()
 if "store" not in st.session_state: st.session_state.store = {}
@@ -181,32 +181,20 @@ if sheet_name not in st.session_state.store:
         if df_raw.empty:
             df_raw = pd.DataFrame({'No.': range(1, len(current_config_names)+1), 'Full Name': current_config_names})
             df_raw['Company'] = 'PVDWS'; df_raw['Title'] = 'Casing crew'; df_raw['Previous Bal'] = 0.0
+            df_raw['Total CA'] = 0.0
             
-            # --- PHẦN NÂNG CẤP: TỰ ĐỘNG FILL TRẠNG THÁI TỪ THÁNG TRƯỚC ---
+            # Lấy tồn cũ từ tháng trước
             prev_month_date = wd.replace(day=1) - timedelta(days=1)
             prev_df = get_data_cached(prev_month_date.strftime("%m_%Y"))
-            
-            last_status_map = {}
             if not prev_df.empty:
                 p_name_col = next((c for c in ['Full Name', 'Họ và Tên'] if c in prev_df.columns), 'Full Name')
                 p_total_col = next((c for c in ['Total CA', 'Tổng CA'] if c in prev_df.columns), 'Total CA')
-                
-                # Tìm cột ngày cuối cùng của tháng trước
-                p_date_cols = [c for c in prev_df.columns if "/" in c and "(" in c]
-                if p_date_cols:
-                    last_day_col = sorted(p_date_cols)[-1]
-                    last_status_map = prev_df.set_index(p_name_col)[last_day_col].to_dict()
-                    
-                    # Cập nhật Tồn cũ (Balance)
-                    balances = prev_df.set_index(p_name_col)[p_total_col].to_dict()
-                    for idx, row in df_raw.iterrows():
-                        name = row['Full Name']
-                        if name in balances: df_raw.at[idx, 'Previous Bal'] = balances[name]
+                balances = prev_df.set_index(p_name_col)[p_total_col].to_dict()
+                for idx, row in df_raw.iterrows():
+                    name = row['Full Name']
+                    if name in balances: df_raw.at[idx, 'Previous Bal'] = balances[name]
 
-            # Điền trạng thái cũ vào tất cả các ngày của tháng mới
-            for c in DATE_COLS:
-                df_raw[c] = df_raw['Full Name'].map(last_status_map).fillna("")
-            # -----------------------------------------------------------
+            for c in DATE_COLS: df_raw[c] = ""
         else:
             df_raw = df_raw.rename(columns=mapping)
             existing_names = df_raw['Full Name'].dropna().tolist()
@@ -218,29 +206,48 @@ if sheet_name not in st.session_state.store:
                 df_raw = pd.concat([df_raw, new_df], ignore_index=True)
             df_raw['No.'] = range(1, len(df_raw)+1)
 
-        # Logic nối dữ liệu tự động cho ngày hiện tại (giữ nguyên)
+        # Logic Auto-fill: CHỈ ĐIỀN ĐẾN NGÀY HIỆN TẠI
         now = datetime.now()
         if sheet_name == now.strftime("%m_%Y"):
             has_updated = False
             target_day = min(now.day, days_in_m)
             actual_cols = df_raw.columns.tolist()
+            
+            # Xử lý ngày 1: Lấy status ngày cuối tháng trước
+            if target_day >= 1:
+                curr_day_col = next((c for c in actual_cols if c.startswith("01/")), None)
+                if curr_day_col and (df_raw[curr_day_col].isna() | (df_raw[curr_day_col].astype(str).str.strip() == "")).any():
+                    prev_month_date = wd.replace(day=1) - timedelta(days=1)
+                    p_df = get_data_cached(prev_month_date.strftime("%m_%Y"))
+                    if not p_df.empty:
+                        p_name_col = next((c for c in ['Full Name', 'Họ và Tên'] if c in p_df.columns), 'Full Name')
+                        p_date_cols = [c for c in p_df.columns if "/" in c and "(" in c]
+                        if p_date_cols:
+                            last_st_map = p_df.set_index(p_name_col)[sorted(p_date_cols)[-1]].to_dict()
+                            df_raw.loc[df_raw[curr_day_col].astype(str).str.strip() == "", curr_day_col] = df_raw['Full Name'].map(last_st_map).fillna("")
+                            has_updated = True
+
+            # Fill nối tiếp các ngày sau (đến hôm nay)
             for d in range(2, target_day + 1):
-                p_prefix, c_prefix = f"{(d-1):02d}/", f"{d:02d}/"
-                pc = next((c for c in actual_cols if c.startswith(p_prefix)), None)
-                cc = next((c for c in actual_cols if c.startswith(c_prefix)), None)
-                if pc and cc:
-                    mask = (df_raw[cc].isna() | df_raw[cc].astype(str).str.strip().isin(["", "None", "nan"])) & \
-                           (df_raw[pc].notna() & ~df_raw[pc].astype(str).str.strip().isin(["", "None", "nan"]))
+                p_col = next((c for c in actual_cols if c.startswith(f"{(d-1):02d}/")), None)
+                c_col = next((c for c in actual_cols if c.startswith(f"{d:02d}/")), None)
+                if p_col and c_col:
+                    mask = (df_raw[c_col].astype(str).str.strip() == "") & (df_raw[p_col].astype(str).str.strip() != "")
                     if mask.any():
-                        df_raw.loc[mask, cc] = df_raw.loc[mask, pc]
+                        df_raw.loc[mask, c_col] = df_raw.loc[mask, p_col]
                         has_updated = True
+            
             if has_updated:
                 df_raw = apply_logic(df_raw, curr_m, curr_y, st.session_state.GIANS)
                 conn.update(worksheet=sheet_name, data=df_raw)
-        
+
+        # SẮP XẾP CỘT: Đưa Total CA lên đầu
+        base_cols = ['No.', 'Full Name', 'Company', 'Title', 'Previous Bal', 'Total CA']
+        other_cols = [c for c in df_raw.columns if c not in base_cols and c not in DATE_COLS]
+        df_raw = df_raw.reindex(columns=base_cols + DATE_COLS + other_cols)
         st.session_state.store[sheet_name] = apply_logic(df_raw, curr_m, curr_y, st.session_state.GIANS)
 
-# --- 8. UI (GIỮ NGUYÊN HOÀN TOÀN) ---
+# --- 8. UI ---
 t1, t2 = st.tabs(["🚀 OPERATIONS", "📊 SUMMARY CHARTS"])
 
 with t1:
@@ -308,7 +315,8 @@ with t1:
         "Previous Bal": st.column_config.NumberColumn("Prev Bal", format="%.1f"),
         "Total CA": st.column_config.NumberColumn("Total CA", format="%.1f"),
     }
-    status_options = st.session_state.GIANS + ["CA", "WS", "Lễ", "NP", "Ốm", ""]
+    # Cập nhật tùy chọn hiển thị AL/SL trong bảng
+    status_options = st.session_state.GIANS + ["CA", "WS", "Lễ", "AL", "SL", ""]
     for c in [col for col in db.columns if "/" in col]:
         col_config[c] = st.column_config.SelectboxColumn(c, options=status_options)
 
@@ -319,7 +327,7 @@ with t1:
         st.session_state.store[sheet_name] = apply_logic(ed_db, curr_m, curr_y, st.session_state.GIANS)
         st.rerun()
 
-# --- CHARTS (GIỮ NGUYÊN) ---
+# --- CHARTS (Nâng cấp AL/SL) ---
 with t2:
     st.subheader(f"📊 Personnel Statistics {curr_y}")
     sel_name = st.selectbox("🔍 Select Personnel:", st.session_state.NAMES)
@@ -330,28 +338,30 @@ with t2:
             n_col = next((c for c in ['Full Name', 'Họ và Tên'] if c in m_df.columns), None)
             if not m_df.empty and n_col and sel_name in m_df[n_col].values:
                 p_row = m_df[m_df[n_col] == sel_name].iloc[0]
-                counts = {"Offshore": 0, "CA": 0, "Workshop": 0, "Holiday": 0, "AL": 0, "SL": 0}
+                counts = {"Offshore": 0, "CA": 0, "Workshop": 0, "Holiday": 0, "AL (Phép)": 0, "SL (Ốm)": 0}
                 for c in m_df.columns:
                     if "/" in c and "(" in c:
                         val = str(p_row[c]).strip().upper()
-                        if any(g in val for g in rigs_up) and val != "": counts["Offshore"] += 1
+                        if not val: continue
+                        if any(g in val for g in rigs_up): counts["Offshore"] += 1
                         elif val == "CA": counts["CA"] += 1
                         elif val == "WS": counts["Workshop"] += 1
-                        elif val in ["NP", "AL"]: counts["AL"] += 1
-                        elif val in ["ỐM", "SL"]: counts["SL"] += 1
+                        elif val in ["NP", "AL", "P"]: counts["AL (Phép)"] += 1
+                        elif val in ["ỐM", "SL", "O"]: counts["SL (Ốm)"] += 1
                         elif val in ["LỄ", "HOLIDAY"]: counts["Holiday"] += 1
                 for k, v in counts.items():
                     if v > 0: yearly_data.append({"Month": f"Month {m}", "Type": k, "Days": v})
         
         if yearly_data:
             df_chart = pd.DataFrame(yearly_data)
-            fig = px.bar(df_chart, x="Month", y="Days", color="Type", barmode="stack", text="Days", template="plotly_dark")
+            fig = px.bar(df_chart, x="Month", y="Days", color="Type", barmode="stack", text="Days", template="plotly_dark",
+                         color_discrete_map={"AL (Phép)": "#2ecc71", "SL (Ốm)": "#e74c3c"})
             st.plotly_chart(fig, use_container_width=True)
             pv = df_chart.pivot_table(index='Type', columns='Month', values='Days', aggfunc='sum', fill_value=0)
-            pv['Total'] = pv.sum(axis=1)
+            pv['Total Year'] = pv.sum(axis=1)
             st.table(pv)
 
-# --- SIDEBAR (GIỮ NGUYÊN) ---
+# --- SIDEBAR ---
 with st.sidebar:
     st.header("⚙️ SETTINGS")
     with st.expander("🏗️ Rigs"):

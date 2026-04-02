@@ -211,7 +211,6 @@ if sheet_name not in st.session_state.store:
                 new_df = pd.DataFrame({'Full Name': new_names})
                 new_df['Company'] = 'PVDWS'; new_df['Title'] = 'Casing crew'; new_df['Previous Bal'] = 0.0
                 for c in DATE_COLS: new_df[c] = ""
-                # SỬA LỖI TẠI ĐÂY: Đảm bảo concat có đủ ngoặc
                 df_raw = pd.concat([df_raw, new_df], ignore_index=True)
             df_raw['No.'] = range(1, len(df_raw)+1)
 
@@ -346,6 +345,10 @@ with t1:
 with t2:
     st.subheader(f"📊 Personnel Statistics {curr_y}")
     sel_name = st.selectbox("🔍 Select Personnel:", st.session_state.NAMES)
+    
+    # 1. Tạo danh sách thứ tự chuẩn cho các tháng
+    month_order = [f"Month {i}" for i in range(1, 13)]
+    
     if sel_name:
         yearly_data = []
         for m in range(1, 13):
@@ -369,10 +372,20 @@ with t2:
         
         if yearly_data:
             df_chart = pd.DataFrame(yearly_data)
+            
+            # 2. Fix thứ tự biểu đồ bằng category_orders
             fig = px.bar(df_chart, x="Month", y="Days", color="Type", barmode="stack", text="Days", template="plotly_dark",
-                         color_discrete_map={"AL (Phép)": "#2ecc71", "SL (Ốm)": "#e74c3c"})
+                         color_discrete_map={"AL (Phép)": "#2ecc71", "SL (Ốm)": "#e74c3c"},
+                         category_orders={"Month": month_order})
             st.plotly_chart(fig, use_container_width=True)
+            
+            # 3. Fix thứ tự các cột trên bảng Pivot
             pv = df_chart.pivot_table(index='Type', columns='Month', values='Days', aggfunc='sum', fill_value=0)
+            
+            # Chỉ lấy những tháng có dữ liệu thực tế để hiển thị lên bảng nhưng phải theo đúng thứ tự m_order
+            cols_to_show = [m for m in month_order if m in pv.columns]
+            pv = pv.reindex(columns=cols_to_show)
+            
             pv['Total Year'] = pv.sum(axis=1)
             st.table(pv)
 

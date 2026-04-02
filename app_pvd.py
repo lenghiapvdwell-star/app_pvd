@@ -160,12 +160,17 @@ def push_balances_to_future(start_date, start_df, rigs):
         except: break
 
 # --- 7. INITIALIZATION ---
+# --- GIỮ NGUYÊN TOÀN BỘ PHẦN ĐẦU (CONFIG, LOGO, CONNECTION, APPLY_LOGIC) ---
+# ... (Phần 1 đến Phần 6 của anh giữ nguyên) ...
+
+# --- 7. INITIALIZATION (PHẦN CHỈNH SỬA AUTOFILL) ---
 if "GIANS" not in st.session_state: st.session_state.GIANS = load_config_rigs()
 if "NAMES" not in st.session_state: st.session_state.NAMES = load_config_names()
 if "store" not in st.session_state: st.session_state.store = {}
 
 col_date1, col_date2, col_date3 = st.columns([3, 2, 3])
-with col_date2: wd = st.date_input("📅 SELECT MONTH:", value=date.today())
+with col_date2: 
+    wd = st.date_input("📅 SELECT MONTH:", value=date.today())
 
 sheet_name = wd.strftime("%m_%Y")
 curr_m, curr_y = wd.month, wd.year
@@ -180,18 +185,13 @@ if sheet_name not in st.session_state.store:
         current_config_names = load_config_names()
         st.session_state.NAMES = current_config_names
         
-        if not df_raw.empty:
-            for col in df_raw.columns:
-                if "/" in str(col) and "(" in str(col):
-                    df_raw[col] = df_raw[col].astype(str).replace(['nan', 'None', 'NAN'], '')
-
-        mapping = {'STT': 'No.', 'Họ và Tên': 'Full Name', 'Công ty': 'Company', 'Chức danh': 'Title', 'Tồn cũ': 'Previous Bal', 'Tổng CA': 'Total CA'}
-        
+        # 1. Khởi tạo Sheet mới nếu chưa tồn tại (Dành cho đầu tháng mới)
         if df_raw.empty:
             df_raw = pd.DataFrame({'No.': range(1, len(current_config_names)+1), 'Full Name': current_config_names})
             df_raw['Company'] = 'PVDWS'; df_raw['Title'] = 'Casing crew'; df_raw['Previous Bal'] = 0.0
             df_raw['Total CA'] = 0.0
             
+            # Lấy số dư từ tháng trước chuyển sang
             prev_month_date = wd.replace(day=1) - timedelta(days=1)
             prev_df = get_data_cached(prev_month_date.strftime("%m_%Y"))
             if not prev_df.empty:
@@ -204,6 +204,8 @@ if sheet_name not in st.session_state.store:
 
             for c in DATE_COLS: df_raw[c] = ""
         else:
+            # Đồng bộ tên nhân sự mới nếu có
+            mapping = {'STT': 'No.', 'Họ và Tên': 'Full Name', 'Công ty': 'Company', 'Chức danh': 'Title', 'Tồn cũ': 'Previous Bal', 'Tổng CA': 'Total CA'}
             df_raw = df_raw.rename(columns=mapping)
             existing_names = df_raw['Full Name'].dropna().tolist()
             new_names = [n for n in current_config_names if n not in existing_names]
@@ -214,51 +216,58 @@ if sheet_name not in st.session_state.store:
                 df_raw = pd.concat([df_raw, new_df], ignore_index=True)
             df_raw['No.'] = range(1, len(df_raw)+1)
 
-        # Auto-fill logic
+        # 2. LOGIC AUTO-FILL (Cập nhật mỗi khi vào App)
         now = datetime.now()
+        # Chạy autofill nếu đang xem tháng hiện tại
         if sheet_name == now.strftime("%m_%Y"):
             has_updated = False
             target_day = min(now.day, days_in_m)
             actual_cols = df_raw.columns.tolist()
             
-            if target_day >= 1:
-                curr_day_col = next((c for c in actual_cols if c.startswith("01/")), None)
-                if curr_day_col and (str(df_raw[curr_day_col].iloc[0]).strip() in ["", "nan", "None"]):
-                    prev_month_date = wd.replace(day=1) - timedelta(days=1)
-                    p_df = get_data_cached(prev_month_date.strftime("%m_%Y"))
-                    if not p_df.empty:
-                        p_name_col = next((c for c in ['Full Name', 'Họ và Tên'] if c in p_df.columns), 'Full Name')
-                        p_date_cols = [c for c in p_df.columns if "/" in str(c) and "(" in str(c)]
-                        if p_date_cols:
-                            last_st_map = p_df.set_index(p_name_col)[sorted(p_date_cols)[-1]].to_dict()
-                            df_raw[curr_day_col] = df_raw['Full Name'].map(last_st_map).fillna("")
-                            has_updated = True
+            # Bước A: Điền ngày 01 từ ngày cuối cùng của tháng trước
+            curr_day_01_col = next((c for c in actual_cols if c.startswith("01/")), None)
+            if curr_day_01_col and (str(df_raw[curr_day_01_col].iloc[0]).strip() in ["", "nan", "None"]):
+                prev_month_date = wd.replace(day=1) - timedelta(days=1)
+                p_df = get_data_cached(prev_month_date.strftime("%m_%Y"))
+                if not p_df.empty:
+                    p_name_col = next((c for c in ['Full Name', 'Họ và Tên'] if c in p_df.columns), 'Full Name')
+                    p_date_cols = [c for c in p_df.columns if "/" in str(c) and "(" in str(c)]
+                    if p_date_cols:
+                        last_day_col = sorted(p_date_cols)[-1]
+                        last_st_map = p_df.set_index(p_name_col)[last_day_col].to_dict()
+                        df_raw[curr_day_01_col] = df_raw['Full Name'].map(last_st_map).fillna("")
+                        has_updated = True
 
+            # Bước B: Điền các ngày tiếp theo dựa trên ngày hôm trước (Forward fill)
             for d in range(2, target_day + 1):
                 p_col = next((c for c in actual_cols if c.startswith(f"{(d-1):02d}/")), None)
                 c_col = next((c for c in actual_cols if c.startswith(f"{d:02d}/")), None)
                 if p_col and c_col:
+                    # Chỉ điền nếu ngày hiện tại trống và ngày trước đó có dữ liệu
                     mask = (df_raw[c_col].astype(str).str.strip().isin(["", "nan", "None"])) & \
                            (~df_raw[p_col].astype(str).str.strip().isin(["", "nan", "None"]))
                     if mask.any():
                         df_raw.loc[mask, c_col] = df_raw.loc[mask, p_col]
                         has_updated = True
             
+            # Bước C: Nếu có thay đổi, tính toán lại CA và đẩy lên Google Sheets ngay
             if has_updated:
                 df_raw = apply_logic(df_raw, curr_m, curr_y, st.session_state.GIANS)
                 conn.update(worksheet=sheet_name, data=df_raw)
+                st.cache_data.clear()
 
-        # Fix hiển thị lặp tháng bằng reindex
+        # Đảm bảo thứ tự cột chuẩn xác
         base_cols = ['No.', 'Full Name', 'Company', 'Title', 'Previous Bal', 'Total CA']
         df_raw = df_raw.reindex(columns=base_cols + DATE_COLS)
         
         for c in DATE_COLS:
-            if c not in df_raw.columns:
-                df_raw[c] = ""
-            else:
-                df_raw[c] = df_raw[c].astype(str).replace(['nan', 'None', 'NAN'], '')
+            if c not in df_raw.columns: df_raw[c] = ""
+            else: df_raw[c] = df_raw[c].astype(str).replace(['nan', 'None', 'NAN'], '')
 
         st.session_state.store[sheet_name] = apply_logic(df_raw, curr_m, curr_y, st.session_state.GIANS)
+
+# --- GIỮ NGUYÊN TOÀN BỘ PHẦN CÒN LẠI (TABS, CHARTS, SIDEBAR) ---
+# ... (Phần 8 đến hết giữ nguyên) ...
 
 # --- 8. OPERATIONS ---
 t1, t2 = st.tabs(["🚀 OPERATIONS", "📊 SUMMARY CHARTS"])

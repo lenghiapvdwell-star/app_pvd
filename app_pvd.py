@@ -207,24 +207,45 @@ with t1:
 
     with st.expander("🛠️ QUICK INPUT TOOL"):
         name_col = next((c for c in ['Full Name', 'Họ và Tên'] if c in db.columns), 'Full Name')
+        
+        # Hàng 1: Chọn nhân sự và Khoảng ngày
         names_sel = st.multiselect("Personnel:", st.session_state.NAMES)
         dr = st.date_input("Date range:", value=(date(curr_y, curr_m, 1), date(curr_y, curr_m, 1)))
+        
+        # Hàng 2: Trạng thái, Giàn, Công ty, Chức danh
         r1, r2, r3, r4 = st.columns(4)
         stt = r1.selectbox("Status:", ["Offshore", "CA", "WS", "Holiday", "AL", "SL", "Clear"])
-        rig = r2.selectbox("Rig Name:", st.session_state.GIANS) if stt == "Offshore" else stt
-        if st.button("✅ APPLY", use_container_width=True):
+        rig = r2.selectbox("Rig/Detail:", st.session_state.GIANS) if stt == "Offshore" else stt
+        
+        # Bổ sung Company và Title theo yêu cầu của anh
+        comp_sel = r3.selectbox("Company:", [""] + COMPANIES)
+        title_sel = r4.selectbox("Title:", [""] + TITLES)
+        
+        if st.button("✅ APPLY CHANGES", use_container_width=True):
             if names_sel and len(dr) == 2:
                 for n in names_sel:
                     idx_list = db.index[db[name_col] == n].tolist()
                     if idx_list:
                         idx = idx_list[0]
+                        
+                        # Cập nhật thông tin chung nếu có chọn
+                        if comp_sel: db.at[idx, 'Company'] = comp_sel
+                        if title_sel: db.at[idx, 'Title'] = title_sel
+                        
+                        # Cập nhật trạng thái theo dải ngày
                         sd, ed = dr
                         while sd <= ed:
                             if sd.month == curr_m:
-                                col = [c for c in db.columns if c.startswith(f"{sd.day:02d}/")][0]
-                                db.at[idx, col] = "" if stt == "Clear" else str(rig)
+                                # Tìm cột ngày tương ứng
+                                col_target = [c for c in db.columns if c.startswith(f"{sd.day:02d}/")]
+                                if col_target:
+                                    db.at[idx, col_target[0]] = "" if stt == "Clear" else str(rig)
                             sd += timedelta(days=1)
+                
+                # Tính toán lại logic và cập nhật Database
+                db = apply_logic(db, curr_m, curr_y, st.session_state.GIANS)
                 conn.update(worksheet=sheet_name, data=db)
+                st.success("Applied and Updated successfully!")
                 st.rerun()
 
     name_col = next((c for c in ['Full Name', 'Họ và Tên'] if c in db.columns), 'Full Name')

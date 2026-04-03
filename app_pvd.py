@@ -42,7 +42,7 @@ st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_a
 # --- 3. CATEGORIES & HOLIDAYS ---
 COMPANIES = ["PVDWS", "OWS", "National", "Baker Hughes", "Schlumberger", "Halliburton"]
 TITLES = ["Casing crew", "CRTI LD", "CRTI SP", "SOLID", "MUDCL", "UNDERRM", "PPLS", "HAMER"]
-DEFAULT_RIGS = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNLOD"]
+DEFAULT_RIGS = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNLOD", "DIALOG MALAYSIA"]
 HOLIDAYS_2026 = [
     date(2026,1,1), date(2026,2,16), date(2026,2,17), date(2026,2,18), 
     date(2026,2,19), date(2026,2,20), date(2026,4,26), date(2026,4,30), 
@@ -53,9 +53,9 @@ HOLIDAYS_2026 = [
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def get_data_fresh(wks_name):
-    """Đọc dữ liệu tươi nhất không qua cache cho các phần quan trọng"""
     try:
-        return conn.read(worksheet=wks_name, ttl="0s")
+        df = conn.read(worksheet=wks_name, ttl="0s")
+        return df if not df.empty else pd.DataFrame()
     except: return pd.DataFrame()
 
 @st.cache_data(ttl=300)
@@ -76,7 +76,6 @@ def load_config_rigs():
 def apply_logic(df, curr_m, curr_y, rigs):
     df_calc = df.copy()
     rigs_up = [r.upper() for r in rigs]
-    # Chuẩn hóa tên cột để tính toán
     mapping = {'Họ và Tên': 'Full Name', 'Tồn cũ': 'Previous Bal', 'Tổng CA': 'Total CA'}
     df_calc = df_calc.rename(columns=mapping)
     
@@ -106,7 +105,7 @@ def apply_logic(df, curr_m, curr_y, rigs):
         df_calc.at[idx, 'Total CA'] = round(float(pb if not pd.isna(pb) else 0.0) + accrued, 1)
     return df_calc
 
-# --- 7. INITIALIZATION & AUTO-FILL ---
+# --- 6. INITIALIZATION & AUTO-FILL FIX ---
 if "GIANS" not in st.session_state: st.session_state.GIANS = load_config_rigs()
 if "NAMES" not in st.session_state: st.session_state.NAMES = load_config_names()
 if "store" not in st.session_state: st.session_state.store = {}
@@ -122,15 +121,13 @@ DAYS_EN = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 DATE_COLS = [f"{d:02d}/{wd.strftime('%b')} ({DAYS_EN[date(curr_y,curr_m,d).weekday()]})" for d in range(1, days_in_m+1)]
 
 if sheet_name not in st.session_state.store:
-    with st.spinner("Đang kiểm tra dữ liệu ngày mới..."):
+    with st.spinner("Đang tự động điền dữ liệu đến ngày hiện tại..."):
         df_raw = get_data_fresh(sheet_name)
         
-        # Tạo mới nếu chưa có sheet tháng này
         if df_raw.empty:
             df_raw = pd.DataFrame({'No.': range(1, len(st.session_state.NAMES)+1), 'Full Name': st.session_state.NAMES})
             df_raw['Company'] = 'PVDWS'; df_raw['Title'] = 'Casing crew'; df_raw['Previous Bal'] = 0.0
             for c in DATE_COLS: df_raw[c] = ""
-            # Lấy balance từ tháng trước
             prev_m = (wd.replace(day=1) - timedelta(days=1)).strftime("%m_%Y")
             df_prev = get_data_fresh(prev_m)
             if not df_prev.empty:
@@ -138,12 +135,13 @@ if sheet_name not in st.session_state.store:
                 bal_map = df_prev.set_index('Full Name')['Total CA'].to_dict()
                 df_raw['Previous Bal'] = df_raw['Full Name'].map(bal_map).fillna(0.0)
 
-        # LOGIC AUTO-FILL MẠNH MẼ
+        # FIX: Sửa range điền dữ liệu bao gồm cả ngày hôm nay (+1)
         now = datetime.now()
         if sheet_name == now.strftime("%m_%Y"):
             changed = False
             today_num = now.day
-            # Điền ngày 1 từ tháng trước nếu trống
+            
+            # 1. Kiểm tra ngày 01
             if str(df_raw.at[0, DATE_COLS[0]]).strip() in ["", "nan", "None"]:
                 prev_m = (wd.replace(day=1) - timedelta(days=1)).strftime("%m_%Y")
                 df_prev = get_data_fresh(prev_m)
@@ -153,9 +151,10 @@ if sheet_name not in st.session_state.store:
                     df_raw[DATE_COLS[0]] = df_raw['Full Name'].map(st_map).fillna("")
                     changed = True
             
-            # Forward fill đến hôm nay
-            for d in range(1, today_num):
+            # 2. Forward fill cho đến ngày hôm nay (dùng today_num + 1)
+            for d in range(1, today_num): 
                 curr_c, next_c = DATE_COLS[d-1], DATE_COLS[d]
+                # Chỉ điền nếu ô tiếp theo đang trống (None/nan/"")
                 mask = (df_raw[next_c].astype(str).str.strip().isin(["", "nan", "None"])) & \
                        (~df_raw[curr_c].astype(str).str.strip().isin(["", "nan", "None"]))
                 if mask.any():
@@ -168,7 +167,7 @@ if sheet_name not in st.session_state.store:
 
         st.session_state.store[sheet_name] = apply_logic(df_raw, curr_m, curr_y, st.session_state.GIANS)
 
-# --- 8. OPERATIONS ---
+# --- 7. TABS & CHARTS (KHÔNG ĐỔI) ---
 t1, t2 = st.tabs(["🚀 OPERATIONS", "📊 SUMMARY CHARTS"])
 
 with t1:
@@ -222,7 +221,6 @@ with t1:
         st.session_state.store[sheet_name] = apply_logic(ed_db, curr_m, curr_y, st.session_state.GIANS)
         st.rerun()
 
-# --- 9. SUMMARY CHARTS (KHÔI PHỤC VÀ CỦNG CỐ) ---
 with t2:
     st.subheader(f"📊 Personnel Statistics {curr_y}")
     sel_name = st.selectbox("🔍 Select Personnel:", st.session_state.NAMES)
@@ -232,9 +230,8 @@ with t2:
         yearly_data = []
         for m in range(1, 13):
             m_sheet = f"{m:02d}_{curr_y}"
-            m_df = get_data_fresh(m_sheet) # Đọc tươi để không mất tháng 1, 2
+            m_df = get_data_fresh(m_sheet)
             if not m_df.empty:
-                # Chuẩn hóa tên cột để tìm đúng người
                 m_df = m_df.rename(columns={'Họ và Tên': 'Full Name'})
                 if sel_name in m_df['Full Name'].values:
                     p_row = m_df[m_df['Full Name'] == sel_name].iloc[0]
@@ -265,7 +262,6 @@ with t2:
             pv['Total Year'] = pv.sum(axis=1)
             st.table(pv)
 
-# --- SIDEBAR (GIỮ NGUYÊN) ---
 with st.sidebar:
     st.header("⚙️ SETTINGS")
     with st.expander("🏗️ Rigs"):

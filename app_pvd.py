@@ -8,7 +8,7 @@ import time
 import plotly.express as px
 import os
 
-# --- 1. CONFIGURATION & STYLE (GIỮ NGUYÊN) ---
+# --- 1. CONFIGURATION & STYLE ---
 st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 
 st.markdown("""
@@ -39,7 +39,7 @@ def display_main_logo():
 display_main_logo()
 st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
 
-# --- 3. CATEGORIES & HOLIDAYS (GIỮ NGUYÊN) ---
+# --- 3. CATEGORIES & HOLIDAYS ---
 COMPANIES = ["PVDWS", "OWS", "National", "Baker Hughes", "Schlumberger", "Halliburton"]
 TITLES = ["Casing crew", "CRTI LD", "CRTI SP", "SOLID", "MUDCL", "UNDERRM", "PPLS", "HAMER"]
 DEFAULT_RIGS = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNLOD"]
@@ -52,64 +52,44 @@ HOLIDAYS_2026 = [
 # --- 4. DATA CONNECTION ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-@st.cache_data(ttl=300, show_spinner=False)
-def get_data_cached(wks_name):
+def get_data_fresh(wks_name):
+    """Đọc dữ liệu tươi nhất không qua cache cho các phần quan trọng"""
     try:
-        df = conn.read(worksheet=wks_name, ttl=0)
-        return df if not df.empty else pd.DataFrame()
+        return conn.read(worksheet=wks_name, ttl="0s")
     except: return pd.DataFrame()
 
+@st.cache_data(ttl=300)
 def load_config_names():
-    df = get_data_cached("nhansu")
-    if not df.empty:
-        df.columns = [str(c).strip() for c in df.columns]
-        if "999s" in df.columns:
-            return [str(n).strip() for n in df["999s"].dropna().tolist() if str(n).strip()]
+    df = get_data_fresh("nhansu")
+    if not df.empty and "999s" in df.columns:
+        return [str(n).strip() for n in df["999s"].dropna().tolist() if str(n).strip()]
     return [] 
 
-def save_config_names(name_list):
-    try:
-        df_save = pd.DataFrame({"999s": name_list})
-        conn.update(worksheet="nhansu", data=df_save)
-        st.cache_data.clear()
-        return True
-    except: return False
-
+@st.cache_data(ttl=300)
 def load_config_rigs():
-    df = get_data_cached("config")
-    if not df.empty:
-        df.columns = [str(c).strip() for c in df.columns]
-        if "GIANS" in df.columns:
-            return [str(g).strip().upper() for g in df["GIANS"].dropna().tolist() if str(g).strip()]
+    df = get_data_fresh("config")
+    if not df.empty and "GIANS" in df.columns:
+        return [str(g).strip().upper() for g in df["GIANS"].dropna().tolist() if str(g).strip()]
     return DEFAULT_RIGS
-
-def save_config_rigs(rig_list):
-    try:
-        df_save = pd.DataFrame({"GIANS": rig_list})
-        conn.update(worksheet="config", data=df_save)
-        st.cache_data.clear()
-        return True
-    except: return False
 
 # --- 5. CALCULATION ENGINE ---
 def apply_logic(df, curr_m, curr_y, rigs):
     df_calc = df.copy()
     rigs_up = [r.upper() for r in rigs]
-    date_cols = [c for c in df_calc.columns if "/" in str(c) and "(" in str(c)]
+    # Chuẩn hóa tên cột để tính toán
+    mapping = {'Họ và Tên': 'Full Name', 'Tồn cũ': 'Previous Bal', 'Tổng CA': 'Total CA'}
+    df_calc = df_calc.rename(columns=mapping)
     
-    name_col = next((c for c in ['Full Name', 'Họ và Tên'] if c in df_calc.columns), 'Full Name')
-    prev_col = next((c for c in ['Previous Bal', 'Tồn cũ'] if c in df_calc.columns), 'Previous Bal')
-    total_col = next((c for c in ['Total CA', 'Tổng CA'] if c in df_calc.columns), 'Total CA')
-
-    if not name_col: return df_calc
+    date_cols = [c for c in df_calc.columns if "/" in str(c)]
+    if 'Full Name' not in df_calc.columns: return df_calc
 
     for idx, row in df_calc.iterrows():
-        if not str(row.get(name_col, '')).strip(): continue
+        if not str(row.get('Full Name', '')).strip(): continue
         accrued = 0.0
         for col in date_cols:
             try:
                 val = str(row.get(col, "")).strip().upper()
-                if not val or val in ["NAN", "NONE", ""]: continue
+                if val in ["", "NAN", "NONE"]: continue
                 d_num = int(col[:2])
                 target_date = date(curr_y, curr_m, d_num)
                 is_we = target_date.weekday() >= 5
@@ -121,36 +101,12 @@ def apply_logic(df, curr_m, curr_y, rigs):
                 elif val == "CA":
                     if not is_we and not is_ho: accrued -= 1.0
             except: continue
-        pb = pd.to_numeric(row.get(prev_col, 0), errors='coerce')
-        df_calc.at[idx, total_col] = round(float(pb if not pd.isna(pb) else 0.0) + accrued, 1)
+        
+        pb = pd.to_numeric(row.get('Previous Bal', 0), errors='coerce')
+        df_calc.at[idx, 'Total CA'] = round(float(pb if not pd.isna(pb) else 0.0) + accrued, 1)
     return df_calc
 
-def push_balances_to_future(start_date, start_df, rigs):
-    current_df = start_df.copy()
-    current_date = start_date
-    name_col = next((c for c in ['Full Name', 'Họ và Tên'] if c in current_df.columns), 'Full Name')
-    total_col = next((c for c in ['Total CA', 'Tổng CA'] if c in current_df.columns), 'Total CA')
-
-    for i in range(1, 13 - current_date.month + 1):
-        next_date = (current_date.replace(day=1) + timedelta(days=32)).replace(day=1)
-        if next_date.year > current_date.year: break
-        next_sheet = next_date.strftime("%m_%Y")
-        try:
-            time.sleep(2.0)
-            next_df = get_data_cached(next_sheet)
-            if next_df.empty: continue
-            balances = current_df.set_index(name_col)[total_col].to_dict()
-            for idx, row in next_df.iterrows():
-                name = row.get(name_col)
-                if name in balances:
-                    target_prev = next((c for c in ['Previous Bal', 'Tồn cũ'] if c in next_df.columns), 'Previous Bal')
-                    next_df.at[idx, target_prev] = balances[name]
-            next_df = apply_logic(next_df, next_date.month, next_date.year, rigs)
-            conn.update(worksheet=next_sheet, data=next_df)
-            current_df = next_df; current_date = next_date
-        except: break
-
-# --- 7. INITIALIZATION (AUTO-FILL NÂNG CẤP) ---
+# --- 7. INITIALIZATION & AUTO-FILL ---
 if "GIANS" not in st.session_state: st.session_state.GIANS = load_config_rigs()
 if "NAMES" not in st.session_state: st.session_state.NAMES = load_config_names()
 if "store" not in st.session_state: st.session_state.store = {}
@@ -166,50 +122,47 @@ DAYS_EN = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 DATE_COLS = [f"{d:02d}/{wd.strftime('%b')} ({DAYS_EN[date(curr_y,curr_m,d).weekday()]})" for d in range(1, days_in_m+1)]
 
 if sheet_name not in st.session_state.store:
-    with st.spinner(f"Synchronizing data..."):
-        df_raw = get_data_cached(sheet_name)
-        current_config_names = st.session_state.NAMES
+    with st.spinner("Đang kiểm tra dữ liệu ngày mới..."):
+        df_raw = get_data_fresh(sheet_name)
         
-        # 1. Khởi tạo Sheet mới
+        # Tạo mới nếu chưa có sheet tháng này
         if df_raw.empty:
-            df_raw = pd.DataFrame({'No.': range(1, len(current_config_names)+1), 'Full Name': current_config_names})
+            df_raw = pd.DataFrame({'No.': range(1, len(st.session_state.NAMES)+1), 'Full Name': st.session_state.NAMES})
             df_raw['Company'] = 'PVDWS'; df_raw['Title'] = 'Casing crew'; df_raw['Previous Bal'] = 0.0
-            df_raw['Total CA'] = 0.0
             for c in DATE_COLS: df_raw[c] = ""
-            # Lấy số dư tháng trước
-            prev_m_date = wd.replace(day=1) - timedelta(days=1)
-            prev_df = get_data_cached(prev_m_date.strftime("%m_%Y"))
-            if not prev_df.empty:
-                balances = prev_df.set_index('Full Name')['Total CA'].to_dict() if 'Total CA' in prev_df.columns else {}
-                df_raw['Previous Bal'] = df_raw['Full Name'].map(balances).fillna(0.0)
+            # Lấy balance từ tháng trước
+            prev_m = (wd.replace(day=1) - timedelta(days=1)).strftime("%m_%Y")
+            df_prev = get_data_fresh(prev_m)
+            if not df_prev.empty:
+                df_prev = df_prev.rename(columns={'Họ và Tên': 'Full Name', 'Tổng CA': 'Total CA'})
+                bal_map = df_prev.set_index('Full Name')['Total CA'].to_dict()
+                df_raw['Previous Bal'] = df_raw['Full Name'].map(bal_map).fillna(0.0)
 
-        # 2. LOGIC AUTO-FILL (CHẠY NGAY KHI MỞ)
+        # LOGIC AUTO-FILL MẠNH MẼ
         now = datetime.now()
         if sheet_name == now.strftime("%m_%Y"):
-            has_updated = False
+            changed = False
             today_num = now.day
+            # Điền ngày 1 từ tháng trước nếu trống
+            if str(df_raw.at[0, DATE_COLS[0]]).strip() in ["", "nan", "None"]:
+                prev_m = (wd.replace(day=1) - timedelta(days=1)).strftime("%m_%Y")
+                df_prev = get_data_fresh(prev_m)
+                if not df_prev.empty:
+                    last_col = [c for c in df_prev.columns if "/" in str(c)][-1]
+                    st_map = df_prev.set_index(df_prev.columns[1])[last_col].to_dict()
+                    df_raw[DATE_COLS[0]] = df_raw['Full Name'].map(st_map).fillna("")
+                    changed = True
             
-            # Bước A: Điền ngày 01 từ tháng trước
-            col_01 = DATE_COLS[0]
-            if str(df_raw.at[0, col_01]).strip() in ["", "nan", "None"]:
-                prev_m_date = wd.replace(day=1) - timedelta(days=1)
-                p_df = get_data_cached(prev_m_date.strftime("%m_%Y"))
-                if not p_df.empty:
-                    last_col = [c for c in p_df.columns if "/" in str(c)][-1]
-                    last_st_map = p_df.set_index('Full Name')[last_col].to_dict()
-                    df_raw[col_01] = df_raw['Full Name'].map(last_st_map).fillna("")
-                    has_updated = True
-
-            # Bước B: Forward fill cho các ngày tiếp theo
-            for d in range(2, today_num + 1):
-                p_col, c_col = DATE_COLS[d-2], DATE_COLS[d-1]
-                mask = (df_raw[c_col].astype(str).str.strip().isin(["", "nan", "None"])) & \
-                       (~df_raw[p_col].astype(str).str.strip().isin(["", "nan", "None"]))
+            # Forward fill đến hôm nay
+            for d in range(1, today_num):
+                curr_c, next_c = DATE_COLS[d-1], DATE_COLS[d]
+                mask = (df_raw[next_c].astype(str).str.strip().isin(["", "nan", "None"])) & \
+                       (~df_raw[curr_c].astype(str).str.strip().isin(["", "nan", "None"]))
                 if mask.any():
-                    df_raw.loc[mask, c_col] = df_raw.loc[mask, p_col]
-                    has_updated = True
+                    df_raw.loc[mask, next_c] = df_raw.loc[mask, curr_c]
+                    changed = True
             
-            if has_changes := has_updated:
+            if changed:
                 df_raw = apply_logic(df_raw, curr_m, curr_y, st.session_state.GIANS)
                 conn.update(worksheet=sheet_name, data=df_raw)
 
@@ -226,70 +179,50 @@ with t1:
         res = ['' for _ in s]
         try:
             d_num = int(s.name[:2])
-            target_date = date(curr_y, curr_m, d_num)
-            if target_date in HOLIDAYS_2026:
-                for i, val in enumerate(s):
-                    v = str(val).upper().strip()
-                    if any(g in v for g in rigs_up) or v == "WS":
+            if date(curr_y, curr_m, d_num) in HOLIDAYS_2026:
+                for i, v in enumerate(s):
+                    if any(g in str(v).upper() for g in rigs_up):
                         res[i] = 'background-color: #FF4B4B; color: white; font-weight: bold'
         except: pass
         return res
 
     c1, c2, c3 = st.columns([2, 2, 4])
     if c1.button("📤 SAVE & UPDATE YEARLY", type="primary", use_container_width=True):
-        with st.spinner("Saving..."):
-            db = apply_logic(db, curr_m, curr_y, st.session_state.GIANS)
-            conn.update(worksheet=sheet_name, data=db)
-            push_balances_to_future(wd, db, st.session_state.GIANS)
-            st.cache_data.clear(); st.session_state.store.clear(); st.success("Done!"); st.rerun()
-
-    with c3:
-        buf = io.BytesIO()
-        db.to_excel(buf, index=False)
-        st.download_button("📥 EXPORT EXCEL", buf.getvalue(), f"PVD_{sheet_name}.xlsx", use_container_width=True)
+        db = apply_logic(db, curr_m, curr_y, st.session_state.GIANS)
+        conn.update(worksheet=sheet_name, data=db)
+        st.cache_data.clear(); st.session_state.store.clear(); st.rerun()
 
     with st.expander("🛠️ QUICK INPUT TOOL"):
         names_sel = st.multiselect("Personnel:", st.session_state.NAMES)
-        dr = st.date_input("Date range:", value=(date(curr_y, curr_m, 1), date(curr_y, curr_m, 5)))
+        dr = st.date_input("Date range:", value=(date(curr_y, curr_m, 1), date(curr_y, curr_m, 1)))
         r1, r2, r3, r4 = st.columns(4)
         stt = r1.selectbox("Status:", ["Offshore", "CA", "WS", "Holiday", "AL", "SL", "Clear"])
         rig = r2.selectbox("Rig Name:", st.session_state.GIANS) if stt == "Offshore" else stt
-        co = r3.selectbox("Company:", ["Keep Current"] + COMPANIES)
-        ti = r4.selectbox("Title:", ["Keep Current"] + TITLES)
-        
         if st.button("✅ APPLY", use_container_width=True):
             if names_sel and len(dr) == 2:
                 for n in names_sel:
-                    idx_list = db.index[db['Full Name'] == n].tolist()
-                    if idx_list:
-                        idx = idx_list[0]
-                        if co != "Keep Current": db.at[idx, 'Company'] = co
-                        if ti != "Keep Current": db.at[idx, 'Title'] = ti
-                        sd, ed = dr
-                        while sd <= ed:
-                            if sd.month == curr_m:
-                                m_cols = [c for c in db.columns if c.startswith(f"{sd.day:02d}/")]
-                                if m_cols: db.at[idx, m_cols[0]] = "" if stt == "Clear" else str(rig)
-                            sd += timedelta(days=1)
+                    idx = db.index[db['Full Name'] == n].tolist()[0]
+                    sd, ed = dr
+                    while sd <= ed:
+                        if sd.month == curr_m:
+                            col = [c for c in db.columns if c.startswith(f"{sd.day:02d}/")][0]
+                            db.at[idx, col] = "" if stt == "Clear" else str(rig)
+                        sd += timedelta(days=1)
                 st.session_state.store[sheet_name] = apply_logic(db, curr_m, curr_y, st.session_state.GIANS)
                 st.rerun()
 
-    col_config = {
-        "No.": st.column_config.NumberColumn("No.", width="min", pinned=True),
-        "Full Name": st.column_config.TextColumn("Full Name", width="medium", pinned=True),
-        "Previous Bal": st.column_config.NumberColumn("Prev Bal", format="%.1f"),
-        "Total CA": st.column_config.NumberColumn("Total CA", format="%.1f"),
-    }
+    col_config = {"Full Name": st.column_config.TextColumn("Full Name", pinned=True),
+                  "Total CA": st.column_config.NumberColumn("Total CA", format="%.1f", pinned=True)}
     status_options = st.session_state.GIANS + ["CA", "WS", "Lễ", "AL", "SL", ""]
     for c in [col for col in db.columns if "/" in str(col)]:
         col_config[c] = st.column_config.SelectboxColumn(c, options=status_options)
 
-    ed_db = st.data_editor(db.style.apply(highlight_holidays, axis=0), use_container_width=True, height=600, hide_index=True, column_config=col_config)
+    ed_db = st.data_editor(db.style.apply(highlight_holidays, axis=0), use_container_width=True, height=500, hide_index=True, column_config=col_config)
     if not ed_db.equals(db):
         st.session_state.store[sheet_name] = apply_logic(ed_db, curr_m, curr_y, st.session_state.GIANS)
         st.rerun()
 
-# --- 9. SUMMARY CHARTS (KHÔI PHỤC CODE CŨ 100%) ---
+# --- 9. SUMMARY CHARTS (KHÔI PHỤC VÀ CỦNG CỐ) ---
 with t2:
     st.subheader(f"📊 Personnel Statistics {curr_y}")
     sel_name = st.selectbox("🔍 Select Personnel:", st.session_state.NAMES)
@@ -298,33 +231,37 @@ with t2:
     if sel_name:
         yearly_data = []
         for m in range(1, 13):
-            m_df = get_data_cached(f"{m:02d}_{curr_y}")
-            if not m_df.empty and sel_name in m_df['Full Name'].values:
-                p_row = m_df[m_df['Full Name'] == sel_name].iloc[0]
-                counts = {"Offshore": 0, "CA": 0, "Workshop": 0, "Holiday": 0, "AL (Phép)": 0, "SL (Ốm)": 0}
-                for c in m_df.columns:
-                    if "/" in str(c) and "(" in str(c):
-                        val = str(p_row[c]).strip().upper()
-                        if not val or val in ["NAN", "NONE"]: continue
-                        if any(g in val for g in rigs_up): counts["Offshore"] += 1
-                        elif val == "CA": counts["CA"] += 1
-                        elif val == "WS": counts["Workshop"] += 1
-                        elif val in ["NP", "AL", "P"]: counts["AL (Phép)"] += 1
-                        elif val in ["ỐM", "SL", "O"]: counts["SL (Ốm)"] += 1
-                        elif val in ["LỄ", "HOLIDAY"]: counts["Holiday"] += 1
-                for k, v in counts.items():
-                    if v > 0: yearly_data.append({"Month": f"Month {m}", "Type": k, "Days": v})
+            m_sheet = f"{m:02d}_{curr_y}"
+            m_df = get_data_fresh(m_sheet) # Đọc tươi để không mất tháng 1, 2
+            if not m_df.empty:
+                # Chuẩn hóa tên cột để tìm đúng người
+                m_df = m_df.rename(columns={'Họ và Tên': 'Full Name'})
+                if sel_name in m_df['Full Name'].values:
+                    p_row = m_df[m_df['Full Name'] == sel_name].iloc[0]
+                    counts = {"Offshore": 0, "CA": 0, "Workshop": 0, "Holiday": 0, "AL (Phép)": 0, "SL (Ốm)": 0}
+                    for c in m_df.columns:
+                        if "/" in str(c):
+                            val = str(p_row[c]).strip().upper()
+                            if val in ["", "NAN", "NONE"]: continue
+                            if any(g in val for g in rigs_up): counts["Offshore"] += 1
+                            elif val == "CA": counts["CA"] += 1
+                            elif val == "WS": counts["Workshop"] += 1
+                            elif val in ["AL", "NP", "P"]: counts["AL (Phép)"] += 1
+                            elif val in ["SL", "ỐM", "O"]: counts["SL (Ốm)"] += 1
+                            elif val in ["LỄ", "HOLIDAY"]: counts["Holiday"] += 1
+                    for k, v in counts.items():
+                        if v > 0: yearly_data.append({"Month": f"Month {m}", "Type": k, "Days": v})
         
         if yearly_data:
             df_chart = pd.DataFrame(yearly_data)
-            fig = px.bar(df_chart, x="Month", y="Days", color="Type", barmode="stack", text="Days", template="plotly_dark",
+            fig = px.bar(df_chart, x="Month", y="Days", color="Type", barmode="stack", text="Days",
                          color_discrete_map={"AL (Phép)": "#2ecc71", "SL (Ốm)": "#e74c3c"},
-                         category_orders={"Month": month_order})
+                         category_orders={"Month": month_order}, template="plotly_dark")
             st.plotly_chart(fig, use_container_width=True)
             
             pv = df_chart.pivot_table(index='Type', columns='Month', values='Days', aggfunc='sum', fill_value=0)
-            cols_to_show = [m for m in month_order if m in pv.columns]
-            pv = pv.reindex(columns=cols_to_show)
+            cols = [m for m in month_order if m in pv.columns]
+            pv = pv.reindex(columns=cols)
             pv['Total Year'] = pv.sum(axis=1)
             st.table(pv)
 
@@ -333,21 +270,11 @@ with st.sidebar:
     st.header("⚙️ SETTINGS")
     with st.expander("🏗️ Rigs"):
         ng = st.text_input("➕ Add Rig:").upper().strip()
-        if st.button("Add Rig"):
-            if ng and ng not in st.session_state.GIANS:
-                st.session_state.GIANS.append(ng); save_config_rigs(st.session_state.GIANS); st.rerun()
-        dg = st.selectbox("❌ Delete Rig:", st.session_state.GIANS)
-        if st.button("Delete Rig"):
-            st.session_state.GIANS.remove(dg); save_config_rigs(st.session_state.GIANS); st.rerun()
-
+        if st.button("Add Rig") and ng:
+            st.session_state.GIANS.append(ng); conn.update(worksheet="config", data=pd.DataFrame({"GIANS": st.session_state.GIANS})); st.rerun()
     with st.expander("👤 Personnel"):
         new_per = st.text_input("➕ Add Name:").strip()
-        if st.button("Add Name"):
-            if new_per and new_per not in st.session_state.NAMES:
-                st.session_state.NAMES.append(new_per); save_config_names(st.session_state.NAMES); st.rerun()
-        del_per = st.selectbox("❌ Delete Name:", st.session_state.NAMES)
-        if st.button("Delete Name"):
-            st.session_state.NAMES.remove(del_per); save_config_names(st.session_state.NAMES); st.rerun()
-
+        if st.button("Add Name") and new_per:
+            st.session_state.NAMES.append(new_per); conn.update(worksheet="nhansu", data=pd.DataFrame({"999s": st.session_state.NAMES})); st.rerun()
     if st.button("🔄 REFRESH SYSTEM"):
         st.cache_data.clear(); st.session_state.clear(); st.rerun()

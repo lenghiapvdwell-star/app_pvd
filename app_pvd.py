@@ -86,7 +86,7 @@ def apply_logic(df, curr_m, curr_y, rigs):
     return df_calc
 
 # --- 6. KHỞI TẠO VÀ AUTO-FILL THEO NGÀY/THÁNG ---
-# --- 6. KHỞI TẠO VÀ AUTO-FILL NÂNG CAO ---
+# --- 6. KHỞI TẠO VÀ AUTO-FILL NÂNG CAO (BẢN SỬA LỖI KEYERROR) ---
 if "GIANS" not in st.session_state:
     df_conf = get_data_cached("config")
     st.session_state.GIANS = df_conf["GIANS"].dropna().tolist() if not df_conf.empty else DEFAULT_RIGS
@@ -98,11 +98,12 @@ with col_d2:
 sheet_name = wd.strftime("%m_%Y")
 curr_m, curr_y = wd.month, wd.year
 days_in_m = calendar.monthrange(curr_y, curr_m)[1]
+# Định dạng cột: "01/Apr (T2)"
 DATE_COLS = [f"{d:02d}/{wd.strftime('%b')} ({['T2','T3','T4','T5','T6','T7','CN'][date(curr_y,curr_m,d).weekday()]})" for d in range(1, days_in_m+1)]
 
 df_raw = get_data_cached(sheet_name)
 
-# 1. Nếu tháng hoàn toàn mới -> Khởi tạo và lấy Tồn cũ
+# 1. Nếu tháng hoàn toàn mới hoặc lỗi không đọc được -> Khởi tạo
 if df_raw.empty:
     df_raw = pd.DataFrame({'STT': range(1, len(NAMES_66)+1), 'Họ và Tên': NAMES_66, 'Công ty': 'PVDWS', 'Chức danh': 'Casing crew', 'Tồn cũ': 0.0, 'Tổng CA': 0.0})
     for c in DATE_COLS: df_raw[c] = ""
@@ -116,36 +117,45 @@ if df_raw.empty:
     df_raw = apply_logic(df_raw, curr_m, curr_y, st.session_state.GIANS)
     conn.update(worksheet=sheet_name, data=df_raw)
 
-# 2. AUTO-FILL THÔNG MINH (CHẠY SAU 6H SÁNG)
+# 2. AUTO-FILL THÔNG MINH (CHẶY SAU 6H SÁNG)
 now = datetime.now()
+# Chỉ tự động fill nếu đang xem đúng tháng hiện tại
 if sheet_name == now.strftime("%m_%Y") and now.hour >= 6:
     changed = False
     
-    # TRƯỜNG HỢP A: Ngày đầu tháng (Ngày 01) - Lấy từ ngày cuối tháng trước
+    # TRƯỜNG HỢP A: Ngày đầu tháng (Ngày 01)
     if now.day == 1:
         col_01 = DATE_COLS[0]
-        if (df_raw[col_01].isna() | (df_raw[col_01] == "")).all():
-            prev_m_date = wd.replace(day=1) - timedelta(days=1)
-            df_prev = get_data_cached(prev_m_date.strftime("%m_%Y"))
-            if not df_prev.empty:
-                # Tìm cột cuối cùng của tháng trước (thường là 30 hoặc 31)
-                last_day_col = [c for c in df_prev.columns if "/" in str(c)][-1]
-                status_map = df_prev.set_index('Họ và Tên')[last_day_col].to_dict()
-                df_raw[col_01] = df_raw['Họ và Tên'].map(status_map).fillna("")
-                changed = True
+        # Kiểm tra cột 01 có tồn tại trong df_raw không để tránh KeyError
+        if col_01 in df_raw.columns:
+            if (df_raw[col_01].isna() | (df_raw[col_01] == "")).all():
+                prev_m_date = wd.replace(day=1) - timedelta(days=1)
+                df_prev = get_data_cached(prev_m_date.strftime("%m_%Y"))
+                if not df_prev.empty:
+                    # Lấy cột ngày cuối cùng của tháng trước
+                    prev_date_cols = [c for c in df_prev.columns if "/" in str(c)]
+                    if prev_date_cols:
+                        last_day_col = prev_date_cols[-1]
+                        status_map = df_prev.set_index('Họ và Tên')[last_day_col].to_dict()
+                        df_raw[col_01] = df_raw['Họ và Tên'].map(status_map).fillna("")
+                        changed = True
 
-    # TRƯỜNG HỢP B: Các ngày khác trong tháng - Lấy từ ngày hôm qua
+    # TRƯỜNG HỢP B: Các ngày khác trong tháng
     else:
         today_prefix = f"{now.day:02d}/"
         yesterday_prefix = f"{(now.day-1):02d}/"
-        col_today = [c for c in DATE_COLS if c.startswith(today_prefix)]
-        col_yesterday = [c for c in DATE_COLS if c.startswith(yesterday_prefix)]
         
+        col_today = [c for c in df_raw.columns if str(c).startswith(today_prefix)]
+        col_yesterday = [c for c in df_raw.columns if str(c).startswith(yesterday_prefix)]
+        
+        # Chỉ xử lý nếu tìm thấy cả cột hôm nay và hôm qua trong dữ liệu thực tế
         if col_today and col_yesterday:
-            mask = (df_raw[col_today[0]].isna() | (df_raw[col_today[0]] == "")) & \
-                   (df_raw[col_yesterday[0]].notna() & (df_raw[col_yesterday[0]] != ""))
+            c_t = col_today[0]
+            c_y = col_yesterday[0]
+            mask = (df_raw[c_t].isna() | (df_raw[c_t] == "")) & \
+                   (df_raw[c_y].notna() & (df_raw[c_y] != ""))
             if mask.any():
-                df_raw.loc[mask, col_today[0]] = df_raw.loc[mask, col_yesterday[0]]
+                df_raw.loc[mask, c_t] = df_raw.loc[mask, c_y]
                 changed = True
     
     if changed:

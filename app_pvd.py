@@ -192,35 +192,69 @@ with t1:
         except: pass
         return res
 
+    # --- 1. SẮP XẾP THỨ TỰ CỘT ---
+    name_col = next((c for c in ['Full Name', 'Họ và Tên'] if c in db.columns), 'Full Name')
+    total_col = next((c for c in ['Total CA', 'Tổng CA'] if c in db.columns), 'Total CA')
+    prev_col = next((c for c in ['Previous Bal', 'Tồn cũ'] if c in db.columns), 'Previous Bal')
+    
+    # Thứ tự mong muốn: No -> Name -> Company -> Title -> Prev Bal -> Total CA -> Dates
+    fixed_cols = ['No.', name_col, 'Company', 'Title', prev_col, total_col]
+    date_cols = [c for c in db.columns if "/" in str(c)]
+    
+    # Lọc lấy những cột thực tế có trong dataframe
+    existing_fixed = [c for c in fixed_cols if c in db.columns]
+    new_column_order = existing_fixed + date_cols
+    db = db[new_column_order]
+
+    # --- 2. CÁC NÚT BẤM THAO TÁC ---
     c1, c2, c3 = st.columns([2, 2, 4])
     if c1.button("📤 SAVE TO DATABASE", type="primary", use_container_width=True):
         conn.update(worksheet=sheet_name, data=db)
         st.cache_data.clear()
-        st.success("Dữ liệu đã được lưu!")
+        st.success("Data saved successfully!")
         st.rerun()
 
     with c2:
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             db.to_excel(writer, index=False, sheet_name=sheet_name)
-        st.download_button(label="📥 EXPORT EXCEL", data=output.getvalue(), file_name=f"PVD_Report_{sheet_name}.xlsx", mime="application/vnd.ms-excel", use_container_width=True)
+        st.download_button(label="📥 EXPORT EXCEL", data=output.getvalue(), 
+                         file_name=f"PVD_Report_{sheet_name}.xlsx", 
+                         mime="application/vnd.ms-excel", use_container_width=True)
 
+    # --- 3. QUICK INPUT TOOL ---
     with st.expander("🛠️ QUICK INPUT TOOL"):
-        # --- SẮP XẾP THỨ TỰ CỘT ---
-    name_col = next((c for c in ['Full Name', 'Họ và Tên'] if c in db.columns), 'Full Name')
-    total_col = next((c for c in ['Total CA', 'Tổng CA'] if c in db.columns), 'Total CA')
-    prev_col = next((c for c in ['Previous Bal', 'Tồn cũ'] if c in db.columns), 'Previous Bal')
-    
-    # Xác định các nhóm cột
-    fixed_cols = ['No.', name_col, 'Company', 'Title', prev_col, total_col]
-    date_cols = [c for c in db.columns if "/" in str(c)]
-    other_cols = [c for c in db.columns if c not in fixed_cols and c not in date_cols]
-    
-    # Tạo danh sách thứ tự mới và sắp xếp lại DataFrame
-    new_column_order = [c for c in fixed_cols if c in db.columns] + date_cols + other_cols
-    db = db[new_column_order]
+        names_sel = st.multiselect("Personnel:", st.session_state.NAMES)
+        dr = st.date_input("Date range:", value=(date(curr_y, curr_m, 1), date(curr_y, curr_m, 1)))
+        
+        r1, r2, r3, r4 = st.columns(4)
+        stt = r1.selectbox("Status:", ["Offshore", "CA", "WS", "Holiday", "AL", "SL", "Clear"])
+        rig = r2.selectbox("Rig/Detail:", st.session_state.GIANS) if stt == "Offshore" else stt
+        comp_sel = r3.selectbox("Company:", [""] + COMPANIES)
+        title_sel = r4.selectbox("Title:", [""] + TITLES)
+        
+        if st.button("✅ APPLY CHANGES", use_container_width=True):
+            if names_sel and len(dr) == 2:
+                for n in names_sel:
+                    idx_list = db.index[db[name_col] == n].tolist()
+                    if idx_list:
+                        idx = idx_list[0]
+                        if comp_sel: db.at[idx, 'Company'] = comp_sel
+                        if title_sel: db.at[idx, 'Title'] = title_sel
+                        
+                        sd, ed = dr
+                        while sd <= ed:
+                            if sd.month == curr_m:
+                                col_target = [c for c in db.columns if c.startswith(f"{sd.day:02d}/")]
+                                if col_target:
+                                    db.at[idx, col_target[0]] = "" if stt == "Clear" else str(rig)
+                            sd += timedelta(days=1)
+                
+                db = apply_logic(db, curr_m, curr_y, st.session_state.GIANS)
+                conn.update(worksheet=sheet_name, data=db)
+                st.rerun()
 
-    # --- CẤU HÌNH HIỂN THỊ CỘT (COLUMN CONFIG) ---
+    # --- 4. DATA EDITOR (BẢNG HIỂN THỊ CHÍNH) ---
     col_config = {
         "No.": st.column_config.NumberColumn("No.", width="small", pinned=True),
         name_col: st.column_config.TextColumn(name_col, width="medium", pinned=True),
@@ -230,16 +264,14 @@ with t1:
         total_col: st.column_config.NumberColumn("Total CA", format="%.1f", width="small", pinned=True)
     }
     
-    # Cấu hình Selectbox cho các cột ngày
     status_options = st.session_state.GIANS + ["CA", "WS", "Lễ", "AL", "SL", ""]
     for c in date_cols:
         col_config[c] = st.column_config.SelectboxColumn(c, options=status_options, width="small")
 
-    # Hiển thị bảng Editor
     ed_db = st.data_editor(
         db.style.apply(highlight_holidays, axis=0), 
         use_container_width=True, 
-        height=500, 
+        height=550, 
         hide_index=True, 
         column_config=col_config
     )
@@ -247,21 +279,6 @@ with t1:
     if not ed_db.equals(db):
         conn.update(worksheet=sheet_name, data=ed_db)
         st.rerun()
-
-    name_col = next((c for c in ['Full Name', 'Họ và Tên'] if c in db.columns), 'Full Name')
-    total_col = next((c for c in ['Total CA', 'Tổng CA'] if c in db.columns), 'Total CA')
-    col_config = {name_col: st.column_config.TextColumn(name_col, pinned=True),
-                  total_col: st.column_config.NumberColumn(total_col, format="%.1f", pinned=True)}
-    
-    status_options = st.session_state.GIANS + ["CA", "WS", "Lễ", "AL", "SL", ""]
-    for c in [col for col in db.columns if "/" in str(col)]:
-        col_config[c] = st.column_config.SelectboxColumn(c, options=status_options)
-
-    ed_db = st.data_editor(db.style.apply(highlight_holidays, axis=0), use_container_width=True, height=500, hide_index=True, column_config=col_config)
-    if not ed_db.equals(db):
-        conn.update(worksheet=sheet_name, data=ed_db)
-        st.rerun()
-
 with t2:
     st.subheader(f"📊 Personnel Statistics {curr_y}")
     sel_name = st.selectbox("🔍 Select Personnel:", st.session_state.NAMES)

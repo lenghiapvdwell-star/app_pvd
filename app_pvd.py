@@ -8,7 +8,7 @@ import time
 import plotly.express as px
 import os
 
-# --- 1. CONFIGURATION & STYLE ---
+# --- 1. CẤU HÌNH & STYLE ---
 st.set_page_config(page_title="PVD MANAGEMENT", layout="wide")
 
 st.markdown("""
@@ -16,11 +16,11 @@ st.markdown("""
     .block-container {padding-top: 1rem;}
     .main-title {
         color: #007BFF !important; 
-        font-size: 39px !important; 
+        font-size: 35px !important; 
         font-weight: bold !important;
         text-align: center !important; 
         margin-bottom: 20px !important;
-        text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
     }
     </style>
     """, unsafe_allow_html=True)
@@ -37,39 +37,23 @@ def display_main_logo():
     return False
 
 display_main_logo()
-st.markdown('<h1 class="main-title">PVD WELL SERVICES MANAGEMENT</h1>', unsafe_allow_html=True)
+st.markdown('<h1 class="main-title">QUẢN LÝ NHÂN SỰ PVD WELL SERVICES</h1>', unsafe_allow_html=True)
 
-# --- 3. CATEGORIES & HOLIDAYS ---
+# --- 3. DANH MỤC CỐ ĐỊNH ---
 COMPANIES = ["PVDWS", "OWS", "National", "Baker Hughes", "Schlumberger", "Halliburton"]
 TITLES = ["Casing crew", "CRTI LD", "CRTI SP", "SOLID", "MUDCL", "UNDERRM", "PPLS", "HAMER"]
-DEFAULT_RIGS = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNLOD", "DIALOG MALAYSIA"]
-HOLIDAYS_2026 = [
-    date(2026,1,1), date(2026,2,16), date(2026,2,17), date(2026,2,18), 
-    date(2026,2,19), date(2026,2,20), date(2026,4,26), date(2026,4,30), 
-    date(2026,5,1), date(2026,9,2)
-]
+NAMES_66 = ["Bui Anh Phuong", "Le Thai Viet", "Le Tung Phong", "Nguyen Tien Dung", "Nguyen Van Quang", "Pham Hong Minh", "Nguyen Gia Khanh", "Nguyen Huu Loc", "Nguyen Tan Dat", "Chu Van Truong", "Ho Sy Duc", "Hoang Thai Son", "Pham Thai Bao", "Cao Trung Nam", "Le Trong Nghia", "Nguyen Van Manh", "Nguyen Van Son", "Duong Manh Quyet", "Tran Quoc Huy", "Rusliy Saifuddin", "Dao Tien Thanh", "Doan Minh Quan", "Rawing Empanit", "Bui Sy Xuan", "Cao Van Thang", "Cao Xuan Vinh", "Dam Quang Trung", "Dao Van Tam", "Dinh Duy Long", "Dinh Ngoc Hieu", "Do Đức Ngoc", "Do Van Tuong", "Dong Van Trung", "Ha Viet Hung", "Ho Trong Dong", "Hoang Tung", "Le Hoai Nam", "Le Hoai Phuoc", "Le Minh Hoang", "Le Quang Minh", "Le Quoc Duy", "Mai Nhan Duong", "Ngo Quynh Hai", "Ngo Xuan Dien", "Nguyen Hoang Quy", "Nguyen Huu Toan", "Nguyen Manh Cuong", "Nguyen Quoc Huy", "Nguyen Tuan Anh", "Nguyen Tuan Minh", "Nguyen Van Bao Ngoc", "Nguyen Van Duan", "Nguyen Van Hung", "Nguyen Van Vo", "Phan Tay Bac", "Tran Van Hoan", "Tran Van Hung", "Tran Xuan Nhat", "Vo Hong Thinh", "Vu Tuan Anh", "Arent Fabian Imbar", "Hendra", "Timothy", "Tran Tuan Dung", "Nguyen Van Cuong", "Nguyen Huu Phuc"]
+DEFAULT_RIGS = ["PVD 8", "HK 11", "HK 14", "SDP", "PVD 9", "THOR", "SDE", "GUNNLOD"]
+HOLIDAYS_2026 = [date(2026,1,1), date(2026,2,16), date(2026,2,17), date(2026,2,18), date(2026,2,19), date(2026,2,20), date(2026,4,26), date(2026,4,30), date(2026,5,1), date(2026,9,2)]
 
-# --- 4. DATA CONNECTION ---
+# --- 4. KẾT NỐI DỮ LIỆU ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-def get_data_fresh(wks_name):
+@st.cache_data(ttl=300)
+def get_data_cached(wks_name):
     try:
-        return conn.read(worksheet=wks_name, ttl="0s")
+        return conn.read(worksheet=wks_name, ttl=0)
     except: return pd.DataFrame()
-
-@st.cache_data(ttl=300)
-def load_config_names():
-    df = get_data_fresh("nhansu")
-    if not df.empty and "999s" in df.columns:
-        return [str(n).strip() for n in df["999s"].dropna().tolist() if str(n).strip()]
-    return [] 
-
-@st.cache_data(ttl=300)
-def load_config_rigs():
-    df = get_data_fresh("config")
-    if not df.empty and "GIANS" in df.columns:
-        return [str(g).strip().upper() for g in df["GIANS"].dropna().tolist() if str(g).strip()]
-    return DEFAULT_RIGS
 
 # --- 5. LOGIC TÍNH TOÁN ---
 def apply_logic(df, curr_m, curr_y, rigs):
@@ -77,23 +61,18 @@ def apply_logic(df, curr_m, curr_y, rigs):
     rigs_up = [r.upper() for r in rigs]
     date_cols = [c for c in df_calc.columns if "/" in str(c)]
     
-    name_col = next((c for c in ['Full Name', 'Họ và Tên'] if c in df_calc.columns), None)
-    prev_col = next((c for c in ['Previous Bal', 'Tồn cũ'] if c in df_calc.columns), 'Previous Bal')
-    total_col = next((c for c in ['Total CA', 'Tổng CA'] if c in df_calc.columns), 'Total CA')
-
-    if not name_col: return df_calc
-
     for idx, row in df_calc.iterrows():
-        if not str(row.get(name_col, '')).strip(): continue
+        if not str(row.get('Họ và Tên', '')).strip(): continue
         accrued = 0.0
         for col in date_cols:
             try:
                 val = str(row.get(col, "")).strip().upper()
-                if val in ["", "NAN", "NONE", "0", "0.0"]: continue
+                if val in ["", "NAN", "NONE"]: continue
                 d_num = int(col[:2])
                 target_date = date(curr_y, curr_m, d_num)
                 is_we = target_date.weekday() >= 5
                 is_ho = target_date in HOLIDAYS_2026
+                
                 if any(g in val for g in rigs_up):
                     if is_ho: accrued += 2.0
                     elif is_we: accrued += 1.0
@@ -101,72 +80,73 @@ def apply_logic(df, curr_m, curr_y, rigs):
                 elif val == "CA":
                     if not is_we and not is_ho: accrued -= 1.0
             except: continue
-        pb = pd.to_numeric(row.get(prev_col, 0), errors='coerce')
-        df_calc.at[idx, total_col] = round(float(pb if not pd.isna(pb) else 0.0) + accrued, 1)
+        
+        ton_cu = pd.to_numeric(row.get('Tồn cũ', 0), errors='coerce')
+        df_calc.at[idx, 'Tổng CA'] = round(float(ton_cu if not pd.isna(ton_cu) else 0.0) + accrued, 1)
     return df_calc
 
-# --- 6. KHỞI TẠO & AUTO-FILL ---
-if "GIANS" not in st.session_state: st.session_state.GIANS = load_config_rigs()
-if "NAMES" not in st.session_state: st.session_state.NAMES = load_config_names()
+# --- 6. KHỞI TẠO VÀ AUTO-FILL THEO NGÀY/THÁNG ---
+# --- 6. KHỞI TẠO VÀ AUTO-FILL NÂNG CAO ---
+if "GIANS" not in st.session_state:
+    df_conf = get_data_cached("config")
+    st.session_state.GIANS = df_conf["GIANS"].dropna().tolist() if not df_conf.empty else DEFAULT_RIGS
 
-col_date1, col_date2, col_date3 = st.columns([3, 2, 3])
-with col_date2: 
-    wd = st.date_input("📅 SELECT MONTH:", value=date.today())
+col_d1, col_d2, col_d3 = st.columns([3, 2, 3])
+with col_d2:
+    wd = st.date_input("📅 CHỌN THÁNG LÀM VIỆC:", value=date.today())
 
 sheet_name = wd.strftime("%m_%Y")
 curr_m, curr_y = wd.month, wd.year
 days_in_m = calendar.monthrange(curr_y, curr_m)[1]
-DAYS_EN = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
-DATE_COLS = [f"{d:02d}/{wd.strftime('%b')} ({DAYS_EN[date(curr_y,curr_m,d).weekday()]})" for d in range(1, days_in_m+1)]
+DATE_COLS = [f"{d:02d}/{wd.strftime('%b')} ({['T2','T3','T4','T5','T6','T7','CN'][date(curr_y,curr_m,d).weekday()]})" for d in range(1, days_in_m+1)]
 
-df_raw = get_data_fresh(sheet_name)
+df_raw = get_data_cached(sheet_name)
 
+# 1. Nếu tháng hoàn toàn mới -> Khởi tạo và lấy Tồn cũ
 if df_raw.empty:
-    df_raw = pd.DataFrame({'No.': range(1, len(st.session_state.NAMES)+1), 'Full Name': st.session_state.NAMES})
-    df_raw['Company'] = 'PVDWS'; df_raw['Title'] = 'Casing crew'; df_raw['Previous Bal'] = 0.0
+    df_raw = pd.DataFrame({'STT': range(1, len(NAMES_66)+1), 'Họ và Tên': NAMES_66, 'Công ty': 'PVDWS', 'Chức danh': 'Casing crew', 'Tồn cũ': 0.0, 'Tổng CA': 0.0})
     for c in DATE_COLS: df_raw[c] = ""
-    prev_m_str = (wd.replace(day=1) - timedelta(days=1)).strftime("%m_%Y")
-    df_prev = get_data_fresh(prev_m_str)
-    if not df_prev.empty:
-        name_c_p = next((c for c in ['Full Name', 'Họ và Tên'] if c in df_prev.columns), df_prev.columns[1])
-        total_c_p = next((c for c in ['Total CA', 'Tổng CA'] if c in df_prev.columns), 'Total CA')
-        bal_map = df_prev.set_index(name_c_p)[total_c_p].to_dict()
-        df_raw['Previous Bal'] = df_raw['Full Name'].map(bal_map).fillna(0.0)
-
-# FIX LỖI TYPEERROR: Ép kiểu dữ liệu các cột ngày về chuỗi để tránh xung đột
-for col in DATE_COLS:
-    if col in df_raw.columns:
-        df_raw[col] = df_raw[col].astype(object)
-
-now = datetime.now()
-if sheet_name == now.strftime("%m_%Y"):
-    changed = False
-    today_num = now.day
-    name_col = next((c for c in ['Full Name', 'Họ và Tên'] if c in df_raw.columns), 'Full Name')
-
-    # Bước 1: Ngày 01
-    val_d1 = str(df_raw.at[0, DATE_COLS[0]]).strip().upper()
-    if val_d1 in ["", "NAN", "NONE"]:
-        prev_m_str = (wd.replace(day=1) - timedelta(days=1)).strftime("%m_%Y")
-        df_p = get_data_fresh(prev_m_str)
-        if not df_p.empty:
-            last_col = [c for c in df_p.columns if "/" in str(c)][-1]
-            name_c_p = next((c for c in ['Full Name', 'Họ và Tên'] if c in df_p.columns), df_p.columns[1])
-            st_map = df_p.set_index(name_c_p)[last_col].to_dict()
-            df_raw[DATE_COLS[0]] = df_raw[name_col].map(st_map).fillna("")
-            changed = True
     
-    # Bước 2: Điền tiếp nối
-    for d in range(1, today_num):
-        curr_c, next_c = DATE_COLS[d-1], DATE_COLS[d]
-        def is_really_empty(val):
-            return str(val).strip().upper() in ["", "NAN", "NONE"]
+    prev_m_date = wd.replace(day=1) - timedelta(days=1)
+    df_prev = get_data_cached(prev_m_date.strftime("%m_%Y"))
+    if not df_prev.empty:
+        bal_map = df_prev.set_index('Họ và Tên')['Tổng CA'].to_dict()
+        df_raw['Tồn cũ'] = df_raw['Họ và Tên'].map(bal_map).fillna(0.0)
+    
+    df_raw = apply_logic(df_raw, curr_m, curr_y, st.session_state.GIANS)
+    conn.update(worksheet=sheet_name, data=df_raw)
 
-        mask = (df_raw[next_c].apply(is_really_empty)) & (~df_raw[curr_c].apply(is_really_empty))
-        if mask.any():
-            # Sử dụng .values để gán mảng, tránh xung đột index và dtype
-            df_raw.loc[mask, next_c] = df_raw.loc[mask, curr_c].values
-            changed = True
+# 2. AUTO-FILL THÔNG MINH (CHẠY SAU 6H SÁNG)
+now = datetime.now()
+if sheet_name == now.strftime("%m_%Y") and now.hour >= 6:
+    changed = False
+    
+    # TRƯỜNG HỢP A: Ngày đầu tháng (Ngày 01) - Lấy từ ngày cuối tháng trước
+    if now.day == 1:
+        col_01 = DATE_COLS[0]
+        if (df_raw[col_01].isna() | (df_raw[col_01] == "")).all():
+            prev_m_date = wd.replace(day=1) - timedelta(days=1)
+            df_prev = get_data_cached(prev_m_date.strftime("%m_%Y"))
+            if not df_prev.empty:
+                # Tìm cột cuối cùng của tháng trước (thường là 30 hoặc 31)
+                last_day_col = [c for c in df_prev.columns if "/" in str(c)][-1]
+                status_map = df_prev.set_index('Họ và Tên')[last_day_col].to_dict()
+                df_raw[col_01] = df_raw['Họ và Tên'].map(status_map).fillna("")
+                changed = True
+
+    # TRƯỜNG HỢP B: Các ngày khác trong tháng - Lấy từ ngày hôm qua
+    else:
+        today_prefix = f"{now.day:02d}/"
+        yesterday_prefix = f"{(now.day-1):02d}/"
+        col_today = [c for c in DATE_COLS if c.startswith(today_prefix)]
+        col_yesterday = [c for c in DATE_COLS if c.startswith(yesterday_prefix)]
+        
+        if col_today and col_yesterday:
+            mask = (df_raw[col_today[0]].isna() | (df_raw[col_today[0]] == "")) & \
+                   (df_raw[col_yesterday[0]].notna() & (df_raw[col_yesterday[0]] != ""))
+            if mask.any():
+                df_raw.loc[mask, col_today[0]] = df_raw.loc[mask, col_yesterday[0]]
+                changed = True
     
     if changed:
         df_raw = apply_logic(df_raw, curr_m, curr_y, st.session_state.GIANS)
@@ -174,157 +154,110 @@ if sheet_name == now.strftime("%m_%Y"):
 
 current_df = apply_logic(df_raw, curr_m, curr_y, st.session_state.GIANS)
 
-# --- 7. TABS OPERATIONS ---
-t1, t2 = st.tabs(["🚀 OPERATIONS", "📊 SUMMARY CHARTS"])
+# --- 7. TABS GIAO DIỆN ---
+t1, t2 = st.tabs(["🚀 ĐIỀU ĐỘNG CHI TIẾT", "📊 BÁO CÁO TỔNG HỢP"])
 
 with t1:
-    db = current_df
-    rigs_up = [r.upper() for r in st.session_state.GIANS]
-
-    def highlight_holidays(s):
-        res = ['' for _ in s]
-        try:
-            d_num = int(s.name[:2])
-            if date(curr_y, curr_m, d_num) in HOLIDAYS_2026:
-                for i, v in enumerate(s):
-                    if any(g in str(v).upper() for g in rigs_up):
-                        res[i] = 'background-color: #FF4B4B; color: white; font-weight: bold'
-        except: pass
-        return res
-
-    # --- 1. SẮP XẾP THỨ TỰ CỘT ---
-    name_col = next((c for c in ['Full Name', 'Họ và Tên'] if c in db.columns), 'Full Name')
-    total_col = next((c for c in ['Total CA', 'Tổng CA'] if c in db.columns), 'Total CA')
-    prev_col = next((c for c in ['Previous Bal', 'Tồn cũ'] if c in db.columns), 'Previous Bal')
-    
-    # Thứ tự mong muốn: No -> Name -> Company -> Title -> Prev Bal -> Total CA -> Dates
-    fixed_cols = ['No.', name_col, 'Company', 'Title', prev_col, total_col]
-    date_cols = [c for c in db.columns if "/" in str(c)]
-    
-    # Lọc lấy những cột thực tế có trong dataframe
-    existing_fixed = [c for c in fixed_cols if c in db.columns]
-    new_column_order = existing_fixed + date_cols
-    db = db[new_column_order]
-
-    # --- 2. CÁC NÚT BẤM THAO TÁC ---
     c1, c2, c3 = st.columns([2, 2, 4])
-    if c1.button("📤 SAVE TO DATABASE", type="primary", use_container_width=True):
-        conn.update(worksheet=sheet_name, data=db)
+    if c1.button("📤 LƯU DỮ LIỆU", type="primary", use_container_width=True):
+        conn.update(worksheet=sheet_name, data=current_df)
         st.cache_data.clear()
-        st.success("Data saved successfully!")
+        st.success("Đã lưu thành công!")
         st.rerun()
-
+    
     with c2:
         output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            db.to_excel(writer, index=False, sheet_name=sheet_name)
-        st.download_button(label="📥 EXPORT EXCEL", data=output.getvalue(), 
-                         file_name=f"PVD_Report_{sheet_name}.xlsx", 
-                         mime="application/vnd.ms-excel", use_container_width=True)
+        current_df.to_excel(output, index=False)
+        st.download_button("📥 XUẤT EXCEL", output.getvalue(), f"PVD_{sheet_name}.xlsx", use_container_width=True)
 
-    # --- 3. QUICK INPUT TOOL ---
-    with st.expander("🛠️ QUICK INPUT TOOL"):
-        names_sel = st.multiselect("Personnel:", st.session_state.NAMES)
-        dr = st.date_input("Date range:", value=(date(curr_y, curr_m, 1), date(curr_y, curr_m, 1)))
-        
+    # Công cụ nhập nhanh
+    with st.expander("🛠️ CÔNG CỤ NHẬP NHANH (CHO NHIỀU NGƯỜI)"):
+        sel_names = st.multiselect("Chọn nhân viên:", NAMES_66)
+        date_rng = st.date_input("Chọn khoảng ngày:", value=(date(curr_y, curr_m, 1), date(curr_y, curr_m, 1)))
         r1, r2, r3, r4 = st.columns(4)
-        stt = r1.selectbox("Status:", ["Offshore", "CA", "WS", "Holiday", "AL", "SL", "Clear"])
-        rig = r2.selectbox("Rig/Detail:", st.session_state.GIANS) if stt == "Offshore" else stt
-        comp_sel = r3.selectbox("Company:", [""] + COMPANIES)
-        title_sel = r4.selectbox("Title:", [""] + TITLES)
+        stt = r1.selectbox("Trạng thái:", ["Đi Biển", "CA", "WS", "NP", "Ốm", "Xóa"])
+        rig = r2.selectbox("Tên Giàn:", st.session_state.GIANS) if stt == "Đi Biển" else stt
+        co_input = r3.selectbox("Công ty:", ["Giữ nguyên"] + COMPANIES)
+        ti_input = r4.selectbox("Chức danh:", ["Giữ nguyên"] + TITLES)
         
-        if st.button("✅ APPLY CHANGES", use_container_width=True):
-            if names_sel and len(dr) == 2:
-                for n in names_sel:
-                    idx_list = db.index[db[name_col] == n].tolist()
-                    if idx_list:
-                        idx = idx_list[0]
-                        if comp_sel: db.at[idx, 'Company'] = comp_sel
-                        if title_sel: db.at[idx, 'Title'] = title_sel
-                        
-                        sd, ed = dr
+        if st.button("✅ ÁP DỤNG NHANH", use_container_width=True):
+            if sel_names and len(date_rng) == 2:
+                for n in sel_names:
+                    idx = current_df.index[current_df['Họ và Tên'] == n].tolist()
+                    if idx:
+                        i = idx[0]
+                        if co_input != "Giữ nguyên": current_df.at[i, 'Công ty'] = co_input
+                        if ti_input != "Giữ nguyên": current_df.at[i, 'Chức danh'] = ti_input
+                        sd, ed = date_rng
                         while sd <= ed:
                             if sd.month == curr_m:
-                                col_target = [c for c in db.columns if c.startswith(f"{sd.day:02d}/")]
-                                if col_target:
-                                    db.at[idx, col_target[0]] = "" if stt == "Clear" else str(rig)
+                                target = [c for c in DATE_COLS if c.startswith(f"{sd.day:02d}/")]
+                                if target: current_df.at[i, target[0]] = "" if stt == "Xóa" else str(rig)
                             sd += timedelta(days=1)
-                
-                db = apply_logic(db, curr_m, curr_y, st.session_state.GIANS)
-                conn.update(worksheet=sheet_name, data=db)
+                current_df = apply_logic(current_df, curr_m, curr_y, st.session_state.GIANS)
+                conn.update(worksheet=sheet_name, data=current_df)
                 st.rerun()
 
-    # --- 4. DATA EDITOR (BẢNG HIỂN THỊ CHÍNH) ---
+    # Cấu hình hiển thị bảng
+    fixed_cols = ['STT', 'Họ và Tên', 'Công ty', 'Chức danh', 'Tồn cũ', 'Tổng CA']
+    all_display_cols = fixed_cols + DATE_COLS
+    
     col_config = {
-        "No.": st.column_config.NumberColumn("No.", width="small", pinned=True),
-        name_col: st.column_config.TextColumn(name_col, width="medium", pinned=True),
-        "Company": st.column_config.TextColumn("Company", width="small", pinned=True),
-        "Title": st.column_config.TextColumn("Title", width="small", pinned=True),
-        prev_col: st.column_config.NumberColumn("Prev Bal", format="%.1f", width="small", pinned=True),
-        total_col: st.column_config.NumberColumn("Total CA", format="%.1f", width="small", pinned=True)
+        "STT": st.column_config.NumberColumn("STT", width="small", pinned=True),
+        "Họ và Tên": st.column_config.TextColumn("Họ và Tên", width="medium", pinned=True),
+        "Tồn cũ": st.column_config.NumberColumn("Tồn cũ", format="%.1f", pinned=True),
+        "Tổng CA": st.column_config.NumberColumn("Tổng CA", format="%.1f", pinned=True),
+        "Công ty": st.column_config.TextColumn("Công ty", width="small"),
+        "Chức danh": st.column_config.TextColumn("Chức danh", width="small")
     }
     
-    status_options = st.session_state.GIANS + ["CA", "WS", "Lễ", "AL", "SL", ""]
-    for c in date_cols:
-        col_config[c] = st.column_config.SelectboxColumn(c, options=status_options, width="small")
+    status_opts = st.session_state.GIANS + ["CA", "WS", "NP", "ỐM", ""]
+    for c in DATE_COLS:
+        col_config[c] = st.column_config.SelectboxColumn(c, options=status_opts, width="small")
 
-    ed_db = st.data_editor(
-        db.style.apply(highlight_holidays, axis=0), 
-        use_container_width=True, 
-        height=550, 
-        hide_index=True, 
-        column_config=col_config
-    )
+    ed_df = st.data_editor(current_df[all_display_cols], use_container_width=True, height=550, hide_index=True, column_config=col_config)
     
-    if not ed_db.equals(db):
-        conn.update(worksheet=sheet_name, data=ed_db)
+    if not ed_df.equals(current_df[all_display_cols]):
+        for col in all_display_cols: current_df[col] = ed_df[col]
+        current_df = apply_logic(current_df, curr_m, curr_y, st.session_state.GIANS)
+        conn.update(worksheet=sheet_name, data=current_df)
         st.rerun()
+
 with t2:
-    st.subheader(f"📊 Personnel Statistics {curr_y}")
-    sel_name = st.selectbox("🔍 Select Personnel:", st.session_state.NAMES)
-    month_order = [f"Month {i}" for i in range(1, 13)]
-    
-    if sel_name:
-        yearly_data = []
+    st.subheader(f"📊 Thống kê chi tiết năm {curr_y}")
+    person = st.selectbox("🔍 Tìm kiếm nhân sự:", NAMES_66)
+    if person:
+        y_data = []
         for m in range(1, 13):
-            m_sheet = f"{m:02d}_{curr_y}"
-            m_df = get_data_fresh(m_sheet)
-            if not m_df.empty:
-                n_c = next((c for c in ['Full Name', 'Họ và Tên'] if c in m_df.columns), m_df.columns[1])
-                if sel_name in m_df[n_c].values:
-                    p_row = m_df[m_df[n_c] == sel_name].iloc[0]
-                    counts = {"Offshore": 0, "CA": 0, "Workshop": 0, "Holiday": 0, "AL (Phép)": 0, "SL (Ốm)": 0}
-                    for c in m_df.columns:
-                        if "/" in str(c):
-                            val = str(p_row[c]).strip().upper()
-                            if val in ["", "NAN", "NONE"]: continue
-                            if any(g in val for g in rigs_up): counts["Offshore"] += 1
-                            elif val == "CA": counts["CA"] += 1
-                            elif val == "WS": counts["Workshop"] += 1
-                            elif val in ["AL", "NP", "P"]: counts["AL (Phép)"] += 1
-                            elif val in ["SL", "ỐM", "O"]: counts["SL (Ốm)"] += 1
-                            elif val in ["LỄ", "HOLIDAY"]: counts["Holiday"] += 1
-                    for k, v in counts.items():
-                        if v > 0: yearly_data.append({"Month": f"Month {m}", "Type": k, "Days": v})
+            m_df = get_data_cached(f"{m:02d}_{curr_y}")
+            if not m_df.empty and person in m_df['Họ và Tên'].values:
+                row = m_df[m_df['Họ và Tên'] == person].iloc[0]
+                c = {"Đi Biển": 0, "Nghỉ CA": 0, "Tại Xưởng": 0, "Vắng/Ốm": 0}
+                for col in m_df.columns:
+                    if "/" in str(col):
+                        v = str(row[col]).strip().upper()
+                        if any(g in v for g in [r.upper() for r in st.session_state.GIANS]) and v != "": c["Đi Biển"] += 1
+                        elif v == "CA": c["Nghỉ CA"] += 1
+                        elif v == "WS": c["Tại Xưởng"] += 1
+                        elif v in ["NP", "ỐM"]: c["Vắng/Ốm"] += 1
+                for k, val in c.items():
+                    if val > 0: y_data.append({"Tháng": f"T{m}", "Loại": k, "Ngày": val})
         
-        if yearly_data:
-            df_chart = pd.DataFrame(yearly_data)
-            fig = px.bar(df_chart, x="Month", y="Days", color="Type", barmode="stack", text="Days",
-                         color_discrete_map={"AL (Phép)": "#2ecc71", "SL (Ốm)": "#e74c3c"},
-                         category_orders={"Month": month_order}, template="plotly_dark")
+        if y_data:
+            df_c = pd.DataFrame(y_data)
+            fig = px.bar(df_c, x="Tháng", y="Ngày", color="Loại", barmode="stack", text="Ngày", template="plotly_dark")
             st.plotly_chart(fig, use_container_width=True)
-            pv = df_chart.pivot_table(index='Type', columns='Month', values='Days', aggfunc='sum', fill_value=0)
-            st.table(pv)
+            st.table(df_c.pivot_table(index='Loại', columns='Tháng', values='Ngày', aggfunc='sum', fill_value=0))
 
 with st.sidebar:
-    st.header("⚙️ SETTINGS")
-    with st.expander("🏗️ Rigs"):
-        ng = st.text_input("➕ Add Rig:").upper().strip()
-        if st.button("Add Rig") and ng:
-            st.session_state.GIANS.append(ng); conn.update(worksheet="config", data=pd.DataFrame({"GIANS": st.session_state.GIANS})); st.rerun()
-    with st.expander("👤 Personnel"):
-        new_per = st.text_input("➕ Add Name:").strip()
-        if st.button("Add Name") and new_per:
-            st.session_state.NAMES.append(new_per); conn.update(worksheet="nhansu", data=pd.DataFrame({"999s": st.session_state.NAMES})); st.rerun()
-    if st.button("🔄 REFRESH SYSTEM"):
-        st.cache_data.clear(); st.session_state.clear(); st.rerun()
+    st.header("⚙️ CÀI ĐẶT")
+    new_rig = st.text_input("Thêm giàn:").upper().strip()
+    if st.button("Thêm") and new_rig:
+        st.session_state.GIANS.append(new_rig)
+        conn.update(worksheet="config", data=pd.DataFrame({"GIANS": st.session_state.GIANS}))
+        st.rerun()
+    
+    st.markdown("---")
+    if st.button("🔄 LÀM MỚI HỆ THỐNG"):
+        st.cache_data.clear()
+        st.rerun()
